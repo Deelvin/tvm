@@ -90,6 +90,13 @@ void GraphExecutor::Init(const std::string& graph_json, tvm::runtime::Module mod
     const uint32_t nid = input_nodes_[i];
     std::string& name = nodes_[nid].name;
     input_map_[name] = i;
+    uint32_t eid = this->entry_id(input_nodes_[i], 0);
+    const DLTensor* old_t = data_entry_[eid].operator->();
+    std::stringstream s;
+    for(int ind = 0; ind < old_t->ndim; ind++) {
+      s << old_t->shape[ind] << " ";
+    }
+    LOG(INFO) << s.str();
   }
   for (size_t i = 0; i < outputs_.size(); i++) {
     const uint32_t nid = outputs_[i].node_id;
@@ -140,7 +147,13 @@ void GraphExecutor::CheckExternalDLTensor(const DLTensor* external, uint32_t eid
   const DLTensor* internal = data_entry_[eid].operator->();
 
   ICHECK_EQ(data_alignment_[eid], details::GetDataAlignment(*external));
-  ICHECK_EQ(reinterpret_cast<size_t>(external->data) % kAllocAlignment, 0);
+  //ICHECK_EQ(reinterpret_cast<size_t>(external->data) % kAllocAlignment, 0);
+  for(int i = 0; i < internal->ndim; i++) {
+    LOG(INFO) << "OLD " << internal->shape[i];
+  }
+  for(int i = 0; i < external->ndim; i++) {
+    LOG(INFO) << "DATA_REF " << external->shape[i];
+  }
   ICHECK_EQ(internal->ndim, static_cast<size_t>(external->ndim));
   ICHECK_EQ(internal->device.device_type, external->device.device_type);
   ICHECK_EQ(internal->device.device_id, external->device.device_id);
