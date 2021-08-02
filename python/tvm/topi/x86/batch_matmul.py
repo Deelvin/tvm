@@ -116,38 +116,29 @@ def schedule_batch_matmul(cfg, outs):
 
             CC = s.cache_write(C, "global")
 
-            # create tuning space
-            cfg.define_split("tile_y", M, num_outputs=2)
-            cfg.define_split("tile_x", N, num_outputs=2)
-            cfg.define_split("tile_k", K, num_outputs=2)
-
-            b, y, x = s[O].op.axis
-            yo, yi = cfg["tile_y"].apply(s, O, y)
-            xo, xi = cfg["tile_x"].apply(s, O, x)
-            s[O].reorder(b, yo, xo, yi, xi)
-            bxyo = s[O].fuse(b, yo, xo)
+            bn = 4
+            xo, yo, xi, yi = s[O].tile(O.op.axis[1], O.op.axis[2], bn, bn)
+            bxyo = s[O].fuse(O.op.axis[0], xo, yo)
             s[O].parallel(bxyo)
-
             s[CC].compute_at(s[O], bxyo)
-            (k,) = s[CC].op.reduce_axis
-            ko, ki = cfg["tile_k"].apply(s, CC, k)
 
-            Crf = s.rfactor(CC, ki)
-            s[Crf].compute_at(s[CC], s[CC].op.axis[0])
-            _, _, y, x = s[Crf].op.axis
-            s[Crf].fuse(y, x)
-            s[Crf].vectorize(s[Crf].op.axis[0])
-            s[O].pragma(bxyo, "auto_unroll_max_step", 16)
+            # New inner axes
+            a, b, c = s[CC].op.axis
+            (k,) = s[CC].op.reduce_axis
+            ko, ki = s[CC].split(k, factor=4)
+            s[CC].reorder(ko, a, b, c, ki)
+            s[O].pragma(bxyo, "auto_unroll_max_step", 32)
+
 
     traverse_inline(s, outs[0].op, _callback)
     return s
 
 
 def _default_batch_matmul_config(cfg, M, N, K):
-    cfg["tile_k"] = SplitEntity([K // 16, 16])
-    x_bn = get_max_power2_factor(N, 8)
+    cfg["tile_k"] = SplitEntity([K // 8, 8])
+    x_bn = get_max_power2_factor(N, 2)
     cfg["tile_x"] = SplitEntity([N // x_bn, x_bn])
-    y_bn = get_max_power2_factor(M, 8)
+    y_bn = get_max_power2_factor(M, 2)
     cfg["tile_y"] = SplitEntity([M // y_bn, y_bn])
 
 
