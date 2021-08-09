@@ -115,17 +115,24 @@ def schedule_batch_matmul(cfg, outs):
                 O = C
 
             CC = s.cache_write(C, "global")
-
-            bn = 4
-            xo, yo, xi, yi = s[O].tile(O.op.axis[1], O.op.axis[2], bn, bn)
-            bxyo = s[O].fuse(O.op.axis[0], xo, yo)
+            
+            # version of split through AutoTVM:
+            cfg.define_split("tile_y", M, num_outputs=2, max_factor=32)
+            cfg.define_split("tile_x", N, num_outputs=2, max_factor=32)
+            cfg.define_split("tile_k", K, num_outputs=2, max_factor=16)
+            b, y, x = s[O].op.axis
+            yo, yi = cfg["tile_y"].apply(s, O, y)
+            xo, xi = cfg["tile_x"].apply(s, O, x)
+            s[O].reorder(b, yo, xo, xi, yi)
+            bxyo = s[O].fuse(b, yo, xo)
+            
             s[O].parallel(bxyo)
             s[CC].compute_at(s[O], bxyo)
 
             # New inner axes
             a, b, c = s[CC].op.axis
             (k,) = s[CC].op.reduce_axis
-            ko, ki = s[CC].split(k, factor=4)
+            ko, ki = cfg["tile_k"].apply(s, CC, k)
             s[CC].reorder(ko, a, b, c, ki)
             s[O].pragma(bxyo, "auto_unroll_max_step", 32)
 
@@ -135,10 +142,10 @@ def schedule_batch_matmul(cfg, outs):
 
 
 def _default_batch_matmul_config(cfg, M, N, K):
-    cfg["tile_k"] = SplitEntity([K // 8, 8])
-    x_bn = get_max_power2_factor(N, 2)
+    cfg["tile_k"] = SplitEntity([K // 4, 4])
+    x_bn = get_max_power2_factor(N, 4)
     cfg["tile_x"] = SplitEntity([N // x_bn, x_bn])
-    y_bn = get_max_power2_factor(M, 2)
+    y_bn = get_max_power2_factor(M, 4)
     cfg["tile_y"] = SplitEntity([M // y_bn, y_bn])
 
 
