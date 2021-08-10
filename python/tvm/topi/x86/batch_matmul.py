@@ -62,15 +62,21 @@ def batch_matmul(
     output : tvm.te.Tensor
         3-D with shape [batch, M, N]
     """
+    if transpose_a:
+        _, K, M = get_const_tuple(tensor_a.shape)
+    else:
+        _, M, K = get_const_tuple(tensor_a.shape)
+    if transpose_b:
+        _, N, _ = get_const_tuple(tensor_b.shape)
+    else:
+        _, _, N = get_const_tuple(tensor_b.shape)
+
+    cfg.define_split("tile_y", M, num_outputs=2, max_factor=32)
+    cfg.define_split("tile_x", N, num_outputs=2, max_factor=32)
+    cfg.define_split("tile_k", K, num_outputs=2, max_factor=16)
+    cfg.define_knob("unroll_step", [8, 16, 24, 32, 48, 64])
+
     if cfg.is_fallback:
-        if transpose_a:
-            _, K, M = get_const_tuple(tensor_a.shape)
-        else:
-            _, M, K = get_const_tuple(tensor_a.shape)
-        if transpose_b:
-            _, N, _ = get_const_tuple(tensor_b.shape)
-        else:
-            _, _, N = get_const_tuple(tensor_b.shape)
         _default_batch_matmul_config(cfg, M, N, K)
     return nn.batch_matmul(
         tensor_a,
@@ -116,10 +122,6 @@ def schedule_batch_matmul(cfg, outs):
 
             CC = s.cache_write(C, "global")
             
-            # version of split through AutoTVM:
-            cfg.define_split("tile_y", M, num_outputs=2, max_factor=32)
-            cfg.define_split("tile_x", N, num_outputs=2, max_factor=32)
-            cfg.define_split("tile_k", K, num_outputs=2, max_factor=16)
             b, y, x = s[O].op.axis
             yo, yi = cfg["tile_y"].apply(s, O, y)
             xo, xi = cfg["tile_x"].apply(s, O, x)
@@ -134,7 +136,8 @@ def schedule_batch_matmul(cfg, outs):
             (k,) = s[CC].op.reduce_axis
             ko, ki = cfg["tile_k"].apply(s, CC, k)
             s[CC].reorder(ko, a, b, c, ki)
-            s[O].pragma(bxyo, "auto_unroll_max_step", 32)
+            ustep = cfg["unroll_step"].val
+            s[O].pragma(bxyo, "auto_unroll_max_step", ustep)
 
 
     traverse_inline(s, outs[0].op, _callback)
@@ -142,11 +145,12 @@ def schedule_batch_matmul(cfg, outs):
 
 
 def _default_batch_matmul_config(cfg, M, N, K):
-    cfg["tile_k"] = SplitEntity([K // 4, 4])
-    x_bn = get_max_power2_factor(N, 4)
+    cfg["tile_k"] = SplitEntity([K // 2, 2])
+    x_bn = get_max_power2_factor(N, 8)
     cfg["tile_x"] = SplitEntity([N // x_bn, x_bn])
-    y_bn = get_max_power2_factor(M, 4)
+    y_bn = get_max_power2_factor(M, 8)
     cfg["tile_y"] = SplitEntity([M // y_bn, y_bn])
+    cfg["unroll_step"].val = 32
 
 
 def batch_matmul_blas_common(cfg, tensor_a, tensor_b, out_shape, trans_a, trans_b, lib):
