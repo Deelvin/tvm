@@ -39,7 +39,7 @@ endif()
 # It is required to load unsigned shared modules on real iOS devices
 ExternalProject_Add(custom_dso_loader
         GIT_REPOSITORY https://github.com/octoml/macho-dyld.git
-        GIT_TAG 48d1e8b5c40c7f5b744cb089634af17dd86125b2
+        GIT_TAG 0742b8129de7df1130be355b74faa8c036265bfc
         PREFIX custom_dso_loader
         LOG_DOWNLOAD TRUE
         LOG_CONFIGURE TRUE
@@ -57,21 +57,21 @@ ExternalProject_Add(custom_dso_loader
 # iOS RPC Xcode project wrapper to integrate into Cmake
 ExternalProject_Add(ios_rpc
         PREFIX ios_rpc
-        DEPENDS custom_dso_loader
+        DEPENDS custom_dso_loader tvm_runtime
         SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}
         CONFIGURE_COMMAND ""
         INSTALL_COMMAND ""
         BUILD_COMMAND xcodebuild
-            -scheme tvmrpc
+            -target tvmrpc
             -configuration ${CMAKE_BUILD_TYPE}
             -project <SOURCE_DIR>/tvmrpc.xcodeproj
-            -derivedDataPath <BINARY_DIR>
             -sdk ${CMAKE_OSX_SYSROOT}
             -arch ${CMAKE_OSX_ARCHITECTURES}
             -hideShellScriptEnvironment
             build
+                SYMROOT=<BINARY_DIR>
                 IPHONEOS_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
                 DEVELOPMENT_TEAM=${CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM}
                 TVM_BUILD_DIR=${CMAKE_BINARY_DIR}
-                USE_CUSTOM_DSO_LOADER=YES
+                USE_CUSTOM_DSO_LOADER=1
         )

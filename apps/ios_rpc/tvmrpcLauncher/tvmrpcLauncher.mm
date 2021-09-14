@@ -23,24 +23,55 @@
  */
 
 #import <XCTest/XCTest.h>
-#import "TVMRuntime.h"
+#import "RPCArgs.h"
+#import "RPCServer.h"
+
+/*!
+ * Simple listener to
+ */
+@interface EventListenerWrapper : NSObject <RPCServerEventListener>
+@end
+
+@implementation EventListenerWrapper {
+  void (^blk_)();
+}
+
+- (instancetype)initWithBlock:(void (^)())blk {
+  blk_ = blk;
+  return self;
+}
+
+- (void)onError:(NSString*)msg {
+  NSLog(msg);
+  blk_();
+}
+
+- (void)onStatusChanged:(RPCServerStatus)status {
+  if (status == RPCServerStatus_Stopped) blk_();
+}
+
+@end
 
 @interface tvmrpcLauncher : XCTestCase
-
 @end
 
 @implementation tvmrpcLauncher
 
-- (void)setUp {
-  [super setUp];
-}
-
-- (void)tearDown {
-  [super tearDown];
-}
-
 - (void)testRPC {
-  [TVMRuntime launchSyncServer];
+  RPCArgs args = get_current_rpc_args();
+
+  RPCServer* server = [RPCServer serverWithMode:args.server_mode];
+  server.host = @(args.host_url);
+  server.port = args.host_port;
+  server.key = @(args.key);
+
+  dispatch_semaphore_t s = dispatch_semaphore_create(0);
+  server.delegate = [[EventListenerWrapper alloc] initWithBlock:^{
+    dispatch_semaphore_signal(s);
+  }];
+
+  [server start];
+  dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
 }
 
 @end
