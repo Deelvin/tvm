@@ -19,4 +19,7 @@
 # transformation passes
 from .transform import *
 from .recast import recast
+from .dequantize_postops import dequantize_postops
+from .cast_postops_float32 import cast_postops_float32
+from .dequantize_qadd import dequantize_qadd
 from . import fake_quantization_to_integer, mixed_precision
