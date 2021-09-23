@@ -41,7 +41,6 @@ class RecastMutator(ExprMutator):
         # Visit current arguments
         if call.op == relay.op.get("qnn.add"):
           # saving data for adding dequantize just before previous op
-          print("inadd!!!")
           self.in_qnn_add = call
           self.branches[call] = False
           a0 = self.visit(call.args[0])
@@ -62,24 +61,20 @@ class RecastMutator(ExprMutator):
           self.in_qnn_add = None
           
           #return self.visit(relay.cast(call.args[0], , )
-          print("in quantize!!!")
           return self.visit(call.args[0])
 
         if call.op == relay.op.get("cast") and self.in_qnn_add is not None:
           #self.in_qnn_add = False
           #return self.visit(relay.cast(call.args[0], , )
-          print("incast!!!!")
           return self.visit(call.args[0])
 
         if call.op == relay.op.get("clip") and self.in_qnn_add is not None:
           #self.in_qnn_add = False
-          print("inclip!!!!")
           #return self.visit(relay.cast(call.args[0], , )
           return self.visit(call.args[0])
 
         # Otherwise return the unchanged call.
         # Visit current arguments
-        print(call.op)
         self.in_qnn_add = None
         args = []
         for arg in call.args:

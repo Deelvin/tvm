@@ -81,7 +81,6 @@ def dequantize_postops(expr):
         return_mod = True
     recast_pass = RecastMutator()
     expr = recast_pass.visit(expr)
-    print("finished dequantize_postops")
     if return_mod:
         return tvm.IRModule.from_expr(expr)
     return expr
