@@ -604,6 +604,25 @@ TVM_DLL int TVMDeviceFreeDataSpace(DLDevice dev, void* ptr);
 TVM_DLL int TVMDeviceCopyDataFromTo(DLTensor* from, DLTensor* to, TVMStreamHandle stream);
 
 /*!
+ * \brief Copy data from one place to another.
+ * \param from The source array.
+ * \param from_offset The byte offeset in the from.
+ * \param to The target array.
+ * \param to_offset The byte offset in the to.
+ * \param num_bytes The size of the memory in bytes
+ * \param dev_from The source device
+ * \param dev_to The target device
+ * \param type_hint The type of elements, only neded by certain backends.
+ *                  can be useful for cross device endian converison.
+ * \param stream Optional stream object.
+ * \return 0 when success, -1 when failure happens.
+ */
+TVM_DLL int TVMDeviceCopyRawDataFromTo(const void* from, size_t from_offset, void* to,
+                                       size_t to_offset, size_t num_bytes, DLDevice dev_from,
+                                       DLDevice dev_to, DLDataType type_hint,
+                                       TVMStreamHandle stream);
+
+/*!
  * \brief Check that an object is derived from another.
  * \param child_type_index The type index of the derived type.
  * \param parent_type_index The type index of the parent type.

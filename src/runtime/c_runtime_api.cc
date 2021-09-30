@@ -182,6 +182,14 @@ void DeviceAPI::CopyDataFromTo(DLTensor* from, DLTensor* to, TVMStreamHandle str
                  to->device, from->dtype, stream);
 }
 
+void DeviceAPI::CopyRawDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset,
+                               size_t num_bytes, DLDevice dev_from, DLDevice dev_to,
+                               DLDataType type_hint, TVMStreamHandle stream) {
+  // TODO(vvchernov): Hack to use protected function from DeviceAPI
+  CopyDataFromTo(from, from_offset, to, to_offset, num_bytes, dev_from,
+                 dev_to, type_hint, stream);
+}
+
 void DeviceAPI::CopyDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset,
                                size_t num_bytes, Device dev_from, Device dev_to,
                                DLDataType type_hint, TVMStreamHandle stream) {
@@ -613,6 +621,16 @@ int TVMDeviceCopyDataFromTo(DLTensor* from, DLTensor* to, TVMStreamHandle stream
   DLDevice dev_to = to->device;
   DLDevice dev = dev_from.device_type != kDLCPU ? dev_from : dev_to;
   DeviceAPIManager::Get(dev)->CopyDataFromTo(from, to, stream);
+  API_END();
+}
+
+int TVMDeviceCopyRawDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset,
+                               size_t num_bytes, DLDevice dev_from, DLDevice dev_to,
+                               DLDataType type_hint, TVMStreamHandle stream) {
+  API_BEGIN();
+  DLDevice dev = dev_from.device_type != kDLCPU ? dev_from : dev_to;
+  DeviceAPIManager::Get(dev)->CopyRawDataFromTo(from, from_offset, to, to_offset, num_bytes, dev_from,
+                                                dev_to, type_hint, stream);
   API_END();
 }
 
