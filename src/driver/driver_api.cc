@@ -25,7 +25,6 @@
 #include <tvm/driver/driver_api.h>
 #include <tvm/driver/jit_interface.h>
 #include <tvm/ir/transform.h>
-#include <tvm/runtime/container.h>
 #include <tvm/runtime/c_runtime_api.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/target/codegen.h>
@@ -568,7 +567,13 @@ void TVMExtractOutputShapes(tvm::runtime::Module& mod, size_t num_outputs, std::
   for (size_t i = 0; i < num_outputs; i++)
   {
     tvm::runtime::NDArray output_array = get_output(i);
-    output_shapes.push_back(output_array.Shape());
+    const auto& shape = output_array.Shape();
+    std::vector<int64_t> oshape;
+    for (const auto& dim : shape)
+    {
+      oshape.push_back(dim);
+    }
+    output_shapes.push_back(oshape);
   }
 }
 
