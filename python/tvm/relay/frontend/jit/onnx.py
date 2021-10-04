@@ -41,11 +41,21 @@ def run_with_benchmark(mod):
 def onnx_compile(model_string, target, target_host, opt_level, input_shapes):
     model = onnx.load_model_from_string(bytes(model_string))
 
-    input_mapping = [(name , shape) for (name, shape) in zip([i.name for i in model.graph.input], input_shapes)]
-    # Using an ordereddict maintains input ordering.
-    shape_dict = collections.OrderedDict(input_mapping)
+    # Collect only feed input names from all input names
+    all_input_names = [node.name for node in model.graph.input]
+    all_initializer =  [node.name for node in model.graph.initializer]
+    net_feed_input_names = list(set(all_input_names) - set(all_initializer))
 
-    irmod, params = tvm.relay.frontend.from_onnx(model, shape_dict, opset=11)
+    # Match names and input shapes
+    all_input_mapping = [(name , shape) for (name, shape) in zip(all_input_names, input_shapes)]
+    # Using an ordereddict maintains input ordering.
+    shape_dict = collections.OrderedDict(all_input_mapping)
+    # Get only feed input pairs
+    feed_shape_dict={}
+    for name in net_feed_input_names:
+        feed_shape_dict[name] = shape_dict[name]
+
+    irmod, params = tvm.relay.frontend.from_onnx(model, feed_shape_dict, opset=11)
     print(irmod)
     # import ipdb; ipdb.set_trace()
     with tvm.relay.build_config(opt_level=opt_level):
@@ -58,7 +68,7 @@ def onnx_compile(model_string, target, target_host, opt_level, input_shapes):
             lib = tvm.relay.build(irmod, target_host=target_host, target=target)
 
     print(lib.graph_json)
-    ctx = tvm.context(target, 0)
-    m = tvm.contrib.graph_runtime.GraphModule(lib["default"](ctx))
+    ctx = tvm.device(target, 0)
+    m = tvm.contrib.graph_executor.GraphModule(lib["default"](ctx))
     # m.set_input(**params)
     return m.module
