@@ -131,7 +131,7 @@ InferCorrectLayoutOutput RequantizeInferCorrectLayout(const Attrs& attrs,
  *       4) Add the output zero point.
  *       5) Cast to the out_dtype.
  */
-Expr RequantizeLower(const Expr& input_tensor, const Expr& input_scale,
+Expr RequantizeLowerI32(const Expr& input_tensor, const Expr& input_scale,
                      const Expr& input_zero_point, const Expr& output_scale,
                      const Expr& output_zero_point, const RequantizeAttrs* param,
                      const Array<IndexExpr>& input_shape, const DataType& out_dtype) {
@@ -207,6 +207,135 @@ Expr RequantizeLower(const Expr& input_tensor, const Expr& input_scale,
   auto clipped_t = Clip(shifted_int32_t, q_min, q_max);
   return Cast(clipped_t, out_dtype);
 }
+
+/*
+ * \brief Lower requantize to a sequence of ops.
+ * \param input_tensor The input tensor to requantize op.
+ * \param param The requantize op attrs.
+ * \param input_shape The input tensor shape of the requantize op.
+ * \return The sequence of existing Relay ops.
+ * \note Requantization using only integer computation. All multiplication/sub/sum
+ *       occurs in floating point data type and only at the end is converted to
+ *       int32 data type and clamped for output data type.
+ *
+ *       The whole computation this can be broken down into following steps
+ *       1) Subtract the input zero point.
+ *       2) Perform multiplication.
+ *       3) Add the output zero point.
+ *       4) Cast to the out_dtype.
+ */
+Expr RequantizeLowerFP32(const Expr& input_tensor, const Expr& input_scale,
+                     const Expr& input_zero_point, const Expr& output_scale,
+                     const Expr& output_zero_point, const RequantizeAttrs* param,
+                     const Array<IndexExpr>& input_shape, const DataType& out_dtype) {
+  auto tensor = Cast(input_tensor, DataType::Int(32));
+  auto zero_scalar = MakeConstantScalar(DataType::Int(32), 0);
+  if (!IsEqualScalar(input_zero_point, zero_scalar)) {
+    // Broadcast input zero point if needed.
+    int rank = static_cast<int>(input_shape.size());
+    int axis = (param->axis < 0) ? ((rank > 0) ? rank + param->axis : 0) : param->axis;
+    Expr input_zero_broadcast = ExpandBiasToMatchAxis(Reshape(input_zero_point,
+                                                              {
+                                                                  -1,
+                                                              }),
+                                                      rank, {axis});
+    tensor = Subtract(Cast(tensor, DataType::Float(32)), Cast(input_zero_broadcast, DataType::Float(32)));
+  } else {
+    tensor = Cast(tensor, DataType::Float(32));
+  }
+
+  // 2) If the input and output scales are same, we can skip the multiplication. Check
+  // if the input scale is per-tensor or per-channel. If it is per-tensor, there is single scale for
+  // the whole tensor. For per-channel (aka per-axis), there is a vector of scales for the input
+  // tensor. Depending on the quantization type, the fixed point multiplication routing is called.
+  auto scaled_int32_t = tensor;
+  float output_scale_float = GetScalarFromConstant<float>(output_scale);
+  if (IsConstScalar(input_scale)) {
+    // This is per-tensor quantization. Single scale.
+    float input_scale_float = GetScalarFromConstant<float>(input_scale);
+    double double_multiplier =
+        static_cast<double>(input_scale_float) / static_cast<double>(output_scale_float);
+    // Skip if input and output scales are same.
+    if (!IsEqualScalar(input_scale, output_scale)) {
+
+      float multiplier = double_multiplier;
+      // if (is_upward_rounding) {
+      // TODO(amalyshe): currenrly TVM Ropund does not support rounding parameters, ignore param->rounding so far
+      // Solutions 1: apply floating point only for x86 and when optimizatino level >=4. This is the level where
+      // we use fast math and affect accuracy anyway
+      // Solution 2: extend TVM Rand by the parmeter. X86 insructions support this, it will be useful
+      // https://software.intel.com/sites/landingpage/IntrinsicsGuide/#text=_mm_round_ps&expand=5868
+      //  _mm256_round_ps (__m256 a, int rounding)
+      //  Rounding is done according to the rounding[3:0] parameter, which can be one of:
+      //  (_MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC) // round to nearest, and suppress exceptions
+      //  (_MM_FROUND_TO_NEG_INF |_MM_FROUND_NO_EXC)     // round down, and suppress exceptions
+      //  (_MM_FROUND_TO_POS_INF |_MM_FROUND_NO_EXC)     // round up, and suppress exceptions
+      //  (_MM_FROUND_TO_ZERO |_MM_FROUND_NO_EXC)        // truncate, and suppress exceptions
+      //  _MM_FROUND_CUR_DIRECTION // use MXCSR.RC; see _MM_SET_ROUNDING_MODE
+      auto m_scalar = MakeConstantScalar(DataType::Float(32), multiplier);
+      scaled_int32_t = Multiply(m_scalar, scaled_int32_t);
+    }
+
+  } else {
+//  // This is per-channel (per=axis) quantization.
+    std::vector<float> double_multipliers;
+    auto input_axis_scales = GetFloatVectorFromConstant(input_scale);
+    float output_scale_float = GetScalarFromConstant<float>(output_scale);
+    for (auto input_axis_scale : input_axis_scales) {
+      double multiplier =
+        static_cast<double>(input_axis_scale) / static_cast<double>(output_scale_float);
+      double_multipliers.push_back(multiplier);
+    }
+    int axis = param->axis;
+    axis = (axis == -1) ? input_shape.size() - 1 : axis;
+
+    auto fixed_pt_multiplier_expr = MakeConstantTensor(DataType::Float(32), { (int64_t)double_multipliers.size() }, double_multipliers);
+    size_t n_dim = input_shape.size();
+    auto exp_fixed_pt_multiplier_expr = ExpandBiasToMatchAxis(fixed_pt_multiplier_expr, n_dim, { axis });
+
+    scaled_int32_t = Multiply(scaled_int32_t, exp_fixed_pt_multiplier_expr);
+  }
+
+  // 3) Add the output zero point.
+  auto shifted_int32_t = scaled_int32_t;
+  if (!IsEqualScalar(output_zero_point, zero_scalar)) {
+    shifted_int32_t = Add(shifted_int32_t, Cast(output_zero_point, DataType::Float(32)));
+  }
+  shifted_int32_t = Cast(Round(shifted_int32_t), DataType::Int(32));
+
+  // 4) Clip to the out_dtype min/max. Skip clipping if out_dtype is Int32. The fixed point
+  // multiplication keeps the value in int32 range.
+  if (out_dtype == DataType::Int(32)) {
+    return shifted_int32_t;
+  }
+
+  auto q_min = GetQmin(out_dtype);
+  auto q_max = GetQmax(out_dtype);
+  auto clipped_t = Clip(shifted_int32_t, q_min, q_max);
+  return Cast(clipped_t, out_dtype);
+}
+
+Expr RequantizeLower(const Expr& input_tensor, const Expr& input_scale,
+                     const Expr& input_zero_point, const Expr& output_scale,
+                     const Expr& output_zero_point, const RequantizeAttrs* param,
+                     const Array<IndexExpr>& input_shape, const DataType& out_dtype) {
+  auto target = Target::Current(false);
+  if (target->kind->name == "llvm") {
+    // TODO(amalyshe): verify if need to verify mcpu or use FP32 for any llvm
+    // the code verifying if x86 vector instructions available is in the
+    // python/tvm/topi/x86/utils.py, functions target_has_sse42/target_has_...
+    // to access to the mcpu property from here:
+    // if (target->attrs.find("mcpu") != target->attrs.end()) {
+    //   std::cout << target->attrs["mcpu"] << std::endl;
+    // }
+    return RequantizeLowerFP32(input_tensor, input_scale, input_zero_point, output_scale,
+                         output_zero_point, param, input_shape, out_dtype);
+  } else {
+    return RequantizeLowerI32(input_tensor, input_scale, input_zero_point, output_scale,
+                         output_zero_point, param, input_shape, out_dtype);
+  }
+}
+
 
 /*
  * \brief Forward rewrite the requantize op.
