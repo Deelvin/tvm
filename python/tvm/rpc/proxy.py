@@ -379,7 +379,7 @@ class ProxyServerHandler(object):
 
             if need_update_info:
                 for key in self._key_set:
-                    cinfo = {"key": "server:" + key,
+                    cinfo = {"key": "server_proxy:" + key,
                              "addr": f"[null, {self._listen_port}]"}
                     base.sendjson(self._tracker_conn, [TrackerCode.UPDATE_INFO, cinfo])
                     assert base.recvjson(self._tracker_conn) == TrackerCode.SUCCESS
