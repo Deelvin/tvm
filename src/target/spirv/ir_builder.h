@@ -36,7 +36,7 @@
 #include <utility>
 #include <vector>
 #include <tuple>
-#include <SPIRV/spirv.hpp>
+#include <spirv.hpp>
 // clang-format on
 
 #include "spirv_support.h"

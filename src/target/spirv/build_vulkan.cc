@@ -23,7 +23,7 @@
  */
 // Use libspirv for parsing and validating code.
 #include <dmlc/memory_io.h>
-#include <spirv-tools/libspirv.h>
+#include <libspirv.h>
 #include <tvm/tir/transform.h>
 
 #include <fstream>

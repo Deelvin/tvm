@@ -586,8 +586,7 @@ class RelayBuildModule : public runtime::ModuleNode {
 runtime::Module RelayBuildCreate() {
   auto exec = make_object<RelayBuildModule>();
   return runtime::Module(exec);
-} 
-
+}
 
 TVM_REGISTER_GLOBAL("relay.build_module._BuildModule").set_body([](TVMArgs args, TVMRetValue* rv) {
   *rv = RelayBuildCreate();
