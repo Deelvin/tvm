@@ -348,49 +348,6 @@ def squeeze(a, axis=None):
     """
     return cpp.squeeze(a, axis)
 
-def concatenate_2d(a_tuple):
-    """Join a sequence of arrays along an axis 1.
-    Parameters
-    ----------
-    a_tuple : tuple of tvm.te.Tensor
-        The arrays to concatenate
-    Returns
-    -------
-    ret : tvm.te.Tensor
-    """
-    def gen_ir(data_bufs, ex_scan, out_buf):
-        batch_size = out_buf.shape[0]
-        ib = tvm.tir.ir_builder.create()
-        data_bufs = [ib.buffer_ptr(data_buf) for data_buf in data_bufs]
-        ex_scan_buf = ib.buffer_ptr(ex_scan)
-        out_buf = ib.buffer_ptr(out_buf)
-
-        with ib.for_range(0, batch_size, "batch", kind="parallel") as batch:
-            for i in range(len(a_tuple)):
-                axis_size = a_tuple[i].shape[axis]
-                with ib.for_range(0, axis_size, "j") as j:
-                    out_buf[batch, j + ex_scan_buf[i]] = data_bufs[i][batch, j]
-
-        return ib.get()
-    axis = 1
-    concat_axis_sizes = [int(t.shape[axis]) for t in a_tuple]
-    join_size = int(np.sum(concat_axis_sizes))
-    cumsum = np.cumsum(concat_axis_sizes)
-    ex_scan = cumsum - np.array(concat_axis_sizes)
-
-    dtype = a_tuple[0].dtype
-    out_shape = a_tuple[0].shape[:axis] + [join_size] + a_tuple[0].shape[axis+1:]
-
-    ex_scan_tensor = const_vector(ex_scan)
-
-    return te.extern(
-        [out_shape],
-        list(a_tuple) + [ex_scan_tensor],
-        lambda ins, outs: gen_ir(ins, ins[-1], outs[0] ),
-        dtype=dtype,
-        name="concat_extern",
-    )
-
 def concatenate(a_tuple, axis=0):
     """Join a sequence of arrays along an existing axis.
     Parameters
