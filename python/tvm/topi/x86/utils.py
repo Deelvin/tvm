@@ -16,8 +16,26 @@
 # under the License.
 """Common x86 related utilities"""
 import tvm
+import tvm._ffi
 
 
+@tvm._ffi.register_func("tvm.topi.x86.utils.target_has_sse41")
+def target_has_sse41(target):
+    return (
+        target_has_sse42(target)
+        or target_has_avx(target)
+        or target_has_avx2(target)
+        or target_has_avx512(target)
+        or target_has_vnni(target)
+        or target
+        in {
+            "btver2",
+            "penryn",
+        }
+    )
+
+
+@tvm._ffi.register_func("tvm.topi.x86.utils.target_has_sse42")
 def target_has_sse42(target):
     return (
         target_has_avx(target)
@@ -42,6 +60,7 @@ def target_has_sse42(target):
     )
 
 
+@tvm._ffi.register_func("tvm.topi.x86.utils.target_has_avx")
 def target_has_avx(target):
     return (
         target_has_avx2(target)
@@ -51,6 +70,7 @@ def target_has_avx(target):
     )
 
 
+@tvm._ffi.register_func("tvm.topi.x86.utils.target_has_avx2")
 def target_has_avx2(target):
     return (
         target_has_avx512(target)
@@ -70,6 +90,7 @@ def target_has_avx2(target):
     )
 
 
+@tvm._ffi.register_func("tvm.topi.x86.utils.target_has_avx512")
 def target_has_avx512(target):
     return target in {
         "skylake-avx512",
@@ -82,19 +103,20 @@ def target_has_avx512(target):
         "cascadelake",
         "icelake-client",
         "rocketlake",
-        "icelake",
+        "icelake-server",
         "tigerlake",
         "cooperlake",
         "sapphirerapids",
     }
 
 
+@tvm._ffi.register_func("tvm.topi.x86.utils.target_has_vnni")
 def target_has_vnni(target):
     return target in {
         "cascadelake",
         "icelake-client",
         "rocketlake",
-        "icelake",
+        "icelake-server",
         "tigerlake",
         "cooperlake",
         "sapphirerapids",
@@ -102,6 +124,7 @@ def target_has_vnni(target):
     }
 
 
+@tvm._ffi.register_func("tvm.topi.x86.utils.get_simd_32bit_lanes")
 def get_simd_32bit_lanes():
     mcpu = tvm.target.Target.current().mcpu
     fp32_vec_len = 4

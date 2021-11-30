@@ -24,12 +24,12 @@ from tvm.contrib import graph_executor
 roundings = ["UPWARD", "TONEAREST"]
 
 
-def verify(mod, goldens):
+def verify(mod, goldens, target="llvm"):
     with tvm.transform.PassContext(opt_level=3):
-        graph, lib, params = relay.build(mod, "llvm", params=None)
+        graph, lib, params = relay.build(mod, target, params=None)
         golden_data, golden_output = goldens
         rt_mod = graph_executor.create(graph, lib, device=tvm.cpu(0))
-        rt_mod.set_input("quantized_data", golden_data)
+        rt_mod.set_input("input_data", golden_data)
         rt_mod.set_input(**params)
         rt_mod.run()
         res = rt_mod.get_output(0).numpy()
@@ -47,7 +47,7 @@ def get_mod(
     rounding="TONEAREST",
     axis=0,
 ):
-    quantized_data = relay.var("quantized_data", shape=data_shape, dtype=data_dtype)
+    input_data = relay.var("input_data", shape=data_shape, dtype=data_dtype)
     if isinstance(input_scale, float):
         input_scale_expr = relay.const(input_scale, "float32")
     else:
@@ -59,7 +59,7 @@ def get_mod(
         input_zero_point_expr = relay.const(np.array(input_zero_point).astype("int32"))
 
     mod = relay.qnn.op.requantize(
-        quantized_data,
+        input_data,
         input_scale=input_scale_expr,
         input_zero_point=input_zero_point_expr,
         output_scale=relay.const(output_scale, "float32"),
@@ -453,6 +453,42 @@ def test_per_channel_different_scale():
         verify(mod, (golden_data, golden_output))
 
 
+def get_mod_rounding(data_shape, data_dtype, rounding):
+    data = relay.var("input_data", shape=data_shape, dtype=data_dtype)
+
+    if rounding == "TONEAREST":
+        mod = relay.qnn.op.tonearest(data)
+    else:
+        mod = relay.qnn.op.upward(data)
+
+    mod = relay.Function(relay.analysis.free_vars(mod), mod)
+    mod = tvm.IRModule.from_expr(mod)
+    return mod
+
+
+def test_rounding():
+    golden_data = np.array(
+        [0.7, 0.5, 0.3, 0.0, -0.0, -0.3, -0.5, -0.7, np.nan, np.inf, -np.inf]
+    ).astype("float32")
+
+    for target in ["llvm", "llvm -mcpu=core-avx2"]:
+        for rounding in roundings:
+            mod = get_mod_rounding(
+                data_shape=(11,),
+                data_dtype="float32",
+                rounding=rounding,
+            )
+            if rounding == "TONEAREST":
+                golden_output = np.array(
+                    [1.0, 1.0, 0.0, 0.0, -0.0, -0.0, -1.0, -1.0, np.nan, np.inf, -np.inf]
+                ).astype("float32")
+            else:
+                golden_output = np.array(
+                    [1.0, 1.0, 0.0, 0.0, -0.0, -0.0, -0.0, -1.0, np.nan, np.inf, -np.inf]
+                ).astype("float32")
+            verify(mod, (golden_data, golden_output), target)
+
+
 if __name__ == "__main__":
     test_same_scale()
     test_scalar_same_scale()
@@ -463,3 +499,4 @@ if __name__ == "__main__":
     test_zero_point()
     test_per_channel_same_scale()
     test_per_channel_different_scale()
+    test_rounding()

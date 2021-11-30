@@ -92,6 +92,44 @@ def requantize(
     )
 
 
+def upward(data):
+    r"""Upward operator.
+
+    UPWARD is the standard rounding except at midpoints where the value
+    is rounded to positive infinity (for example, -1.5 rounds to -1).
+    Parameters
+    ----------
+    data : tvm.relay.Expr
+        The input data to the operator.
+
+    Returns
+    -------
+    result : tvm.relay.Expr
+        The computed result.
+    """
+
+    return _make.upward(data)
+
+
+def tonearest(data):
+    r"""Tonearest operator.
+
+    TONEAREST is the standard rounding where the value is rounded away
+    from zero at midpoints (for example, -1.5 rounds to -2).
+    Parameters
+    ----------
+    data : tvm.relay.Expr
+        The input data to the operator.
+
+    Returns
+    -------
+    result : tvm.relay.Expr
+        The computed result.
+    """
+
+    return _make.tonearest(data)
+
+
 def quantize(data, output_scale, output_zero_point, axis=-1, out_dtype="int8"):
     r"""Quantize op
     This operator takes float32 as input and produces quantized int8 or unit8 as output.
