@@ -23,7 +23,6 @@ import numpy as np
 from ..utils import get_const_int, const_vector
 
 
-
 def _concat(a_tuple, axis=0):
     """Join a sequence of arrays along an existing axis.
 
