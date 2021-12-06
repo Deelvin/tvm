@@ -26,6 +26,7 @@ from . import tag
 from .utils import within_index, make_idx, const_vector, get_const_int
 import numpy as np
 
+
 def expand_dims(a, axis, num_newaxis=1):
     """Expand the shape of an array.
 
@@ -348,6 +349,7 @@ def squeeze(a, axis=None):
     """
     return cpp.squeeze(a, axis)
 
+
 def concatenate(a_tuple, axis=0):
     """Join a sequence of arrays along an existing axis.
     Parameters
@@ -416,6 +418,7 @@ def schedule_concat(outs):
         traverse(out.op)
 
     return s
+
 
 
 
