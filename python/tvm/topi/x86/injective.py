@@ -134,7 +134,7 @@ def schedule_concatenate(outs):
     return s
 
 
-def schedule_concatenate(outs):
+def schedule_concatenate_cpu(outs):
     """X86 schedule for concatenate op.
 
     Parameters
