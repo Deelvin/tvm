@@ -111,6 +111,8 @@ def setup_rpc_tracker_configuration(f):
 
     def wrapper():
         tracker_server = tracker.Tracker(host=HOST_URL, port=HOST_PORT, silent=True)
+        print(f"Tracker host: {tracker_server.host} ({id(tracker_server.host)})")
+        print(f"Tracker port: {tracker_server.port} ({id(tracker_server.port)})")
         with server_ios_launcher.ServerIOSContextManager(
             mode=server_ios_launcher.RPCServerMode.tracker.value,
             host=tracker_server.host,
