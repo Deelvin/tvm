@@ -111,6 +111,7 @@ TVM_REGISTER_GLOBAL("runtime.module.loadfile_dylib_custom")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
       auto n = make_object<UnsignedDSOLoader>();
       n->Init(args[0]);
+      std::cout << "XXXXXXXXXXXXXXXXXX USE_CUSTOM_DSO_LOADER=1";
       *rv = CreateModuleFromLibrary(n);
     });
 
