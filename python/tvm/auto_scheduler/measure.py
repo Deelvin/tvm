@@ -1074,9 +1074,13 @@ def _rpc_run(
     error_msg = None
     try:
         # upload built module
+        print(f"{host} {id(host)} {port} {id(port)} ======= 1 =======")
         remote = request_remote(key, host, port, priority, timeout)
+        print(f"{host} {id(host)} {port} {id(port)} ======= 2 =======")
         remote.upload(build_res.filename)
+        print(f"{host} {id(host)} {port} {id(port)} ======= 3 =======")
         func = remote.load_module(os.path.split(build_res.filename)[1])
+        print(f"{host} {id(host)} {port} {id(port)} ======= 4 =======")
         dev = remote.device(str(inp.task.target), 0)
         # Limitation:
         # We can not get PackFunction directly in the remote mode as it is wrapped
