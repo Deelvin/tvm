@@ -33,6 +33,8 @@ if not 'TVM_HOME' in os.environ:
   tvm_path = os.path.join(demo_folder, "..", "..")
   print(tvm_path)
   os.environ['TVM_HOME']=tvm_path
+else:
+  tvm_path = os.environ['TVM_HOME']
   sys.path.append(os.path.join(tvm_path, 'python'))
 
 import tvm
@@ -64,23 +66,25 @@ old_path = os.getcwd()
 os.chdir(demo_folder)
 hdd = psutil.disk_usage(demo_folder)
 free_space =  (hdd.free / (2**30))
-if free_space < 240:
-  print('WARNING: the disk free size is {} and it may not be enough to run full DLRM model.'.format(free_space))
-
-# ret = load_repo('https://github.com/facebookresearch/dlrm.git')
-# if ret == 0:converted.git')
-# if ret == 0:
-#   check_dependencies('inference')
+if free_space < 240: # just estimation
+  print('WARNING: the disk free size is {} GB and it may not be enough to run full DLRM model.'.format(free_space))
+print("---- Load required modules ----")
+ret = load_repo('https://github.com/facebookresearch/dlrm.git')
+if ret == 0:
+  check_dependencies('dlrm')
+ret = load_repo('https://github.com/mlcommons/inference.git')
+if ret == 0:
+  check_dependencies('inference')
 DLRM_DIR = os.path.join(demo_folder, 'dlrm')
-
-# temp_dir = os.path.join(demo_folder, 'inference', 'loadgen')
-# os.chdir(temp_dir)
-# curr_env = os.environ
-# curr_env['CFLAGS'] = "-std=c++14"
-# p = Popen(['python', 'setup.py', 'develop', '--user'], stdin=PIPE, stdout=PIPE, stderr=PIPE, env=curr_env)
-# output, err = p.communicate()
-# if p.returncode != 0:
-#   print('ERROR: load gen compilation issue {}.'.format(err))
+print("---- Compile loadgen ----------")
+temp_dir = os.path.join(demo_folder, 'inference', 'loadgen')
+os.chdir(temp_dir)
+curr_env = os.environ
+curr_env['CFLAGS'] = "-std=c++14"
+p = Popen(['python', 'setup.py', 'develop', '--user'], stdin=PIPE, stdout=PIPE, stderr=PIPE, env=curr_env)
+output, err = p.communicate()
+if p.returncode != 0:
+  print('ERROR: loadgen compilation issue {}.'.format(err))
 
 os.chdir(demo_folder)
 if os.path.isdir(MODEL_SUFF) != True:
@@ -88,19 +92,20 @@ if os.path.isdir(MODEL_SUFF) != True:
 
 MODEL_DIR = os.path.join(demo_folder, MODEL_SUFF)
 
-# os.chdir(MODEL_DIR)
-# os.system('wget https://dlrm.s3-us-west-1.amazonaws.com/models/tb00_40M.onnx.tar')
-# if os.path.isfile(os.path.join(MODEL_SUFF, 'tb00_40M.onnx.tar')) != True:
-#   print("ERROR: cannot find onnx model archive.")
-# else:
-#   os.system('tar -xvf tb00_40M.onnx.tar')
+os.chdir(MODEL_DIR)
+print("---- Load DLRM model ----------")
+os.system('wget https://dlrm.s3-us-west-1.amazonaws.com/models/tb00_40M.onnx.tar')
+if os.path.isfile(os.path.join(MODEL_SUFF, 'tb00_40M.onnx.tar')) != True:
+  print("ERROR: cannot find onnx model archive.")
+else:
+  os.system('tar -xvf tb00_40M.onnx.tar')
 
 os.chdir(demo_folder)
 
 # extract weights
 onnx_file = os.path.join(MODEL_DIR, 'dlrm_s_pytorch_0505.onnx')
 
-onnx_file = '/home/sshtin/dev/models/dlrm_s_pytorch_0505.onnx'
+# onnx_file = '/home/sshtin/dev/models/dlrm_s_pytorch_0505.onnx'
 onnx_model = onnx.load(onnx_file)
 
 shape_dict = {
