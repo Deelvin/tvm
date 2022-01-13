@@ -68,13 +68,21 @@ hdd = psutil.disk_usage(demo_folder)
 free_space =  (hdd.free / (2**30))
 if free_space < 240: # just estimation
   print('WARNING: the disk free size is {} GB and it may not be enough to run full DLRM model.'.format(free_space))
+
 print("---- Load required modules ----")
-ret = load_repo('https://github.com/facebookresearch/dlrm.git')
-if ret == 0:
-  check_dependencies('dlrm')
-ret = load_repo('https://github.com/mlcommons/inference.git')
-if ret == 0:
-  check_dependencies('inference')
+if os.path.isdir('dlrm') != True:
+  print("WARNING: folder 'dlrm' already exist.")
+else:
+  ret = load_repo('https://github.com/facebookresearch/dlrm.git')
+  if ret == 0:
+    check_dependencies('dlrm')
+if os.path.isdir('inference') != True:
+  print("WARNING: folder 'inference' already exist.")
+else:
+  ret = load_repo('https://github.com/mlcommons/inference.git')
+  if ret == 0:
+    check_dependencies('inference')
+
 DLRM_DIR = os.path.join(demo_folder, 'dlrm')
 print("---- Compile loadgen ----------")
 temp_dir = os.path.join(demo_folder, 'inference', 'loadgen')
@@ -105,7 +113,6 @@ os.chdir(demo_folder)
 # extract weights
 onnx_file = os.path.join(MODEL_DIR, 'dlrm_s_pytorch_0505.onnx')
 
-# onnx_file = '/home/sshtin/dev/models/dlrm_s_pytorch_0505.onnx'
 onnx_model = onnx.load(onnx_file)
 
 shape_dict = {
@@ -125,13 +132,12 @@ if os.path.isdir(CONV_SUFF) != True:
 ctx = tvm.cpu(0)
 target = "llvm"
 target_host = "llvm"
-
+print("---- Extract weights ----------")
 mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
 with tvm.transform.PassContext(opt_level=3, config={}):
     json, lib, param = relay.build(mod, target=target, params=params)
     outPth = os.path.join(demo_folder, CONV_SUFF)
     for key, val in  param.items():
         npData = val.asnumpy()
-        # npData.tofile(os.path.join(outPth, key))
-        print(os.path.join(outPth, key))
+        npData.tofile(os.path.join(outPth, key))
 os.chdir(old_path)
