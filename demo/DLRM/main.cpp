@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -23,8 +22,6 @@
  * \brief native sample for DRM model perfromance and accuracy check.
  */
 
-=======
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -33,7 +30,6 @@
 #include <random>
 #include <thread>
 #include <chrono>
-<<<<<<< HEAD
 #include <filesystem>
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/registry.h>
@@ -45,13 +41,12 @@
 
 #include <sys/types.h>
 #include <unistd.h>
-=======
 #include <dlfcn.h>
 // #include <dlpack/dlpack.h>
+#include <filesystem>
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/runtime/packed_func.h>
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
 
 struct item {
   std::string name;
@@ -60,7 +55,6 @@ struct item {
 };
 
 std::vector<item> s_items = {
-<<<<<<< HEAD
   {"p35", {32,2,1,1,256,1,4,16,}, "float32"},
   {"p22", {4,128,}, "float32"},
   {"p40", {1,256,}, "float32"},
@@ -104,51 +98,6 @@ std::vector<item> s_items = {
   {"p34", {1,1024,}, "float32"},
   {"p6", {39884406,128,}, "float32"},
   {"p7", {39043,128,}, "float32"}
-=======
-{"p35", {32,2,1,1,256,1,4,16,}, "float32"},
-{"p22", {4,128,}, "float32"},
-{"p40", {1,256,}, "float32"},
-{"p10", {20263,128,}, "float32"},
-{"p0", {32,1,1,1,13,2,1,8,}, "float32"},
-{"p33", {64,1,1,1,479,2,1,8,}, "float32"},
-{"p39", {16,1,1,32,1,16,16,}, "float32"},
-{"p21", {155,128,}, "float32"},
-{"p32", {351,}, "int64"},
-{"p8", {17289,128,}, "float32"},
-{"p1", {1,512,}, "float32"},
-{"p16", {2953546,128,}, "float32"},
-{"p30", {108,128,}, "float32"},
-{"p28", {585935,128,}, "float32"},
-{"p15", {38532951,128,}, "float32"},
-{"p4", {1,16,1,1,32,1,8,8,}, "float32"},
-{"p14", {63,128,}, "float32"},
-{"p19", {2208,128,}, "float32"},
-{"p20", {11938,128,}, "float32"},
-{"p11", {3,128,}, "float32"},
-{"p24", {14,128,}, "float32"},
-{"p27", {39664984,128,}, "float32"},
-{"p37", {16,2,1,1,256,2,4,8,}, "float32"},
-{"p12", {7120,128,}, "float32"},
-{"p41", {1,1,1,128,1,2,1,}, "float32"},
-{"p17", {403346,128,}, "float32"},
-{"p18", {10,128,}, "float32"},
-{"p31", {36,128,}, "float32"},
-{"p26", {25641295,128,}, "float32"},
-{"p29", {12972,128,}, "float32"},
-{"p3", {1,256,}, "float32"},
-{"p23", {976,128,}, "float32"},
-{"p42", {1,}, "float32"},
-{"p2", {16,1,1,32,1,16,16,}, "float32"},
-{"p36", {1,1024,}, "float32"},
-{"p13", {1543,128,}, "float32"},
-{"p9", {7420,128,}, "float32"},
-{"p25", {39979771,128,}, "float32"},
-{"p38", {1,512,}, "float32"},
-{"p5", {1,128,}, "float32"},
-{"p34", {1,1024,}, "float32"},
-{"p6", {39884406,128,}, "float32"},
-{"p7", {39043,128,}, "float32"}
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
 };
 
 // data from day 23
@@ -165,20 +114,12 @@ std::vector<item> s_testData = {
   {"batch_res_ref",   {2048, 1},  "float32"},
 };
 
-<<<<<<< HEAD
-typedef std::chrono::high_resolution_clock Clock;
-
-=======
-std::string s_tmpdir = "/home/sshtin/dev/tests/converted/";
-std::string s_modelPath = "/home/sshtin/dev/tests/out/";
-std::string s_testDataPath = "/home/sshtin/dev/datasets/";
 
 typedef std::chrono::high_resolution_clock Clock;
 
 // typedef void (*run_callback)(const std::vector<const DLTensor*> &inputs,
 //                             const std::vector<const DLTensor*> &outputs);
 
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
 void loadNDArray(const std::string& nm,
                  const std::string& pth,
                 tvm::runtime::NDArray arr,
@@ -197,11 +138,8 @@ void loadNDArray(const std::string& nm,
       std::cout << "ERROR: read " << reads << ", but required " << bytes << " bytes from " << nm << " file.\n";
     }
     fclose(f);
-<<<<<<< HEAD
   } else {
     std::cout << " File: " << (pth + nm).c_str() << " was not found.\n";
-=======
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
   }
   if (set_input != nullptr) {
     set_input(nm, arr);
@@ -210,10 +148,6 @@ void loadNDArray(const std::string& nm,
 
 inline std::vector<size_t> sortedItems(const std::vector<item>& desc) {
   std::vector<size_t> res;
-<<<<<<< HEAD
-=======
-  // res = desc;
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
   struct vals {
     size_t sz = 0;
     size_t id = 0;
@@ -277,11 +211,7 @@ template <class T> void fillData(const T* pIn,
     }
   }
 }
-<<<<<<< HEAD
 
-=======
-//fillTransposedData(pls_i_In, pls_i, pos * 26, batch_size, 26, batch_size);
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
 template <class T> void fillTransposedData(const T* pIn,
                             T* pOut,
                             size_t inOffset,
@@ -298,7 +228,6 @@ template <class T> void fillTransposedData(const T* pIn,
   }
 }
 
-<<<<<<< HEAD
 void PrintHelp(char *argv[]) {
   std::filesystem::path p = argv[0];
   std::cout << "command line: " << p.stem().string() << " <reference to model so> <reference to model json> <reference to weights folder> <reference to test data folder>\n";
@@ -433,29 +362,43 @@ int main(int argc, char *argv[]) {
   std::string json_data((std::istreambuf_iterator<char>(json_in)), std::istreambuf_iterator<char>());
   json_in.close();
 
-=======
 int main(int argc, char *argv[]) {
+  std::cout << "argc = " << argc << "\n";
 
   const char* env = getenv("TVM_NUM_THREADS");
+  if (argc != 5) {
+    PrintHelp(argv);
+    return -1;
+  }
   if (env) {
-    // std::cout << "current threads = " << env << "\n";
     std::stringstream sstream(env);
     size_t v;
     sstream >> v;
     std::cout << "current threads = " << v << "\n";
   }
-  // return 0;
+
+  auto so_path = argv[2];
+  std::string s_tmpdir = argv[3];
+  std::string s_testDataPath = argv[4];
+
+  if (!std::filesystem::exists(so_path)) {
+    std::cout << "ERROR: model library file was not found: " << so_path << "\n";
+    return -1;
+  }
+
   const size_t LOOPS_COUNT = 50;
   const size_t batch_size = 128;
-  const std::string model_json = "model_serialized_tuned_3000.json";
-  const std::string model_so = "saved_model_3000.tar.so";
   DLDevice ctx = {kDLCPU, 0};
-  const std::string json_file(s_modelPath + model_json);
-  tvm::runtime::Module mod_lib = tvm::runtime::Module::LoadFromFile(s_modelPath + model_so);
+
+  const std::string json_file(argv[1]);
+  tvm::runtime::Module mod_lib = tvm::runtime::Module::LoadFromFile(argv[2]);
   std::ifstream json_in(json_file.c_str(), std::ios::in);
+  if (!json_in.is_open()) {
+    std::cout << "ERROR: model json file was not found: " << json_file << "\n";
+    return -1;
+  }
   std::string json_data((std::istreambuf_iterator<char>(json_in)), std::istreambuf_iterator<char>());
   json_in.close();
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
   std::string params_data = "";
   constexpr int device_type = kDLCPU;
   constexpr int device_id = 0;
@@ -484,26 +427,14 @@ int main(int argc, char *argv[]) {
   tvm::runtime::NDArray output =
     tvm::runtime::NDArray::Empty({batch_size}, tvm::runtime::String2DLDataType("float32"), ctx);
 
-<<<<<<< HEAD
   testDataSize = testData[2].Shape()[0];
-=======
-  TVMSynchronize(ctx.device_type, ctx.device_id, nullptr);
-  // warm-up
-  for (size_t i = 0; i < 5;++i)
-    run();
-
-  size_t testDataSize = testData[2].Shape()[0];
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
   int64_t time = 0;
   float* pInput = (float*)input_i->data;
   int64_t* pls_o = (int64_t*)ls_o->data;
   int64_t* pls_i = (int64_t*)ls_i->data;
 
   float* pInput_In = (float*)testData[0]->data;
-<<<<<<< HEAD
-=======
   // int64_t* pls_o_In = (int64_t*)testData[1]->data;
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
   int64_t* pls_i_In = (int64_t*)testData[1]->data;
   size_t totalCount = 0;
   std::vector<float> results(testDataSize);
@@ -512,7 +443,6 @@ int main(int argc, char *argv[]) {
         pls_o[i * batch_size + j ] = j;
       }
   }
-<<<<<<< HEAD
   TVMSynchronize(ctx.device_type, ctx.device_id, nullptr);
   size_t testDataSize = 0;
   std::shared_ptr<dmlc::ThreadGroup> thread_group = std::make_shared<dmlc::ThreadGroup>();
@@ -528,10 +458,6 @@ int main(int argc, char *argv[]) {
 
   for (size_t cnt = 0; cnt < LOOPS_COUNT; ++cnt) {
     size_t runsCount = 0;
-=======
-  for (size_t cnt = 0; cnt < LOOPS_COUNT; ++cnt) {
-     size_t runsCount = 0;
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
     for (size_t pos = 0; pos < testDataSize; pos += batch_size) {
       size_t num = testDataSize - pos;
       if (num < batch_size > testDataSize) {
@@ -561,25 +487,17 @@ int main(int argc, char *argv[]) {
       runsCount++;
     }
   }
-<<<<<<< HEAD
   thread_group.reset();
   std::cout << time / totalCount << " us." << std::endl;
   float* pRef = (float*)testData[2]->data;
   // accuracy check
-=======
-  std::cout << time / totalCount << " us." << std::endl;
-  float* pRef = (float*)testData[2]->data;
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
   size_t equal = 0;
   float error = 0;
   float maxError = 0;
   for (size_t i = 0; i < testDataSize; ++i) {
-<<<<<<< HEAD
-=======
     // if ((i %= 128) == 0)
     //   std::cout << "---\n";
     // std::cout << pRef[i]  << " " << results[i] << "\n";
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
     auto currErr = std::fabs(pRef[i] - results[i]);
     error += currErr;
     maxError = std::max(currErr, maxError);
@@ -587,10 +505,5 @@ int main(int argc, char *argv[]) {
       equal++;
     }
   }
-<<<<<<< HEAD
-=======
-  std::cout << "avg err = " << error/testDataSize << std::endl;
-  std::cout << "max err = " << maxError << std::endl;
->>>>>>> Integration of DLRM model wiht TVM and MLCommons inference.
   return 0;
 }
