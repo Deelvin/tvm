@@ -41,6 +41,10 @@
 #include <vector>
 
 #include "../file_utils.h"
+#include <chrono>
+#include <atomic>
+
+using namespace std::chrono;
 
 namespace tvm {
 namespace runtime {
@@ -55,11 +59,74 @@ inline size_t GetDataAlignment(const DLTensor& arr) {
 /*!
  * \brief Run all the operations one by one.
  */
-void GraphExecutor::Run() {
-  // setup the array and requirements.
-  for (size_t i = 0; i < op_execs_.size(); ++i) {
-    if (op_execs_[i]) op_execs_[i]();
+
+static std::atomic<int> s_counter{0};
+static std::vector<int64_t> s_counters;
+static std::vector<int64_t> s_countersMin;
+static std::vector<int64_t> s_countersMax;
+static std::vector<std::string> s_names;
+
+class Guard
+{
+public:
+  Guard() {}
+  virtual ~Guard(){
+    printOut();
   }
+  void printOut() {
+    if (s_counters.size() == s_names.size()) {
+      float total = 0;
+      for (size_t i = 0; i < s_counters.size(); ++i) {
+        if (s_counters[i] != 0) {
+          int x = s_counter - 2; // exclude min, max values
+          float val = (s_counters[i] - s_countersMin[i]- s_countersMax[i]) / (float)(x * 1000.);
+          std::cout << s_names[i] << "\t" << val << "\n";
+          total += val;
+        }
+      }
+      std::cout << "-------------------\n";
+      std::cout << "total : " << total << " us.\n" << std::flush;
+      std::cout << "runs : " << ((int)s_counter - 2) << " times\n" << std::flush;
+      // std::cout << "iter : " << total/(float)s_counter << "  us.\n" << std::flush;
+    }
+  }
+};
+
+std::unique_ptr<Guard> s_guard;
+
+static std::once_flag s_once_flag;
+
+class LocalTimer
+{
+public:
+  LocalTimer(size_t ind) {
+    ind_ = ind;
+    start = high_resolution_clock::now();
+  }
+  virtual ~LocalTimer() {
+    high_resolution_clock::time_point end = high_resolution_clock::now();
+    auto elapsed = duration_cast<nanoseconds>(end - start).count();
+    s_counters[ind_] += elapsed;
+    s_countersMax[ind_] = std::max(s_countersMax[ind_], elapsed);
+    s_countersMin[ind_] = std::min(s_countersMin[ind_], elapsed);
+  }
+protected:
+  high_resolution_clock::time_point start;
+  size_t ind_;
+};
+
+void GraphExecutor::Run() {
+
+  auto sz = op_execs_.size();
+  for (size_t i = 0; i < sz; ++i) {
+    if (op_execs_[i]) {
+      {
+        LocalTimer timer(i);
+        op_execs_[i]();
+      }
+    }
+  }
+  s_counter.fetch_add(1);
 }
 
 /*!
@@ -95,6 +162,38 @@ void GraphExecutor::Init(const std::string& graph_json, tvm::runtime::Module mod
     const uint32_t nid = outputs_[i].node_id;
     std::string& name = nodes_[nid].name;
     output_map_[name] = i;
+  }
+  if (!s_guard) {
+    auto sz = op_execs_.size();
+    std::call_once(s_once_flag, [&]() {
+      if (!s_guard) {
+        s_guard = std::make_unique<Guard>();
+        s_counters.resize(sz, 0);
+        s_countersMin.resize(sz, std::numeric_limits<size_t>::max());
+        s_countersMax.resize(sz, 0);
+        s_names.resize(sz);
+        for (size_t i = 0; i < sz; ++i) {
+          s_names[i] = nodes_[i].name;
+        }
+      }
+    });
+  } else {
+    s_guard->printOut();
+    auto sz = op_execs_.size();
+    s_counters.resize(sz);
+    s_countersMin.resize(sz);
+    s_countersMax.resize(sz);
+    s_names.resize(sz);
+
+    for (size_t i = 0; i < sz; ++i) {
+      s_counters[i] = 0;
+      s_countersMin[i] = std::numeric_limits<size_t>::max();
+      s_countersMax[i] = 0;
+    }
+    for (size_t i = 0; i < sz; ++i) {
+      s_names[i] = nodes_[i].name;
+    }
+    s_counter = 0;
   }
 }
 /*!
