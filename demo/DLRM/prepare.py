@@ -23,9 +23,9 @@ import os
 import psutil
 import sys
 from subprocess import Popen, PIPE
+from params_demo import *
 
 file_path = os.path.realpath(__file__)
-print(file_path)
 demo_folder = os.path.dirname(file_path)
 
 if not 'TVM_HOME' in os.environ:
@@ -39,12 +39,7 @@ else:
 
 import tvm
 import onnx
-from tvm import relay, auto_scheduler
-from tvm.relay import transform
-
-MODEL_SUFF = 'model'
-CONV_SUFF ='converted'
-BATCH_SIZE = 128
+from tvm import relay
 
 def load_repo(repo):
   p = Popen(['git', 'clone', repo], stdin=PIPE, stdout=PIPE, stderr=PIPE)
@@ -110,28 +105,14 @@ else:
 
 os.chdir(demo_folder)
 
-# extract weights
-onnx_file = os.path.join(MODEL_DIR, 'dlrm_s_pytorch_0505.onnx')
-
+onnx_file = os.path.join(MODEL_DIR, ONNX_FILE_NAME)
 onnx_model = onnx.load(onnx_file)
-
-shape_dict = {
-    "input.1": (BATCH_SIZE, 13),
-    "lS_o": (26, BATCH_SIZE),
-    "lS_i": (26, BATCH_SIZE)
-}
-dtype_dict = {
-    "input.1": "float32",
-    "lS_o": "int64",
-    "lS_i": "int64"
-}
 
 if os.path.isdir(CONV_SUFF) != True:
   os.mkdir(CONV_SUFF)
 
 ctx = tvm.cpu(0)
-target = "llvm"
-target_host = "llvm"
+
 print("---- Extract weights ----------")
 mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
 with tvm.transform.PassContext(opt_level=3, config={}):
