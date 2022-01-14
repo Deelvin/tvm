@@ -19,10 +19,15 @@
 This  script contains demo configuration parameters.
 """
 
+<<<<<<< HEAD
 import subprocess
 MODEL_SUFF = 'model'
 CONV_SUFF = 'converted'
 TEST_DATA_SUFF = 'test_data'
+=======
+MODEL_SUFF = 'model'
+CONV_SUFF = 'converted'
+>>>>>>> README.md added
 ONNX_FILE_NAME = 'dlrm_s_pytorch_0505.onnx'
 
 BATCH_SIZE = 128
@@ -39,6 +44,7 @@ dtype_dict = {
     "lS_i": "int64"
 }
 
+<<<<<<< HEAD
 def getCPUVendor():
     cpu_info = (subprocess.check_output("lscpu", shell=True).strip()).decode()
     spl = cpu_info.split('\n')
@@ -53,3 +59,7 @@ def getCPUVendor():
                 target = "llvm -mcpu=skylake-avx512"
                 target_host = "llvm -mcpu=skylake-avx512"
             return target, target_host
+=======
+target = "llvm -mcpu=znver3"
+target_host = "llvm -mcpu=znver3"
+>>>>>>> README.md added
