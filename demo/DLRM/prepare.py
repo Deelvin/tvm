@@ -31,7 +31,6 @@ demo_folder = os.path.dirname(file_path)
 if not 'TVM_HOME' in os.environ:
   print("'TVM_HOME' is not set so the script path is used as reference to the TVM project.")
   tvm_path = os.path.join(demo_folder, "..", "..")
-  print(tvm_path)
   os.environ['TVM_HOME']=tvm_path
 else:
   tvm_path = os.environ['TVM_HOME']

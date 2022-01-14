@@ -48,3 +48,12 @@ Where:
 <reference to model json> is a result  of DLRM model tuning (see #DLRM model tuning). By default it is OUTPUT_FOLDER/model_serialized_tuned_XXX.json
 <reference to weights folder> Model weights folder. By default it should be: tvm/demo/DLRM/converted
 <reference to test data folder> Folder with testing data. By default it should be: tvm/demo/DLRM/test_data
+
+# Performance results
+AMD HW configuration (from Asure):
+  Standard HB120rs v3
+  vCPUs 120
+  RAM 448 GiB
+The preliminary simulation results can be found here: https://docs.google.com/spreadsheets/d/1lYob-9J3-EUqFnaC3551zP56TAiQ7iyhzDwXvLyZh90/edit#gid=1315426016
+
+# Additional useful scripts
