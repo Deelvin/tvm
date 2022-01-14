@@ -24,7 +24,6 @@ import sys
 import argparse
 
 file_path = os.path.realpath(__file__)
-print(file_path)
 demo_folder = os.path.dirname(file_path)
 
 if not 'TVM_HOME' in os.environ:
