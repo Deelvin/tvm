@@ -54,6 +54,6 @@ AMD HW configuration (from Asure):
   Standard HB120rs v3
   vCPUs 120
   RAM 448 GiB
-The preliminary simulation results can be found here: https://docs.google.com/spreadsheets/d/1lYob-9J3-EUqFnaC3551zP56TAiQ7iyhzDwXvLyZh90/edit#gid=1315426016
+The preliminary performance results can be found here: https://docs.google.com/spreadsheets/d/1lYob-9J3-EUqFnaC3551zP56TAiQ7iyhzDwXvLyZh90/edit?usp=sharing
 
 # Additional useful scripts
