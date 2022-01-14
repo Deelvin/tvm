@@ -41,8 +41,7 @@ import onnx
 from tvm import relay, auto_scheduler
 from tvm.relay import transform
 from tvm.contrib import graph_executor
-
-ITERATIONS = 100
+from params_demo import *
 
 def checkDir(pth):
   if not os.path.exists(pth):
@@ -79,9 +78,8 @@ def doPreprocess(mod):
     print(mod)
     return mod
 
-
 parser = argparse.ArgumentParser()
-parser.add_argument("--onnx-model", required=True, help="reference to the onnx DLRM model")
+parser.add_argument("--onnx-model", help="reference to the onnx DLRM model", default='')
 parser.add_argument("--output-log", required=True, help="path to the output log file")
 parser.add_argument("--output-folder", required=True, help="path to the output library and json files")
 
@@ -89,25 +87,17 @@ args = parser.parse_args()
 
 log_file = args.output_log
 out_dir = args.output_folder
+onnx_model = args.onnx_model
+if onnx_model == '':
+    file_path = os.path.realpath(__file__)
+    demo_folder = os.path.dirname(file_path)
+    model_dir = os.path.join(demo_folder, MODEL_SUFF)
+    onnx_model = os.path.join(model_dir, ONNX_FILE_NAME)
+    if os.path.isfile(onnx_model) != True:
+        print("ERROR:  there is no onnx file  {} in this folder {}".format(ONNX_FILE_NAME, model_dir))
+        quit()
 
-target = "llvm -mcpu=znver3"
-target_host = "llvm -mcpu=znver3"
-
-onnx_model = onnx.load(args.onnx_model)
-
-batch_size = 128
-
-shape_dict = {
-    "input.1": (batch_size, 13),
-    "lS_o": (26, batch_size),
-    "lS_i": (26, batch_size)
-}
-
-dtype_dict = {
-    "input.1": "float32",
-    "lS_o": "int64",
-    "lS_i": "int64"
-}
+onnx_model = onnx.load(onnx_model)
 
 ctx = tvm.cpu(0)
 mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
