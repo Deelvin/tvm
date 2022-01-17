@@ -2,7 +2,7 @@ Important note: This branch contains some modifications within graph_executor.cc
 
 # DEMO setup
 
-The floder DLRM contains a set of scripts which are used for DLRM model inference performance analysis.
+The folder DLRM contains a set of scripts which are used for DLRM model inference performance analysis.
 Environment setup script:
 ```
 python prepare.py
@@ -22,7 +22,7 @@ python tune_dlrm.py --output-log OUTPUT_LOG --output-folder OUTPUT_FOLDER [--onn
 Where:
 OUTPUT_LOG - is a name of log file with tuning information.
 OUTPUT_FOLDER - folder where generated library and json file will be stored  after the script finished.
-ONNX_MODEL - optional parameter which should be used if model is not allocated in tvm/demo/DLRM/model folder.
+ONNX_MODEL - optional parameter which should be used if the model is not located in tvm/demo/DLRM/model folder.
 
 After script execution the OUTPUT_FOLDER will contain following files:
 * saved_model_XXX.tar

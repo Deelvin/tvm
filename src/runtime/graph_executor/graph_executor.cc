@@ -85,9 +85,11 @@ public:
           total += val;
         }
       }
-      std::cout << "-------------------\n";
-      std::cout << "total : " << total << " us.\n" << std::flush;
-      std::cout << "runs : " << ((int)s_counter - 2) << " times\n" << std::flush;
+      if (s_counter > 2) {
+        std::cout << "-------------------\n";
+        std::cout << "total : " << total << " us.\n" << std::flush;
+        std::cout << "runs : " << ((int)s_counter - 2) << " times\n" << std::flush;
+      }
       // std::cout << "iter : " << total/(float)s_counter << "  us.\n" << std::flush;
     }
   }
