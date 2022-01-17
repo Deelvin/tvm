@@ -34,7 +34,7 @@ if not 'TVM_HOME' in os.environ:
   os.environ['TVM_HOME']=tvm_path
 else:
   tvm_path = os.environ['TVM_HOME']
-  sys.path.append(os.path.join(tvm_path, 'python'))
+sys.path.append(os.path.join(tvm_path, 'python'))
 
 import tvm
 import onnx
@@ -64,13 +64,13 @@ if free_space < 240: # just estimation
   print('WARNING: the disk free size is {} GB and it may not be enough to run full DLRM model.'.format(free_space))
 
 print("---- Load required modules ----")
-if os.path.isdir('dlrm') != True:
+if os.path.exists(os.path.join(demo_folder, 'dlrm')) == True:
   print("WARNING: folder 'dlrm' already exist.")
 else:
   ret = load_repo('https://github.com/facebookresearch/dlrm.git')
   if ret == 0:
     check_dependencies('dlrm')
-if os.path.isdir('inference') != True:
+if os.path.exists(os.path.join(demo_folder, 'inference')) == True:
   print("WARNING: folder 'inference' already exist.")
 else:
   ret = load_repo('https://github.com/mlcommons/inference.git')
@@ -97,7 +97,7 @@ MODEL_DIR = os.path.join(demo_folder, MODEL_SUFF)
 os.chdir(MODEL_DIR)
 print("---- Load DLRM model ----------")
 os.system('wget https://dlrm.s3-us-west-1.amazonaws.com/models/tb00_40M.onnx.tar')
-if os.path.isfile(os.path.join(MODEL_SUFF, 'tb00_40M.onnx.tar')) != True:
+if os.path.isfile(os.path.join(MODEL_DIR, 'tb00_40M.onnx.tar')) != True:
   print("ERROR: cannot find onnx model archive.")
 else:
   os.system('tar -xvf tb00_40M.onnx.tar')
