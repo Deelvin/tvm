@@ -363,7 +363,6 @@ int main(int argc, char *argv[]) {
   json_in.close();
 
 int main(int argc, char *argv[]) {
-
   const char* env = getenv("TVM_NUM_THREADS");
   if (argc != 5) {
     PrintHelp(argv);
@@ -378,7 +377,10 @@ int main(int argc, char *argv[]) {
 
   auto so_path = argv[1];
   std::string s_tmpdir = argv[3];
+  s_tmpdir += "/";
   std::string s_testDataPath = argv[4];
+  s_testDataPath += "/";
+
   if (!std::filesystem::exists(so_path)) {
     std::cout << "ERROR: model library file was not found: " << so_path << "\n";
     return -1;
