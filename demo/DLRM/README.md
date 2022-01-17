@@ -38,6 +38,7 @@ Compile rules:
 mkdir build
 cd ./build
 cmake ..
+make
 ```
 Command line:
 '''
