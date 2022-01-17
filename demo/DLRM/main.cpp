@@ -121,6 +121,8 @@ void loadNDArray(const std::string& nm,
       std::cout << "ERROR: read " << reads << ", but required " << bytes << " bytes from " << nm << " file.\n";
     }
     fclose(f);
+  } else {
+    std::cout << " File: " << (pth + nm).c_str() << " was not found.\n";
   }
   if (set_input != nullptr) {
     set_input(nm, arr);
@@ -129,7 +131,6 @@ void loadNDArray(const std::string& nm,
 
 inline std::vector<size_t> sortedItems(const std::vector<item>& desc) {
   std::vector<size_t> res;
-  // res = desc;
   struct vals {
     size_t sz = 0;
     size_t id = 0;
@@ -216,7 +217,6 @@ void PrintHelp(char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
-
   const char* env = getenv("TVM_NUM_THREADS");
   if (argc != 5) {
     PrintHelp(argv);
@@ -231,7 +231,10 @@ int main(int argc, char *argv[]) {
 
   auto so_path = argv[1];
   std::string s_tmpdir = argv[3];
+  s_tmpdir += "/";
   std::string s_testDataPath = argv[4];
+  s_testDataPath += "/";
+
   if (!std::filesystem::exists(so_path)) {
     std::cout << "ERROR: model library file was not found: " << so_path << "\n";
     return -1;
