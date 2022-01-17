@@ -33,7 +33,8 @@ if not 'TVM_HOME' in os.environ:
   os.environ['TVM_HOME']=tvm_path
 else:
   tvm_path = os.environ['TVM_HOME']
-  sys.path.append(os.path.join(tvm_path, 'python'))
+
+sys.path.append(os.path.join(tvm_path, 'python'))
 
 import tvm
 import onnx
