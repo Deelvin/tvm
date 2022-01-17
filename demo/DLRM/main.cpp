@@ -216,7 +216,6 @@ void PrintHelp(char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
-  std::cout << "argc = " << argc << "\n";
 
   const char* env = getenv("TVM_NUM_THREADS");
   if (argc != 5) {
@@ -230,10 +229,9 @@ int main(int argc, char *argv[]) {
     std::cout << "current threads = " << v << "\n";
   }
 
-  auto so_path = argv[2];
+  auto so_path = argv[1];
   std::string s_tmpdir = argv[3];
   std::string s_testDataPath = argv[4];
-
   if (!std::filesystem::exists(so_path)) {
     std::cout << "ERROR: model library file was not found: " << so_path << "\n";
     return -1;
@@ -243,8 +241,8 @@ int main(int argc, char *argv[]) {
   const size_t batch_size = 128;
   DLDevice ctx = {kDLCPU, 0};
 
-  const std::string json_file(argv[1]);
-  tvm::runtime::Module mod_lib = tvm::runtime::Module::LoadFromFile(argv[2]);
+  const std::string json_file(argv[2]);
+  tvm::runtime::Module mod_lib = tvm::runtime::Module::LoadFromFile(so_path);
   std::ifstream json_in(json_file.c_str(), std::ios::in);
   if (!json_in.is_open()) {
     std::cout << "ERROR: model json file was not found: " << json_file << "\n";
