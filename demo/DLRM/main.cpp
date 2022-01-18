@@ -303,7 +303,7 @@ int main(int argc, char *argv[]) {
       }
   }
   for (size_t cnt = 0; cnt < LOOPS_COUNT; ++cnt) {
-     size_t runsCount = 0;
+    size_t runsCount = 0;
     for (size_t pos = 0; pos < testDataSize; pos += batch_size) {
       size_t num = testDataSize - pos;
       if (num < batch_size > testDataSize) {
