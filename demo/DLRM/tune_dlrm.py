@@ -29,7 +29,6 @@ demo_folder = os.path.dirname(file_path)
 if not 'TVM_HOME' in os.environ:
   print("'TVM_HOME' is not set so the script path is used as reference to the TVM project.")
   tvm_path = os.path.join(demo_folder, "..", "..")
-  print(tvm_path)
   os.environ['TVM_HOME']=tvm_path
 else:
   tvm_path = os.environ['TVM_HOME']
@@ -71,17 +70,16 @@ def doPreprocess(mod):
             transform.DynamicToStatic(),
             transform.AlterOpLayout(),
             transform.PartitionGraph(),
-            
         ]
     )
     mod = seq(mod)
-    print(mod)
     return mod
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--onnx-model", help="reference to the onnx DLRM model", default='')
+parser.add_argument("--onnx-model", help="optional, reference to the onnx DLRM model", default='')
 parser.add_argument("--output-log", required=True, help="path to the output log file")
 parser.add_argument("--output-folder", required=True, help="path to the output library and json files")
+parser.add_argument("--batch-size", help="optional, batch size for the model", default=128)
 
 args = parser.parse_args()
 
@@ -96,6 +94,11 @@ if onnx_model == '':
     if os.path.isfile(onnx_model) != True:
         print("ERROR:  there is no onnx file  {} in this folder {}".format(ONNX_FILE_NAME, model_dir))
         quit()
+if args.batch_size:
+    BATCH_SIZE = int(args.batch_size)
+    shape_dict["input.1"] = (BATCH_SIZE, 13)
+    shape_dict["lS_o"] = (26, BATCH_SIZE)
+    shape_dict["lS_i"] = (26, BATCH_SIZE)
 
 onnx_model = onnx.load(onnx_model)
 
@@ -103,22 +106,23 @@ ctx = tvm.cpu(0)
 mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
 mod = doPreprocess(mod)
 
+del onnx_model
+
 tasks, task_weights = auto_scheduler.extract_tasks(
     mod["main"], params, target=target, target_host=target_host, include_simple_tasks = False)
 
 run_tuning(tasks, task_weights, log_file)
-#
-del onnx_model
+
 with auto_scheduler.ApplyHistoryBest(log_file):
     with tvm.transform.PassContext(opt_level=3, config={"relay.backend.use_auto_scheduler": True
                                                         }):
         json, lib, param = relay.build(mod, target=target, params=params)
-    model_path = os.path.join(out_dir, "saved_model_{}.tar".format(ITERATIONS))
+    model_path = os.path.join(out_dir, "saved_model_{}_b{}.tar".format(ITERATIONS, BATCH_SIZE))
     lib.export_library(model_path)
 tvm.runtime.load_module(model_path)
 model = graph_executor.create( json, lib, ctx)
-model.set_input(**param)
-jsonName = os.path.join(out_dir, "model_serialized_tuned_{}.json".format(ITERATIONS)); 
+# model.set_input(**param)
+jsonName = os.path.join(out_dir, "model_serialized_tuned_{}_b{}.json".format(ITERATIONS, BATCH_SIZE));
 with open(jsonName, "w") as fp:
     fp.write(json)
 print("output library file: ", model_path)
