@@ -96,9 +96,10 @@ if onnx_model == '':
         quit()
 if args.batch_size:
     BATCH_SIZE = int(args.batch_size)
-    shape_dict["input.1"] = (BATCH_SIZE, 13)
-    shape_dict["lS_o"] = (26, BATCH_SIZE)
-    shape_dict["lS_i"] = (26, BATCH_SIZE)
+    if BATCH_SIZE > 0:
+        shape_dict["input.1"] = (BATCH_SIZE, 13)
+        shape_dict["lS_o"] = (26, BATCH_SIZE)
+        shape_dict["lS_i"] = (26, BATCH_SIZE)
 
 onnx_model = onnx.load(onnx_model)
 
@@ -120,9 +121,7 @@ with auto_scheduler.ApplyHistoryBest(log_file):
     model_path = os.path.join(out_dir, "saved_model_{}_b{}.tar".format(ITERATIONS, BATCH_SIZE))
     lib.export_library(model_path)
 tvm.runtime.load_module(model_path)
-model = graph_executor.create( json, lib, ctx)
-# model.set_input(**param)
-jsonName = os.path.join(out_dir, "model_serialized_tuned_{}_b{}.json".format(ITERATIONS, BATCH_SIZE));
+jsonName = os.path.join(out_dir, "model_serialized_tuned_{}_b{}.json".format(ITERATIONS, BATCH_SIZE))
 with open(jsonName, "w") as fp:
     fp.write(json)
 print("output library file: ", model_path)

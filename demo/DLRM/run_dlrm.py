@@ -27,7 +27,6 @@ demo_folder = os.path.dirname(file_path)
 if not 'TVM_HOME' in os.environ:
   print("'TVM_HOME' is not set so the script path is used as reference to the TVM project.")
   tvm_path = os.path.join(demo_folder, "..", "..")
-  print(tvm_path)
   os.environ['TVM_HOME']=tvm_path
 else:
   tvm_path = os.environ['TVM_HOME']
@@ -52,13 +51,24 @@ parser.add_argument("--onnx-file", required=True, help="path to onnx model file"
 parser.add_argument("--log-file", required=True, help="path to the log file with tuning information.")
 parser.add_argument("--test-data", help="optional, path to the test data.")
 parser.add_argument("--output-folder", help="optional, path to the output library and json files")
+parser.add_argument("--batch-size", help="optional, batch size for the model", default=128)
 
 args = parser.parse_args()
+if 'TVM_NUM_THREADS' in os.environ:
+    print("current threads = {}".format(os.environ['TVM_NUM_THREADS']))
+
 name = args.onnx_file
 log_file = args.log_file
 output_folder = args.output_folder
 test_data = args.test_data
 onnx_model = onnx.load(name)
+
+if args.batch_size:
+    BATCH_SIZE = int(args.batch_size)
+    if BATCH_SIZE > 0:
+        shape_dict["input.1"] = (BATCH_SIZE, 13)
+        shape_dict["lS_o"] = (26, BATCH_SIZE)
+        shape_dict["lS_i"] = (26, BATCH_SIZE)
 
 ctx = tvm.cpu(0)
 mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
@@ -101,6 +111,7 @@ if use_tuned:
     with auto_scheduler.ApplyHistoryBest(log_file):
         with tvm.transform.PassContext(opt_level=4, config={"relay.backend.use_auto_scheduler": True}):
             json, lib, param = relay.build(mod, target=target, params=params)
+
 else:
     with tvm.transform.PassContext(opt_level=3, config={}):
         json, lib, param = relay.build(mod, target=target, params=params)
@@ -165,27 +176,34 @@ if not use_debug:
 total_time = 0
 max_error = 0
 avg_error = 0
+LOOPS_COUNT = 20
+runs = 0
 full_start = time.perf_counter()
 if not use_debug:
-    for i in range(count):
-        if do_check:
-            off_1 = i * BATCH_SIZE
-            off_2 = (i + 1) * BATCH_SIZE
-            inpt = new_input[off_1:off_2, :]
-            ls_i = new_lsi[:, off_1:off_2]
-            model.set_input("input.1", tvm.nd.array(inpt))
-            model.set_input("lS_i", tvm.nd.array(ls_i))
+    for k in range(LOOPS_COUNT):
+        total_time = 0
+        max_error = 0
+        avg_error = 0
+        for i in range(count):
+            if do_check:
+                off_1 = i * BATCH_SIZE
+                off_2 = (i + 1) * BATCH_SIZE
+                inpt = new_input[off_1:off_2, :]
+                ls_i = new_lsi[:, off_1:off_2]
+                model.set_input("input.1", tvm.nd.array(inpt))
+                model.set_input("lS_i", tvm.nd.array(ls_i))
 
-        start = time.perf_counter()
-        model.run()
-        end = time.perf_counter()
-        total_time += (end - start)
-        if do_check:
-            res = model.get_output(0).asnumpy()
-            for j in range(BATCH_SIZE):
-                val = abs(res[j] - batch_referense_res[i *  BATCH_SIZE + j])
-                avg_error += val
-                max_error = max(max_error, val)
+            start = time.perf_counter()
+            model.run()
+            runs += 1
+            end = time.perf_counter()
+            total_time += (end - start)
+            if do_check:
+                res = model.get_output(0).asnumpy()
+                for j in range(BATCH_SIZE):
+                    val = abs(res[j] - batch_referense_res[i *  BATCH_SIZE + j])
+                    avg_error += val
+                    max_error = max(max_error, val)
 else:
     for i in range(count):
         start = time.perf_counter()
@@ -196,6 +214,8 @@ full_end = time.perf_counter()
 if do_check:
     print("avg error: {}".format(avg_error / (count * BATCH_SIZE)))
     print("max error: {}".format(max_error))
-
-print("average inference time = {} sec.".format((total_time)/count))
-print("total execution time = {} sec.".format(full_end - full_start))
+print("BATCH_SIZE = ", BATCH_SIZE, ", count = ", count, ", runs = ", runs)
+# print("    average inference time = {} sec.".format((total_time)/runs))
+# print("    average inference per input = {} sec.".format((total_time)/runs/BATCH_SIZE))
+# print("    total execution time = {} sec.".format(full_end - full_start))
+# print("    total avg execution time = {} sec.".format(full_end - full_start)/runs)
