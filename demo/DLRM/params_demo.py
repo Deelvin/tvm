@@ -21,6 +21,7 @@ This  script contains demo configuration parameters.
 
 MODEL_SUFF = 'model'
 CONV_SUFF = 'converted'
+TEST_DATA_SUFF = 'test_data'
 ONNX_FILE_NAME = 'dlrm_s_pytorch_0505.onnx'
 
 BATCH_SIZE = 128
