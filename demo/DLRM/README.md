@@ -12,6 +12,11 @@ This script does following things:
 * Uploads DLRM repository and MLCommons Inference repository.
 * Uploads 100 GB DLRM model. The model will be stored in tvm/demo/DLRM/model folder.
 * Performs weights extraction for further inference. The converted weights are stored in tvm/demo/DLRM/converted folder.
+* Updates MLCommons Inference repository to run DLRM model with tvm inference.
+* Generates fake dataset for inference.
+
+Note: it is not required to setup envirenment variables according to /inference/recommendation/dlrm/pytorch/README.md because
+these variables are set at the beginning of run_local.sh script.
 
 # DLRM model tuning
 
