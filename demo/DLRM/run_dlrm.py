@@ -119,10 +119,10 @@ else:
 print("model built.")
 if dnnl_codegen == "OFF": # may not be compiled
     if (output_folder != None and os.path.exists(output_folder)):
-        model_path = os.path.join(output_folder, "saved_model_{}.tar".format(ITERATIONS))
+        model_path = os.path.join(output_folder, "saved_model_{}_b{}.tar".format(ITERATIONS, BATCH_SIZE))
         lib.export_library(model_path)
         tvm.runtime.load_module(model_path)
-        jsonName = os.path.join(output_folder, "model_serialized_tuned_{}.json".format(ITERATIONS)); 
+        jsonName = os.path.join(output_folder, "model_serialized_tuned_{}_b{}.json".format(ITERATIONS, BATCH_SIZE))
         with open(jsonName, "w") as fp:
             fp.write(json)
         print("so.and json created.")

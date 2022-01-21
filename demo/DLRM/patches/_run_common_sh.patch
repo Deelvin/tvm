@@ -1,0 +1,24 @@
+diff --git a/recommendation/dlrm/pytorch/run_common.sh b/recommendation/dlrm/pytorch/run_common.sh
+index f66aa0d..798dbca 100755
+--- a/recommendation/dlrm/pytorch/run_common.sh
++++ b/recommendation/dlrm/pytorch/run_common.sh
+@@ -23,7 +23,7 @@ device="cpu"
+ 
+ for i in $* ; do
+     case $i in
+-       pytorch|onnxruntime|tensorflow) backend=$i; shift;;
++       pytorch|onnxruntime|tensorflow|tvm) backend=$i; shift;;
+        dlrm|tf_dlrm) model=$i; shift;;
+        kaggle|terabyte) dataset=$i; shift;;
+        cpu|gpu) device=$i; shift;;
+@@ -76,6 +76,10 @@ if [ $name == "tf_dlrm-terabyte-tensorflow" ] ; then
+     model_path="$MODEL_DIR"
+     profile=tf_dlrm-terabyte-tensorflow
+ fi
++if [ $name == "dlrm-terabyte-tvm" ] ; then
++    model_path="$MODEL_DIR"
++    profile=dlrm-terabyte-tvm
++fi
+ 
+ # debuging
+ # echo $model_path
