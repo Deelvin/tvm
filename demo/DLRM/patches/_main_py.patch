@@ -1,0 +1,33 @@
+diff --git a/recommendation/dlrm/pytorch/python/main.py b/recommendation/dlrm/pytorch/python/main.py
+index dd0864f..c661915 100755
+--- a/recommendation/dlrm/pytorch/python/main.py
++++ b/recommendation/dlrm/pytorch/python/main.py
+@@ -109,6 +109,14 @@ SUPPORTED_PROFILES = {
+         "model": "tf_dlrm",
+         "max-batchsize": 2048,
+     },
++    "dlrm-terabyte-tvm": {
++        "dataset": "terabyte",
++        "inputs": "continuous and categorical features",
++        "outputs": "probability",
++        "backend": "tvm",
++        "model": "tvm_dlrm",
++        "max-batchsize": 2048,
++    },
+ }
+ 
+ SCENARIO_MAP = {
+@@ -299,7 +307,12 @@ def get_backend(backend, dataset, max_ind_range, data_sub_sample_rate, use_gpu):
+                 raise ValueError("only --max-in-range 10M or 40M is supported")
+         else:
+             raise ValueError("only kaggle|terabyte dataset options are supported")
+-
++    elif backend == "tvm":
++        from backend_tvm import BackendTVM
++        if dataset == "terabyte" and max_ind_range == 40000000:
++            backend = BackendTVM()
++        else:
++            raise ValueError("only kaggle|terabyte dataset options are supported and --max-in-range 40M is supported")
+     else:
+         raise ValueError("unknown backend: " + backend)
+     return backend
