@@ -39,6 +39,7 @@ sys.path.append(os.path.join(tvm_path, 'python'))
 import tvm
 import onnx
 from tvm import relay
+from shutil import copy
 
 def load_repo(repo):
   p = Popen(['git', 'clone', repo], stdin=PIPE, stdout=PIPE, stderr=PIPE)
@@ -47,14 +48,60 @@ def load_repo(repo):
     print('ERROR: cannot load {} repo\nerror information{}\noutput {}.'.format(repo, err, output))
   return p.returncode
 
-def check_dependencies(subfolder):
+def check_dependencies(subfolder, commit):
   old_path = os.getcwd()
   os.chdir(os.path.join(old_path, subfolder))
   p = Popen(['git', 'submodule', 'update', '--init', '--recursive'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
   output, err = p.communicate()
   if p.returncode != 0:
     print('ERROR: cannot load dependencies for {} subproject\nerror information{}\noutput {}.'.format(subfolder, err, output))
+  p = Popen(['git', 'checkout', commit], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+  output, err = p.communicate()
+  if p.returncode != 0:
+    print('ERROR: cannot load dependencies for {} subproject\nerror information{}\noutput {}.'.format(subfolder, err, output))
   os.chdir(os.path.join(old_path))
+
+def apply_patches_to_inference():
+  run_local_patch = \
+'''
+diff --git a/recommendation/dlrm/pytorch/run_local.sh b/recommendation/dlrm/pytorch/run_local.sh
+index 0d054c6..aaac93a 100755
+--- a/recommendation/dlrm/pytorch/run_local.sh
++++ b/recommendation/dlrm/pytorch/run_local.sh
+@@ -1,5 +1,10 @@
+ #!/bin/bash
+ 
++export TVM_HOME={0}
++export PYTHONPATH=$TVM_HOME/python:${{PYTHONPATH}}
++export DATA_DIR={2}/recommendation/dlrm/pytorch/tools/fake_criteo/
++export MODEL_DIR={1}/model
++export DLRM_DIR={1}
+ source ./run_common.sh
+ 
+ common_opt="--mlperf_conf ../../../mlperf.conf"
+'''.format(tvm_path, demo_folder, os.path.join(demo_folder, 'inference'))
+
+  copy(os.path.join('patches', 'backend_tvm.py'), os.path.join('inference', 'recommendation', 'dlrm', 'pytorch', 'python'))
+  with open(os.path.join('patches', '_run_local_sh.patch'), 'w') as f:
+    f.write(run_local_patch)
+
+  patches = ['_main_py.patch', '_run_common_sh.patch', '_run_local_sh.patch']
+  for p in patches:
+    copy(os.path.join('patches', p), 'inference')
+  old_path = os.getcwd()
+  os.chdir(os.path.join(old_path, 'inference'))
+  for p in patches:
+    p = Popen(['git', 'apply', p], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    output, err = p.communicate()
+    if p.returncode != 0:
+      print('ERROR: cannot apply patch {} for MLPerf inference.'.format(p, err, output))
+  os.chdir(os.path.join('recommendation', 'dlrm', 'pytorch', 'tools'))
+  p = Popen(['./make_fake_criteo.sh', 'terabyte'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+  output, err = p.communicate()
+  if p.returncode != 0:
+    print('ERROR: cannot load dependencies for {} subproject\nerror information{}\noutput {}.'.format(subfolder, err, output))
+
+  os.chdir(old_path)
 
 old_path = os.getcwd()
 os.chdir(demo_folder)
@@ -69,13 +116,14 @@ if os.path.exists(os.path.join(demo_folder, 'dlrm')) == True:
 else:
   ret = load_repo('https://github.com/facebookresearch/dlrm.git')
   if ret == 0:
-    check_dependencies('dlrm')
+    check_dependencies('dlrm', '9c2fda79afbc09e277c17e420bffe510125b4f70') # the pipeline is tested on this commit
 if os.path.exists(os.path.join(demo_folder, 'inference')) == True:
   print("WARNING: folder 'inference' already exist.")
 else:
   ret = load_repo('https://github.com/mlcommons/inference.git')
   if ret == 0:
-    check_dependencies('inference')
+    check_dependencies('inference', '86d0b16180b40dfd80ebef6f23c26a9853d02ef4')
+    apply_patches_to_inference()
 
 DLRM_DIR = os.path.join(demo_folder, 'dlrm')
 print("---- Compile loadgen ----------")
