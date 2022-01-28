@@ -20,10 +20,11 @@ import tvm
 from tvm import te
 import scipy
 from tvm import relay
-from tvm.relay import transform
+from tvm.relay import transform, analysis
 from tvm.relay.testing import run_infer_type
 import tvm.topi.testing
 from tvm.contrib.nvcc import have_fp16
+from tvm.contrib import graph_executor
 import tvm.testing
 
 
@@ -347,28 +348,35 @@ def test_concatenate():
 def do_concat_test(shapes, t_shape, dtype, axis, dev, target):
     varsToConcat = []
     inputData = []
+    concatData = []
     pos = 0
     for s in shapes:
         varsToConcat.append(relay.var("x{}".format(pos), shape=s))
         inputData.append(np.random.rand(*s).astype(dtype))
+        concatData.append(relay.multiply(varsToConcat[pos], varsToConcat[pos]))
         pos += 1
     t = relay.var("z", shape=t_shape, dtype=dtype)
-    z = relay.concatenate(varsToConcat, axis=axis)
+    z = relay.concatenate(concatData, axis=axis)
     z = relay.add(z, t)
     params = varsToConcat
     params.append(t)
     func = relay.Function(params, z)
     t_data = np.random.uniform(low=-10, high=10, size=t_shape).astype(dtype)
-    ref_res = np.concatenate((tuple(inputData)), axis=axis) + t_data
     mod = tvm.IRModule.from_expr(func)
-
+    print(mod)
     executor = relay.create_executor("graph", mod=mod, device=dev, target=target)
     op_res1 = executor.evaluate()(*inputData, t_data)
 
-    tvm.testing.assert_allclose(op_res1.numpy(), ref_res, rtol=0.000001)
     op_res2 = relay.create_executor("debug", device=dev, target=target).evaluate(func)(
         *inputData, t_data
     )
+
+    for i in range(len(inputData)):
+        inputData[i] *= inputData[i]
+
+    ref_res = np.concatenate((tuple(inputData)), axis=axis) + t_data
+
+    tvm.testing.assert_allclose(op_res1.numpy(), ref_res, rtol=0.000001)
     tvm.testing.assert_allclose(op_res2.numpy(), ref_res, rtol=0.000001)
 
 
@@ -435,6 +443,80 @@ def test_concatenate2():
                     t_shape = tuple(temp)
                     do_concat_test(shapes, t_shape, dtype, axis, dev, target)
 
+@tvm.testing.uses_gpu
+def test_DLRM():
+    for target, dev in tvm.testing.enabled_targets():
+        if target != "llvm":
+            continue
+        np.random.seed(97)
+        for dtype in ["float32"]:
+            maxConcats = 3
+            shapes = []
+            for s in range(maxConcats):
+                shapes.append((128, 1, 64))
+            varsToConcat = []
+            inputData = []
+            concatData = []
+            embedding_shape = (1024,64)
+            i_shape = (maxConcats,128)
+            v_shape = (128, 64)
+            last_shape = (128,4, 8)
+            embedding = relay.var("embedding", shape=embedding_shape)
+            s_i = relay.var("in", shape=i_shape)
+            v = relay.var("val", shape=v_shape)
+            last = relay.var("last", shape=last_shape)
+
+            concatData.append(v)
+            for s in range(maxConcats):
+                index = relay.var("pos{}".format(s), relay.TensorType((1,), "int32"))
+                varsToConcat.append(index)
+                inputData.append([s])
+                f = relay.take(s_i, index, axis=0)
+                f = relay.reshape(f, newshape=(128, -1))
+                f = relay.cast(f, dtype="int64")
+                f = relay.take(embedding, f, axis=0)
+                f = relay.sum(f, axis=1)
+                concatData.append(f)
+            print(concatData)
+            t_shape = (128, (maxConcats + 1) * 64)
+            t = relay.var("z", shape=t_shape, dtype=dtype)
+            z = relay.concatenate(concatData, axis=1)
+            z = relay.reshape(z, newshape=(128, -1, 64))
+            z = relay.concatenate([z, last], axis=2)
+            print(z)
+            params = varsToConcat
+            params.append(t)
+            params.append(s_i)
+            params.append(embedding)
+            params.append(v)
+            params.append(last)
+
+            func = relay.Function(params, z)
+            t_data = np.random.uniform(low=-10, high=10, size=t_shape).astype(dtype)
+            embedding_data = np.zeros(shape=embedding_shape).astype(dtype)
+            input_data = np.zeros(shape=i_shape).astype(dtype)
+            v_data = np.zeros(shape=v_shape).astype(dtype)
+            mod = tvm.IRModule.from_expr(func)
+            seq = tvm.transform.Sequential(
+                [
+                    transform.InferType(),
+                    transform.FoldConstant(),
+                    transform.SimplifyInference(),
+                    transform.FoldScaleAxis(),
+                    transform.DynamicToStatic(),
+                    transform.AlterOpLayout(),
+                    transform.PartitionGraph(),
+                ]
+            )
+            mod = seq(mod)
+            # print(mod)
+            # exit(0)
+            executor = relay.create_executor("graph", mod=mod, device=dev, target="llvm -mcpu=core-avx2")
+            exe = executor.evaluate()
+            for i in range(0, 100):
+                op_res1 = exe(*inputData, t_data, input_data, embedding_data, v_data)
+            # op_res1 = exe(*inputData, t_data, input_data, embedding_data, v_data)
+            # op_res1 = exe(*inputData, t_data, input_data, embedding_data, v_data)
 
 def test_dropout():
     for dtype in ["float16", "float32"]:
@@ -729,20 +811,21 @@ def test_bitserial_dense():
 
 
 if __name__ == "__main__":
-    test_concatenate()
-    test_concatenate1()  # test for cpu
-    test_concatenate2()
-    test_bias_add()
-    test_bias_add_type_failure()
-    # test_unary_op()
-    test_binary_op()
-    test_expand_dims_infer_type()
-    test_expand_dims()
-    test_softmax()
-    test_log_softmax()
-    test_dropout()
-    test_batch_norm()
-    test_matmul()
-    test_dense()
-    test_bitserial_dense()
-    test_dense_dtype()
+    # test_concatenate()
+    # test_concatenate1()  # test for cpu
+    # test_concatenate2()
+    test_DLRM()
+    # test_bias_add()
+    # test_bias_add_type_failure()
+    # # test_unary_op()
+    # test_binary_op()
+    # test_expand_dims_infer_type()
+    # test_expand_dims()
+    # test_softmax()
+    # test_log_softmax()
+    # test_dropout()
+    # test_batch_norm()
+    # test_matmul()
+    # test_dense()
+    # test_bitserial_dense()
+    # test_dense_dtype()
