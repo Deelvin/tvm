@@ -482,7 +482,8 @@ def test_DLRM():
             t = relay.var("z", shape=t_shape, dtype=dtype)
             z = relay.concatenate(concatData, axis=1)
             z = relay.reshape(z, newshape=(128, -1, 64))
-            z = relay.concatenate([z, last], axis=2)
+            # Uncommenting of this code leads to correct execution sequence
+            # z = relay.concatenate([z, last], axis=2)
             print(z)
             params = varsToConcat
             params.append(t)
