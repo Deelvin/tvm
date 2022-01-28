@@ -27,9 +27,11 @@
 #include <tvm/runtime/container/string.h>
 #include <tvm/runtime/device_api.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/runtime/c_backend_api.h>
 
 #include <iterator>
 #include <vector>
+#include <sched.h>
 
 namespace tvm {
 namespace runtime {
@@ -220,6 +222,36 @@ Module GraphRuntimeFactoryModuleLoadBinary(void* strm) {
 
 TVM_REGISTER_GLOBAL("runtime.module.loadbinary_GraphRuntimeFactory")
     .set_body_typed(GraphRuntimeFactoryModuleLoadBinary);
+
+
+struct affinity_ctx {
+  int start_core_id_;
+  int arena_size_;
+  bool only_even_;
+};
+
+int set_affinity_action(int task_id, TVMParallelGroupEnv* penv, void* cdata) {
+  const auto* ctx = reinterpret_cast<affinity_ctx*>(cdata);
+
+  int core_id = (ctx->start_core_id_ + task_id) * (ctx->only_even_ ? 2 : 1);
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(core_id, &cpuset);
+  pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+  std::cout << "Pinnigs to " << core_id << std::endl;
+  return 0;
+}
+
+
+TVM_REGISTER_GLOBAL("tvm.set_affinity").set_body([](TVMArgs args, TVMRetValue* rv) {
+  ICHECK_GE(args.size(), 3);
+  auto start_core_id = args[0].operator int();
+  auto arena_size = args[1].operator int();
+  auto only_even = args[2].operator bool();
+
+  affinity_ctx ctx {start_core_id, arena_size, only_even};
+  TVMBackendParallelLaunch(set_affinity_action, &ctx, arena_size);
+});
 
 }  // namespace runtime
 }  // namespace tvm
