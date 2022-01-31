@@ -610,3 +610,95 @@ def test_fq_hard_fail():
     # Catch a generic exception because the tvm FFI eats the python exception type
     with pytest.raises(Exception):
         mod_int = tvm.relay.transform.FakeQuantizationToInteger(hard_fail=True)(mod)
+
+
+def test_dequantize_propagation():
+    shape_x = [1, 4, 2]
+    shape_w = [1, 4, 2]
+    # shape_w = [1, 8, 2]
+    x = relay.var("x", shape=shape_x, dtype="int8")
+    w = relay.var("w", shape=shape_w, dtype="int8")
+
+    # a = relay.qnn.op.dequantize(x, relay.const(1.5), relay.const(0)) # input, scale, shift
+    # b = relay.qnn.op.dequantize(w, relay.const(0.5), relay.const(0)) # input, scale, shift
+    # op = relay.op.nn.batch_matmul(a, b)
+    # op = relay.op.add(op, relay.const(2.0, "float32"))
+    # op = relay.qnn.op.quantize(op, relay.const(2.5), relay.const(0), out_dtype="int8") #input, scale, shift, type
+
+
+    # a = relay.qnn.op.dequantize(x, relay.const(1.5), relay.const(0)) # input, scale, shift
+    # b = relay.qnn.op.dequantize(w, relay.const(0.5), relay.const(0)) # input, scale, shift
+    # op = relay.op.nn.batch_matmul(a, b)
+    # op = relay.op.add(a, b)
+    # op = relay.qnn.op.quantize(op, relay.const(2.5), relay.const(0), out_dtype="int8") #input, scale, shift, type
+    # op = relay.op.subtract(op, relay.const(1, "int8"))
+
+    # op = relay.op.erf(op) # HERE
+    # op = relay.op.multiply(op, relay.const(3.0))
+    # op = relay.op.subtract(op, relay.const(1, "int8"))
+    
+    a = x
+    b = w
+
+    # a = relay.op.abs(x)
+    # b = relay.op.abs(w)
+
+    # a = relay.op.add(a, relay.const(2.0, "int8"))
+    # b = relay.op.add(b, relay.const(3.0, "int8"))
+
+    a = relay.qnn.op.dequantize(a, relay.const(1.5), relay.const(0)) # input, scale, shift
+    b = relay.qnn.op.dequantize(b, relay.const(0.5), relay.const(0)) # input, scale, shift
+
+    # op = relay.op.add(a, b)
+
+    # op1 = relay.op.nn.batch_matmul(a, b)
+    # op2 = relay.op.nn.batch_matmul(b, a)
+    # op11 = relay.op.nn.batch_matmul(op1, op2)
+    # op22 = relay.op.nn.batch_matmul(op2, op1)
+    # op = relay.op.nn.batch_matmul(op11, op22)
+
+    
+
+    op = relay.op.nn.batch_matmul(a, b)
+    # op2 = relay.op.nn.batch_matmul(b, a)
+    # op = relay.op.nn.batch_matmul(op, op2)
+    op = relay.op.add(op, relay.const(2.0, "float32"))
+
+    op = relay.op.erf(op) # here
+    # op = relay.op.multiply(op, relay.const(3.0))
+    # op = relay.qnn.op.quantize(op, relay.const(2.5), relay.const(0), out_dtype="int8") #input, scale, shift, type
+    # op = relay.qnn.op.quantize(op, relay.const(2.5), relay.const(0), out_dtype="int8") #input, scale, shift, type
+    # op = relay.op.subtract(op, relay.const(1, "int8"))
+
+    x_np = np.random.randint(-128, 127, size=shape_x, dtype="int8")
+    w_np = np.random.randint(-128, 127, size=shape_w, dtype="int8")
+
+    expr = op
+    args = [x_np, w_np]
+    allow_rounding_error=False
+
+    mod = tvm.IRModule.from_expr(expr)
+    mod_def = tvm.relay.transform.InferType()(mod)
+    mod_int = tvm.relay.transform.FakeQuantizationToInteger(False)(mod_def)
+    print("mod tvm.relay.transform.InferType\n", mod_def, "\n")
+    print("mod tvm.relay.transform.FakeQuantizationToInteger\n", mod_int, "\n")
+    assert not tvm.ir.structural_equal(mod, mod_int)
+
+    result = (
+        relay.create_executor("vm", mod=mod_def, device=tvm.cpu(), target="llvm")
+        .evaluate()(*args)
+        .numpy()
+    )
+    result_int = (
+        relay.create_executor("vm", mod=mod_int, device=tvm.cpu(), target="llvm")
+        .evaluate()(*args)
+        .numpy()
+    )
+    print("result.astype(int32)", result.astype("int32"))
+    print("result_int.astype(int32)", result_int.astype("int32"))
+    if allow_rounding_error:
+        assert np.all(np.abs(result.astype("int32") - result_int.astype("int32")) <= 1)
+    else:
+        assert np.array_equal(result, result_int)
+
+test_dequantize_propagation()
