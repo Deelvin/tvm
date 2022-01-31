@@ -106,6 +106,9 @@ Expr RewritePatterns(Array<DFPatternCallback> callbacks, Expr expr, IRModule mod
  */
 Expr PartitionPattern(DFPattern pattern, Expr expr, Map<String, ObjectRef> attrs, PackedFunc check);
 
+
+Expr InferType(const Expr& expr);
+
 }  // namespace relay
 }  // namespace tvm
 

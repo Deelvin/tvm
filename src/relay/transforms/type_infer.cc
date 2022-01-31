@@ -921,7 +921,7 @@ Type InferTypeLocal(const Expr& expr) {
   if (expr.as<FunctionNode>()) {
     result_type = mod->Lookup("main")->checked_type();
   } else {
-    result_type = mod->Lookup("main").as<FunctionNode>()->body->checked_type();
+    result_type = mod->Lookup("main").as<FunctionNode>()->body->checked_type(); // here ICE
   }
 
   expr->checked_type_ = result_type;

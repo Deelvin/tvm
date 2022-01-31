@@ -49,10 +49,36 @@ def approx_equal(x, y):
 @register_fake_quantization_to_integer("qnn.dequantize")
 def dequantize(expr, type_map):
     """Remove dequantize op"""
+    #  print("### Remove dequantize op")
+    #  print("expr\n", dir(expr))
+    #  print("expr\n", type(expr))
+    #  print("expr\n", expr.op)
+    #  print("expr\n", expr, "\n/expr")
+    #  print("type_map\n", dir(type_map))
+    #  print("type_map\n", type(type_map))
+    # #  print("type_map\n", type_map)
+    #  print("type_map\n")
+    #for i in type_map:
+        #  print("key \n", i,"\n/key")
     out = expr.args[0]
+    #  print("out = expr.args[0]")
     t = type_map[expr]
+    #  print("out", out)
+    #  print("t", t)
+    #  print("/// Remove dequantize op")
     return [out, t]
 
+    # # _qnn.op.dequantize(out, requantize_scale, _op.const(0, dtype="int32"), axis=0)
+
+    # left = relay.qnn.op.requantize(
+    #     left,
+    #     left_t.scale,
+    #     left_t.zero_point,
+    #     out_t.scale,
+    #     out_t.zero_point,
+    #     out_dtype=out_t.dtype,
+    #     axis=left_t.axis,
+    # )
 
 @register_fake_quantization_to_integer("qnn.quantize")
 def quantize(expr, type_map):
@@ -124,6 +150,28 @@ def global_avgpool2d(expr, type_map):
     out = relay.op.nn.global_avg_pool2d(arg)
     out = relay.op.cast(out, t.dtype)
     return [out, t]
+
+
+@register_fake_quantization_to_integer("broadcast_to")
+def broadcast_to(expr, type_map):
+    """Rewrite a broadcast_to op"""
+    # print("broadcast_to")
+    # print("expr\n ", expr, "\n")
+    # print("args\n", expr.args, "\n")
+    # print("args\n", {**expr.attrs}, "\n")
+    arg = expr.args[0]
+    t = type_map[arg]
+    # out_t = type_map[expr]
+    # print("out_t\n", out_t, "\n")
+    shape = expr.attrs.shape
+    # print("shape\n", shape, "\n")
+    # arg = relay.op.cast(arg, "int32")
+    out = relay.op.broadcast_to(arg, shape)
+    # out = relay.op.cast(out, t.dtype)
+    # print("[out, out_t] \n", [out, out_t], "\n")
+    # print("/broadcast_to")
+    return [out, t]
+    # return [out, out_t]
 
 
 @register_fake_quantization_to_integer("rsqrt")
@@ -220,17 +268,24 @@ def dense(expr, type_map):
     )
     return [out, TensorAffineType(dense_scale, dense_zp, out.attrs.out_dtype, 1)]
 
-
+# ops here
 @register_fake_quantization_to_integer("nn.batch_matmul")
 def batch_matmul(expr, type_map):
     """Rewrite a batch_matmul op"""
+    #  print("### Rewrite a batch_matmul op")
+    #  print("expr\n", expr)
+    #  print("type_map\n", type_map)
     x, y = expr.args
     x_t = type_map[x]
     y_t = type_map[y]
     matmul_scale = fold_constant(x_t.scale * y_t.scale)
     matmul_zp = relay.const(0)
     out = relay.qnn.op.batch_matmul(x, y, x_t.zero_point, y_t.zero_point, x_t.scale, y_t.scale)
-    return [out, TensorAffineType(matmul_scale, matmul_zp, out.attrs.out_dtype, x_t.axis)]
+    t = TensorAffineType(matmul_scale, matmul_zp, out.attrs.out_dtype, x_t.axis)
+    #  print("out", out)
+    #  print("t", t)
+    #  print("/// Rewrite a batch_matmul op")
+    return [out, t]
 
 
 @register_fake_quantization_to_integer("concatenate")
