@@ -75,9 +75,9 @@ std::string to_expr_str(const T& expr) {
       Op::Get("nn.pad"),
 
       // register_binary_qnn
-      // "add", output_scale
-      // "multiply", output_scale
-      // "subtract", output_scale
+       //Op::Get("add"), // output_scale
+      // Op::Get("multiply"), // output_scale
+      // Op::Get("subtract"), // output_scale
 
       // register_binary_identity
       Op::Get("minimum"), Op::Get("maximum")};
@@ -162,7 +162,8 @@ class SubgraphExtractorOne : public ExprVisitor {
       auto e = GetRef<Expr>(call_node);
       auto a1 = call_node->args[1];
       auto a2 = call_node->args[2];
-      auto a0 = call_node->args[0]->checked_type().as<TensorTypeNode>()->dtype;
+      auto a0 = tvm::relay::transform::InferTypeLocal(call_node->args[0]).as<TensorTypeNode>()->dtype;
+      //auto a0 = call_node->args[0]->checked_type().as<TensorTypeNode>()->dtype;
       auto axis = attrs->axis;
       //auto axis = attrs->axis;
       auto t = TensorAffineType(a1, a2, a0, axis);
@@ -192,9 +193,13 @@ class SubgraphExtractorOne : public ExprVisitor {
       // n->dtype = std::move(dtype);
       // n->axis = std::move(axis);
       // data_ = std::move(n);
+
+      
+
       auto t = TensorAffineType(MakeConstantScalar(DataType::Int(32), 88),
                                 MakeConstantScalar(DataType::Int(32), 44),
-                                call_node->args[0]->checked_type().as<TensorTypeNode>()->dtype, 1);
+                                tvm::relay::transform::InferTypeLocal(call_node->args[0]).as<TensorTypeNode>()->dtype, 1);
+                                //call_node->args[0]->checked_type().as<TensorTypeNode>()->dtype, 1);
       // std::cout << "SEO::VisitExpr_1 affine_types_.Set " << GetRef<Expr>(call_node) << std::endl;
       affine_types_.Set(GetRef<Expr>(call_node), t);
     } else {
@@ -404,8 +409,8 @@ class FakeQuantizationRewriterOne : public MixedModeMutator {
       //if (/* call_node->op != batch_matmul_op_ &&  */ call_node->op != dequantize_op_ && call_node->op != quantize_op_ && fqfq.count(Downcast<Op>(op))) {
         SubgraphExtractorOne extractor;
         // std::cout << "GetSubgraph" << std::endl;
-        //ExprSet subgraph = extractor.GetSubgraph(post);
-         ExprSet subgraph = extractor.GetSubgraph(GetRef<Expr>(pre));
+        ExprSet subgraph = extractor.GetSubgraph(post);
+         //ExprSet subgraph = extractor.GetSubgraph(GetRef<Expr>(pre));
         AffineTypeMap affine_types = extractor.GetAffineTypes();
         // std::cout << "/GetSubgraph" << std::endl;
         // std::cout << "subgraph" << std::endl;
@@ -442,22 +447,33 @@ class FakeQuantizationRewriterOne : public MixedModeMutator {
             //} else {
             //  memo_[kv.first] = kv.first;
             //}
+             auto it = this->memo_.find(kv.first);
+             if (it != memo_.end()) {
+               post_affine_types.Set(memo_.at(kv.first), kv.second);
+            } else {
+               post_affine_types.Set(kv.first, kv.second);
+            }
              // std::cout << "pre != kv.first.as<CallNode>() " << kv.first << std::endl;
              // std::cout << "pre != kv.first.as<CallNode>() memo " << memo_.at(kv.first) << std::endl;
-            post_affine_types.Set(memo_.at(kv.first), kv.second);
+            /*post_affine_types.Set(memo_.at(kv.first), kv.second);*/
           }
         }
         // // std::cout << "/make post_affine_types" << std::endl;
         // // std::cout << "make post_subgraph" << std::endl;
         for (auto expr : subgraph) {
-          // // std::cout << "insert " << expr << std::endl;
+            //std::cout << "insert " << expr << std::endl;
           // // std::cout << "insert memo " << memo_[expr] << std::endl;
-          //auto it = this->memo_.find(expr);
+          auto it = this->memo_.find(expr);
           //if (it != memo_.end()) {
           //} else {
           //  memo_[expr] = expr;
           //}
-          post_subgraph.insert(memo_.at(expr));
+           if (it != memo_.end()) {
+             post_subgraph.insert(memo_.at(expr));
+          } else {
+             post_subgraph.insert(expr);
+          }
+          /*post_subgraph.insert(memo_.at(expr));*/
           //post_subgraph.insert(memo_[expr]);
         }
         // // std::cout << "/make post_subgraph" << std::endl;
@@ -480,12 +496,13 @@ class FakeQuantizationRewriterOne : public MixedModeMutator {
          //std::cout << "out           " << out << std::endl;
 
         //if (out != post) {
-        //  out = InferType(out);
-        //   //std::cout << "out InferType " << out << std::endl;
+          //out = InferType(out);
+          //out = tvm::relay::transform::InferTypeLocal(out);
+           //std::cout << "out InferType " << out << std::endl;
         //}
-        if (!mutated) {
-          mutated = (out != post);
-        }
+        //if (!mutated) {
+        //  mutated = (out != post);
+        //}
         return out;
       }
     }
@@ -817,15 +834,15 @@ Expr FakeQuantizationToInteger(const Expr& expr, const IRModule& mod, bool hard_
   //const Expr& before_expr = expr;
   auto after_expr = pass.Mutate(before_expr);
 
-  int i = 1;
-  while (pass.mutated /* && i < 10*/) {
-  //while (before_expr != after_expr) {
-   std::cout << "inter: " << i << std::endl;
-   after_expr = pass.InferType(after_expr);
-   pass.mutated = false;
-   after_expr = pass.Mutate(after_expr);
-   i++;
-  }
+  //int i = 1;
+  //while (pass.mutated /* && i < 10*/) {
+  ////while (before_expr != after_expr) {
+  // std::cout << "inter: " << i << std::endl;
+  // after_expr = pass.InferType(after_expr);
+  // pass.mutated = false;
+  // after_expr = pass.Mutate(after_expr);
+  // i++;
+  //}
   // auto rewritten_expr = before_expr;
   auto rewritten_expr = after_expr;
 
