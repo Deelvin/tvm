@@ -105,13 +105,12 @@ index 0d054c6..aaac93a 100755
   os.chdir(old_path)
 
 def apply_patches_to_bert_inference():
-  # print("---- Load inference module ----")
   old_path = os.getcwd()
   print("---- Prepare BERT model -------")
   os.chdir(os.path.join(old_path, 'inference'))
   bert_pth = os.path.join(old_path, 'inference', 'language', 'bert')
-  copy(os.path.join(old_path, 'bert', 'patches', 'tvm_SUT.py'), bert_pth)
-  copy(os.path.join(old_path, 'bert', 'patches', '_run.py.patch'), 'inference')
+  copy(os.path.join(old_path, 'bert', 'patches', 'tvm_SUT.py'), os.path.join(bert_pth, 'tvm_SUT.py'))
+  copy(os.path.join(old_path, 'bert', 'patches', '_run.py.patch'), '_run.py.patch')
   p = Popen(['git', 'apply', '_run.py.patch'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
   output, err = p.communicate()
   if p.returncode != 0:
