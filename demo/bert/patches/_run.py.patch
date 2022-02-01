@@ -1,0 +1,24 @@
+diff --git a/language/bert/run.py b/language/bert/run.py
+index 8d471bf..6919217 100644
+--- a/language/bert/run.py
++++ b/language/bert/run.py
+@@ -26,7 +26,7 @@ sys.path.insert(0, os.getcwd())
+ def get_args():
+     parser = argparse.ArgumentParser()
+     parser.add_argument(
+-        "--backend", choices=["tf", "pytorch", "onnxruntime", "tf_estimator"], default="tf", help="Backend")
++        "--backend", choices=["tf", "pytorch", "onnxruntime", "tf_estimator", "tvm"], default="tf", help="Backend")
+     parser.add_argument("--scenario", choices=["SingleStream", "Offline",
+                         "Server", "MultiStream"], default="Offline", help="Scenario")
+     parser.add_argument("--accuracy", action="store_true",
+@@ -74,6 +74,10 @@ def main():
+     elif args.backend == "onnxruntime":
+         from onnxruntime_SUT import get_onnxruntime_sut
+         sut = get_onnxruntime_sut(args)
++    elif args.backend == "tvm":
++        from tvm_SUT import get_tvm_sut
++        sut = get_tvm_sut(args)
++
+     else:
+         raise ValueError("Unknown backend: {:}".format(args.backend))
+ 

@@ -9,10 +9,12 @@ python prepare.py
 ```
 
 This script does following things:
-* Uploads DLRM repository and MLCommons Inference repository.
+* Uploads MLCommons Inference repository
+* Uploads data  for BERT model cnd creates docer container for the BERT model inference.
+* Uploads DLRM repository.
 * Uploads 100 GB DLRM model. The model will be stored in tvm/demo/DLRM/model folder.
 * Performs weights extraction for further inference. The converted weights are stored in tvm/demo/DLRM/converted folder.
-* Updates MLCommons Inference repository to run DLRM model with tvm inference.
+* Updates MLCommons Inference repository to run DLRM and BERT models with tvm inference.
 * Generates fake dataset for inference.
 
 Note: it is not required to setup envirenment variables according to /inference/recommendation/dlrm/pytorch/README.md because
