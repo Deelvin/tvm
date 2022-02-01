@@ -23,14 +23,14 @@ import os
 import psutil
 import sys
 from subprocess import Popen, PIPE
-from params_demo import *
+from DLRM.params_demo import *
 
 file_path = os.path.realpath(__file__)
 demo_folder = os.path.dirname(file_path)
 
 if not 'TVM_HOME' in os.environ:
   print("'TVM_HOME' is not set so the script path is used as reference to the TVM project.")
-  tvm_path = os.path.join(demo_folder, "..", "..")
+  tvm_path = os.path.join(demo_folder, "..")
   os.environ['TVM_HOME']=tvm_path
 else:
   tvm_path = os.environ['TVM_HOME']
@@ -99,9 +99,7 @@ index 0d054c6..aaac93a 100755
   p = Popen(['./make_fake_criteo.sh', 'terabyte'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
   output, err = p.communicate()
   if p.returncode != 0:
-    print('ERROR: cannot load dependencies for {} subproject\nerror information{}\noutput {}.'.format(subfolder, err, output))
-
-  os.chdir(old_path)
+    print('ERROR: cannot load dependencies for {} subproject\nerror information{}\nout prepare.py
 
 old_path = os.getcwd()
 os.chdir(demo_folder)
