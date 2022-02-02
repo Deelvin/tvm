@@ -44,6 +44,8 @@
 #include "../file_utils.h"
 #include <chrono>
 #include <atomic>
+#include <sys/types.h>
+#include <unistd.h>
 
 using namespace std::chrono;
 
@@ -61,41 +63,60 @@ inline size_t GetDataAlignment(const DLTensor& arr) {
  * \brief Run all the operations one by one.
  */
 
-static std::atomic<int> s_counter{0};
-static std::vector<int64_t> s_counters;
-static std::vector<int64_t> s_countersMin;
-static std::vector<int64_t> s_countersMax;
-static std::vector<std::string> s_names;
+static std::mutex mtx; // just to print correctly
 
 class Guard
 {
 public:
-  Guard() {}
+  Guard(std::vector<std::string>& names) {
+    auto sz = names.size();
+    counters_.resize(sz, 0);
+    countersMin_.resize(sz, std::numeric_limits<size_t>::max());
+    countersMax_.resize(sz, 0);
+    names_ = names;
+  }
   virtual ~Guard(){
     printOut();
   }
   void printOut() {
-    if (s_counters.size() == s_names.size()) {
+    if (counters_.size() == names_.size()) {
       float total = 0;
-      for (size_t i = 0; i < s_counters.size(); ++i) {
-        if (s_counters[i] != 0) {
-          int x = s_counter - 2; // exclude min, max values
-          float val = (s_counters[i] - s_countersMin[i]- s_countersMax[i]) / (float)(x * 1000.);
-          std::cout << s_names[i] << "\t" << val << "\n";
-          total += val;
+      if (runs_counter_ > 2) {
+        std::unique_lock<std::mutex> lck (mtx,std::defer_lock);
+        lck.lock();
+        std::cout << "TID = " << gettid() << "\n";
+        for (size_t i = 0; i < counters_.size(); ++i) {
+          if (counters_[i] != 0) {
+            int x = runs_counter_ - 2; // exclude min, max values
+            float val = (counters_[i] - countersMin_[i]- countersMax_[i]) / (float)(x * 1000.);
+            std::cout << names_[i] << "\t" << val << "\n";
+            total += val;
+          }
         }
-      }
-      if (s_counter > 2) {
         std::cout << "-------------------\n";
         std::cout << "total : " << total << " us.\n" << std::flush;
-        std::cout << "runs : " << ((int)s_counter - 2) << " times\n" << std::flush;
+        std::cout << "runs : " << ((int)runs_counter_ - 2) << " times\n" << std::flush;
+        lck.unlock();
       }
       // std::cout << "iter : " << total/(float)s_counter << "  us.\n" << std::flush;
     }
   }
+  void update(int64_t elapsed, size_t ind) {
+    {
+      counters_[ind] += elapsed;
+      countersMax_[ind] = std::max(countersMax_[ind], elapsed);
+      countersMin_[ind] = std::min(countersMin_[ind], elapsed);
+    }
+
+  }
+  std::atomic<int>         runs_counter_{0};
+  std::vector<int64_t>     counters_;
+  std::vector<int64_t>     countersMin_;
+  std::vector<int64_t>     countersMax_;
+  std::vector<std::string> names_;
 };
 
-std::unique_ptr<Guard> s_guard;
+thread_local std::unique_ptr<Guard> s_guard;
 
 static std::once_flag s_once_flag;
 
@@ -109,9 +130,8 @@ public:
   virtual ~LocalTimer() {
     high_resolution_clock::time_point end = high_resolution_clock::now();
     auto elapsed = duration_cast<nanoseconds>(end - start).count();
-    s_counters[ind_] += elapsed;
-    s_countersMax[ind_] = std::max(s_countersMax[ind_], elapsed);
-    s_countersMin[ind_] = std::min(s_countersMin[ind_], elapsed);
+    if (s_guard)
+      s_guard->update(elapsed, ind_);
   }
 protected:
   high_resolution_clock::time_point start;
@@ -129,7 +149,8 @@ void GraphExecutor::Run() {
       }
     }
   }
-  s_counter.fetch_add(1);
+  if (s_guard)
+    s_guard->runs_counter_.fetch_add(1);
 }
 
 /*!
@@ -141,6 +162,7 @@ void GraphExecutor::Run() {
  * executed on.
  * \param lookup_linked_param_func Linked parameter lookup function. Default is nullptr.
  */
+
 void GraphExecutor::Init(const std::string& graph_json, tvm::runtime::Module module,
                          const std::vector<Device>& devs,
                          const PackedFunc lookup_linked_param_func) {
@@ -166,37 +188,14 @@ void GraphExecutor::Init(const std::string& graph_json, tvm::runtime::Module mod
     std::string& name = nodes_[nid].name;
     output_map_[name] = i;
   }
+  s_guard.reset();
   if (!s_guard) {
     auto sz = op_execs_.size();
-    std::call_once(s_once_flag, [&]() {
-      if (!s_guard) {
-        s_guard = std::make_unique<Guard>();
-        s_counters.resize(sz, 0);
-        s_countersMin.resize(sz, std::numeric_limits<size_t>::max());
-        s_countersMax.resize(sz, 0);
-        s_names.resize(sz);
-        for (size_t i = 0; i < sz; ++i) {
-          s_names[i] = nodes_[i].name;
-        }
-      }
-    });
-  } else {
-    s_guard->printOut();
-    auto sz = op_execs_.size();
-    s_counters.resize(sz);
-    s_countersMin.resize(sz);
-    s_countersMax.resize(sz);
-    s_names.resize(sz);
-
+    std::vector<std::string> names(nodes_.size());
     for (size_t i = 0; i < sz; ++i) {
-      s_counters[i] = 0;
-      s_countersMin[i] = std::numeric_limits<size_t>::max();
-      s_countersMax[i] = 0;
+      names[i] = nodes_[i].name;
     }
-    for (size_t i = 0; i < sz; ++i) {
-      s_names[i] = nodes_[i].name;
-    }
-    s_counter = 0;
+    s_guard = std::make_unique<Guard>(names);
   }
 }
 
