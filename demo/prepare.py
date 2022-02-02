@@ -117,7 +117,7 @@ def apply_patches_to_bert_inference():
     print('ERROR: cannot apply patch {} for MLPerf BERT inference.'.format(p, err, output))
   os.chdir(bert_pth)
   os.system('make setup')
-  os.system('make build_docker')
+  # os.system('make build_docker')
   os.chdir(old_path)
 
 parser = argparse.ArgumentParser()

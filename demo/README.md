@@ -2,20 +2,20 @@ Important note: This branch contains some modifications within graph_executor.cc
 
 # DEMO setup
 
-The folder DLRM contains a set of scripts which are used for DLRM model inference performance analysis.
+The folder tvm/demo contains a set of scripts which are used for DLRM and BERT models inference performance analysis.
 Environment setup script:
 ```
-python prepare.py
+python prepare.py --model [DLRM, BERT, all]
 ```
 
 This script does following things:
 * Uploads MLCommons Inference repository
-* Uploads data  for BERT model cnd creates docer container for the BERT model inference.
-* Uploads DLRM repository.
-* Uploads 100 GB DLRM model. The model will be stored in tvm/demo/DLRM/model folder.
-* Performs weights extraction for further inference. The converted weights are stored in tvm/demo/DLRM/converted folder.
-* Updates MLCommons Inference repository to run DLRM and BERT models with tvm inference.
-* Generates fake dataset for inference.
+* Uploads data for BERT model and creates docer container for the BERT model inference.
+* Uploads DLRM repository if DRRM model is selected for the setup.
+  * Uploads 100 GB DLRM model. The model will be stored in tvm/demo/DLRM/model folder.
+  * Performs weights extraction for further inference. The converted weights are stored in tvm/demo/DLRM/converted folder.
+* Updates MLCommons Inference repository to run DLRM and/or BERT models using tvm inference.
+* Generates fake dataset for DLRM inference.
 
 Note: it is not required to setup envirenment variables according to /inference/recommendation/dlrm/pytorch/README.md because
 these variables are set at the beginning of run_local.sh script.
