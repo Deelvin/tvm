@@ -42,24 +42,40 @@ class BERT_TVM_SUT():
         target = "llvm -mcpu=znver3"
         ctx = tvm.cpu(0)
         self.batch_size = 1 # 
-        if args.quantized:
+        dnnl_codegen = tvm.support.libinfo().get("USE_DNNL_CODEGEN", "OFF")
+        self.quantized = args.quantized
+        if self.quantized:
           name = 'build/data/bert_tf_v1_1_large_fp32_384_v2/bert_large_v1_1_fake_quant.onnx'
-          patternTBL = get_pattern_table("dnnl")
-          seq = tvm.transform.Sequential(
-            [
-              transform.InferType(),
-              transform.FoldConstant(),
-              transform.SimplifyInference(),
-              transform.FoldScaleAxis(),
-              transform.DynamicToStatic(),
-              transform.AlterOpLayout(),
-              transform.FakeQuantizationToInteger(),
-              transform.MergeComposite(patternTBL),
-              transform.AnnotateTarget("dnnl"),
-              transform.MergeCompilerRegions(),
-              transform.PartitionGraph(),
-            ]
-          )
+          if dnnl_codegen == "OFF":
+            seq = tvm.transform.Sequential(
+              [
+                transform.InferType(),
+                transform.FoldConstant(),
+                transform.SimplifyInference(),
+                transform.FoldScaleAxis(),
+                transform.DynamicToStatic(),
+                transform.AlterOpLayout(),
+                transform.FakeQuantizationToInteger(),
+                transform.PartitionGraph(),
+              ]
+            )
+          else:
+            patternTBL = get_pattern_table("dnnl")
+            seq = tvm.transform.Sequential(
+              [
+                transform.InferType(),
+                transform.FoldConstant(),
+                transform.SimplifyInference(),
+                transform.FoldScaleAxis(),
+                transform.DynamicToStatic(),
+                transform.AlterOpLayout(),
+                transform.FakeQuantizationToInteger(),
+                transform.MergeComposite(patternTBL),
+                transform.AnnotateTarget("dnnl"),
+                transform.MergeCompilerRegions(),
+                transform.PartitionGraph(),
+              ]
+            )
         else:
           name = 'build/data/bert_tf_v1_1_large_fp32_384_v2/model.onnx'
           seq = tvm.transform.Sequential(
@@ -112,8 +128,6 @@ class BERT_TVM_SUT():
         return retval
 
     def issue_queries(self, query_samples):
-        # # with torch.no_grad():
-        print("query_samples = ",  len(query_samples))
         for i in range(len(query_samples)):
             eval_features = self.qsl.get_features(query_samples[i].index)
             self.model.set_input("input_ids", np.array(eval_features.input_ids).astype(np.int64)[np.newaxis, :])
