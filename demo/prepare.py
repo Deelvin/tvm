@@ -118,8 +118,6 @@ def apply_patches_to_bert_inference():
   os.chdir(bert_pth)
   os.system('make setup')
   os.system('make build_docker')
-
-  print("bert do!")
   os.chdir(old_path)
 
 parser = argparse.ArgumentParser()
