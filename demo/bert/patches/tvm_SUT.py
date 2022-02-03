@@ -99,7 +99,8 @@ class BERT_TVM_SUT():
         mod, params = relay.frontend.from_onnx(onnx_model, shape_dict)
         mod = seq(mod)
         print(mod)
-        json, lib, param = relay.build(mod, target=target, params=params)
+        with tvm.transform.PassContext(opt_level=4, config={}):
+          json, lib, param = relay.build(mod, target=target, params=params)
         self.model = graph_executor.create(json, lib, ctx)
         self.model.set_input(**param)
         del(onnx_model)
