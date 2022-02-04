@@ -1,0 +1,11 @@
+torch
+torchvision
+scikit-learn
+numpy
+pydot
+torchviz
+protobuf
+tqdm
+onnxruntime
+tokenization
+boto3
