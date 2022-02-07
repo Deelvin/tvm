@@ -816,4 +816,253 @@ def test_dequantize_propagation_test():
 
 
 # test_dequantize_propagation()
-test_dequantize_propagation_test()
+# test_dequantize_propagation_test()
+
+
+def test_dequantize_propagation_test2():
+    shape_x = [1, 1792, 7, 7]
+    shape_w = [1, 1792, 7, 7]
+
+    op1768 = relay.var("x", shape=shape_x, dtype="float32") #/* ty=Tensor[(1, 1792, 7, 7), float32] */
+    op1769 = relay.var("w", shape=shape_w, dtype="float32") #/* ty=Tensor[(1, 1792, 7, 7), float32] */
+
+
+# %bert.encoder.layer.0.attention.self.key.bias: Tensor[(1024), float32]
+
+#   %38 = qnn.quantize(%37, 0.0555795 /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8", axis=0) #/* ty=Tensor[(1, 16, 384, 64), int8] */;
+
+#   %39 = qnn.dequantize(%38, 0.0555795 /* ty=float32 */, 0 /* ty=int32 */, axis=0) #/* ty=Tensor[(1, 16, 384, 64), float32] */;
+#   %40 = broadcast_to(%39, shape=[1, 16, 384, 64], dtype="")# /* ty=Tensor[(1, 16, 384, 64), float32] */;
+#   %41 = qnn.quantize(%25, 0.0196148 /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8", axis=0)# /* ty=Tensor[(1, 384, 1024), int8] */;
+#   %42 = qnn.quantize(%bert.encoder.layer.0.attention.self.key.weight, 0.00561207 /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8", axis=0)# /* ty=Tensor[(1024, 1024), int8] */;
+#   %43 = transpose(%42, axes=[1, 0])# /* ty=Tensor[(1024, 1024), int8] */;
+#   %44 = reshape(%41, newshape=[-1, 1024]) #/* ty=Tensor[(384, 1024), int8] */;
+#   %45 = transpose(%43, axes=None)# /* ty=Tensor[(1024, 1024), int8] */;
+#   %46 = qnn.dense(%44, %45, 0 /* ty=int32 */, 0 /* ty=int32 */, 0.0196148 /* ty=float32 */, 0.00561207 /* ty=float32 */, units=None, out_dtype="int32") #/* ty=Tensor[(384, 1024), int32] */;
+#   %47 = reshape(%46, newshape=[1, 384, 1024]) #/* ty=Tensor[(1, 384, 1024), int32] */;
+#   %48 = qnn.dequantize(%47, 0.00011008 /* ty=float32 */, 0 /* ty=int32 */, axis=1) #/* ty=Tensor[(1, 384, 1024), float32] */;
+#   %49 = cast(%bert.encoder.layer.0.attention.self.key.bias, dtype="float32")# /* ty=Tensor[(1024), float32] */;
+#   %50 = add(%48, %49) #/* ty=Tensor[(1, 384, 1024), float32] */;
+#   %51 = reshape(%50, newshape=[1, 384, 16, 64])# /* ty=Tensor[(1, 384, 16, 64), float32] */;
+#   %52 = transpose(%51, axes=[0, 2, 3, 1]) #/* ty=Tensor[(1, 16, 64, 384), float32] */;
+#   %53 = qnn.quantize(%52, 0.0555795 /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8", axis=0)# /* ty=Tensor[(1, 16, 64, 384), int8] */;
+  
+#   %54 = qnn.dequantize(%53, 0.0555795 /* ty=float32 */, 0 /* ty=int32 */, axis=0)# /* ty=Tensor[(1, 16, 64, 384), float32] */;
+#   %55 = broadcast_to(%54, shape=[1, 16, 64, 384], dtype="")# /* ty=Tensor[(1, 16, 64, 384), float32] */;
+#   %56 = reshape(%55, newshape=[-1, 64, 384])# /* ty=Tensor[(16, 64, 384), float32] */;
+#   %57 = reshape(%40, newshape=[-1, 384, 64])# /* ty=Tensor[(16, 384, 64), float32] */;
+#   %58 = transpose(%56, axes=[0, 2, 1]) #/* ty=Tensor[(16, 384, 64), float32] */;
+#   %59 = nn.batch_matmul(%57, %58, out_dtype="float32", transpose_b=True) #/* ty=Tensor[(16, 384, 384), float32] */;
+
+
+    #   %1768 = add(%1767, meta_relay_Constant_895] /* ty=Tensor[(1792, 1, 1), float32] */) /* ty=Tensor[(1, 1792, 7, 7), float32] */;
+    #   %1769 = sigmoid(%1768) /* ty=Tensor[(1, 1792, 7, 7), float32] */;
+
+    #   %1770 = multiply(%1768, %1769) /* ty=Tensor[(1, 1792, 7, 7), float32] */;
+    #   %1771 = qnn.quantize(%1770, 0.179916f /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8", axis=1) /* ty=Tensor[(1, 1792, 7, 7), int8] */;
+    #   %1772 = qnn.dequantize(%1771, 0.179916f /* ty=float32 */, 0 /* ty=int32 */, axis=1) /* ty=Tensor[(1, 1792, 7, 7), float32] */;
+    #   %1773 = nn.global_avg_pool2d(%1772) /* ty=Tensor[(1, 1792, 1, 1), float32] */;
+    #   %1774 = squeeze(%1773, axis=[3]) /* ty=Tensor[(1, 1792, 1), float32] */;
+    #   %1775 = squeeze(%1774, axis=[2]) /* ty=Tensor[(1, 1792), float32] */;
+    #   %1776 = qnn.quantize(%1775, 0.0108239f /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8", axis=1) /* ty=Tensor[(1, 1792), int8] */;
+    #   %1777 = qnn.quantize(meta_relay_Constant_896] /* ty=Tensor[(1000, 1792), float32] */, meta_relay_Constant_897] /* ty=Tensor[(1000), float32] */, meta_relay_Constant_898] /* ty=Tensor[(1000), int32] */, out_dtype="int8", axis=0) /* ty=Tensor[(1000, 1792), int8] */;
+    #   %1778 = qnn.dequantize(%1776, 0.0108239f /* ty=float32 */, 0 /* ty=int32 */, axis=1) /* ty=Tensor[(1, 1792), float32] */;
+    #   %1779 = qnn.dequantize(%1777, meta_relay_Constant_897] /* ty=Tensor[(1000), float32] */, meta_relay_Constant_899] /* ty=Tensor[(1000), int32] */, axis=0) /* ty=Tensor[(1000, 1792), float32] */;
+    #   %1780 = nn.dense(%1778, %1779, units=1000) /* ty=Tensor[(1, 1000), float32] */;
+    #   add(%1780, meta_relay_Constant_900] /* ty=Tensor[(1000), float32] */) /* ty=Tensor[(1, 1000), float32] */
+
+    meta_relay_Constant_896 = relay.const(np.random.uniform(size=[1000, 1792]).astype("float32")) #/* ty=Tensor[(1000, 1792), float32] */
+    meta_relay_Constant_897 = relay.const(np.random.uniform(size=[1000]).astype("float32")) #/* ty=Tensor[(1000), float32] */
+    meta_relay_Constant_898 = relay.const(np.random.uniform(size=[1000]).astype("int32")) #/* ty=Tensor[(1000), int32] */
+    meta_relay_Constant_899 = relay.const(np.random.uniform(size=[1000]).astype("int32")) #/* ty=Tensor[(1000), int32] */
+    meta_relay_Constant_900 = relay.const(np.random.uniform(size=[1000]).astype("float32")) #/* ty=Tensor[(1000), float32] */
+
+    op1770 = relay.op.multiply(op1768, op1769)
+    op1771 = relay.qnn.op.quantize(op1770, relay.const(0.179916), relay.const(0), out_dtype="int8", axis=1)
+    op1772 = relay.qnn.op.dequantize(op1771, relay.const(0.179916), relay.const(0))
+    op1773 = relay.op.nn.global_avg_pool2d(op1772)
+    op1774 = relay.op.squeeze(op1773, axis=[3])
+    op1775 = relay.op.squeeze(op1774, axis=[2])
+    op1776 = relay.qnn.op.quantize(op1775, relay.const(0.0108239), relay.const(0), out_dtype="int8", axis=1)
+    op1777 = relay.qnn.op.quantize(meta_relay_Constant_896, meta_relay_Constant_897, meta_relay_Constant_898, out_dtype="int8", axis=0)
+    op1778 = relay.qnn.op.dequantize(op1776, relay.const(0.0108239), relay.const(0))
+    op1779 = relay.qnn.op.dequantize(op1777, meta_relay_Constant_897, meta_relay_Constant_899, axis=0)
+    op1780 = relay.op.nn.dense(op1778, op1779, units=1000)
+    expr = relay.op.add(op1780, meta_relay_Constant_900)
+
+
+
+    # FakeQuantizationRewriter 
+    """
+        fn (%x: Tensor[(1, 1792, 7, 7), float32], %w: Tensor[(1, 1792, 7, 7), float32]) -> Tensor[(1, 1000), float32] {
+        %0 = multiply(%x, %w) /* ty=Tensor[(1, 1792, 7, 7), float32] */;
+        %1 = qnn.quantize(%0, 0.179916f /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8", axis=1) /* ty=Tensor[(1, 1792, 7, 7), int8] */;
+        %2 = cast(%1, dtype="int32");
+        %3 = nn.global_avg_pool2d(%2);
+        %4 = cast(%3, dtype="int8");
+        %5 = squeeze(%4, axis=[3]) /* ty=Tensor[(1, 1792, 1), float32] */;
+        %6 = squeeze(%5, axis=[2]) /* ty=Tensor[(1, 1792), float32] */;
+        %7 = qnn.requantize(%6, 0.179916f /* ty=float32 */, 0 /* ty=int32 */, 0.0108239f /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8");
+        %8 = qnn.quantize(meta[relay.Constant][0] /* ty=Tensor[(1000, 1792), float32] */, meta[relay.Constant][1] /* ty=Tensor[(1000), float32] */, meta[relay.Constant][2] /* ty=Tensor[(1000), int32] */, out_dtype="int8", axis=0) /* ty=Tensor[(1000, 1792), int8] */;
+        %9 = qnn.dequantize(%7, 0.0108239f /* ty=float32 */, 0 /* ty=int32 */) /* ty=Tensor[(1, 1792), float32] */;
+        %10 = qnn.dequantize(%8, meta[relay.Constant][1] /* ty=Tensor[(1000), float32] */, meta[relay.Constant][3] /* ty=Tensor[(1000), int32] */, axis=0) /* ty=Tensor[(1000, 1792), float32] */;
+        %11 = nn.dense(%9, %10, units=1000) /* ty=Tensor[(1, 1000), float32] */;
+        add(%11, meta[relay.Constant][4] /* ty=Tensor[(1000), float32] */) /* ty=Tensor[(1, 1000), float32] */
+        }
+    """
+
+    # mod tvm.relay.transform.FakeQuantizationToInteger
+    """
+    def @main(%x: Tensor[(1, 1792, 7, 7), float32], %w: Tensor[(1, 1792, 7, 7), float32]) -> Tensor[(1, 1000), float32] {
+    %0 = multiply(%x, %w) /* ty=Tensor[(1, 1792, 7, 7), float32] */;
+    %1 = qnn.quantize(%0, 0.179916f /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8", axis=1) /* ty=Tensor[(1, 1792, 7, 7), int8] */;
+    %2 = cast(%1, dtype="int32") /* ty=Tensor[(1, 1792, 7, 7), int32] */;
+    %3 = nn.global_avg_pool2d(%2) /* ty=Tensor[(1, 1792, 1, 1), int32] */;
+    %4 = cast(%3, dtype="int8") /* ty=Tensor[(1, 1792, 1, 1), int8] */;
+    %5 = squeeze(%4, axis=[3]) /* ty=Tensor[(1, 1792, 1), int8] */;
+    %6 = squeeze(%5, axis=[2]) /* ty=Tensor[(1, 1792), int8] */;
+    %7 = qnn.requantize(%6, 0.179916f /* ty=float32 */, 0 /* ty=int32 */, 0.0108239f /* ty=float32 */, 0 /* ty=int32 */, out_dtype="int8") /* ty=Tensor[(1, 1792), int8] */;
+    %8 = qnn.quantize(meta[relay.Constant][0] /* ty=Tensor[(1000, 1792), float32] */, meta[relay.Constant][1] /* ty=Tensor[(1000), float32] */, meta[relay.Constant][2] /* ty=Tensor[(1000), int32] */, out_dtype="int8", axis=0) /* ty=Tensor[(1000, 1792), int8] */;
+    %9 = qnn.dequantize(%7, 0.0108239f /* ty=float32 */, 0 /* ty=int32 */) /* ty=Tensor[(1, 1792), float32] */;
+    %10 = qnn.dequantize(%8, meta[relay.Constant][1] /* ty=Tensor[(1000), float32] */, meta[relay.Constant][3] /* ty=Tensor[(1000), int32] */, axis=0) /* ty=Tensor[(1000, 1792), float32] */;
+    %11 = nn.dense(%9, %10, units=1000) /* ty=Tensor[(1, 1000), float32] */;
+    add(%11, meta[relay.Constant][4] /* ty=Tensor[(1000), float32] */) /* ty=Tensor[(1, 1000), float32] */
+    }
+    """
+    x_np = np.random.randint(-128, 127, size=shape_x, dtype="int32").astype("float32")
+    w_np = np.random.randint(-128, 127, size=shape_w, dtype="int32").astype("float32")
+
+    args = [x_np, w_np]
+    allow_rounding_error=False
+
+    mod = tvm.IRModule.from_expr(expr)
+    mod_def = tvm.relay.transform.InferType()(mod)
+    mod_int = tvm.relay.transform.FakeQuantizationToInteger(False)(mod_def)
+    print("mod tvm.relay.transform.InferType\n", mod_def, "\n")
+    print("mod tvm.relay.transform.FakeQuantizationToInteger\n", mod_int, "\n")
+    assert not tvm.ir.structural_equal(mod, mod_int)
+
+    result = (
+        relay.create_executor("vm", mod=mod_def, device=tvm.cpu(), target="llvm")
+        .evaluate()(*args)
+        .numpy()
+    )
+    result_int = (
+        relay.create_executor("vm", mod=mod_int, device=tvm.cpu(), target="llvm")
+        .evaluate()(*args)
+        .numpy()
+    )
+    print("result.astype(int32)", result.astype("int32"))
+    print("result_int.astype(int32)", result_int.astype("int32"))
+    if allow_rounding_error:
+        assert np.all(np.abs(result.astype("int32") - result_int.astype("int32")) <= 1)
+    else:
+        assert np.array_equal(result, result_int)
+
+
+
+
+# test_dequantize_propagation_test2()
+
+def test_dequantize_propagation_broadcast_to():
+    shape_x = [1, 4, 2]
+    # shape_w = [8]
+    shape_w = [1]
+    # shape_w = [1, 4, 2]
+
+
+    # test_broadcast_to((1, 1, 5, 4), (3, 4, 4, 4, 5, 4))
+    # shape_w = [1, 4, 2]
+    # shape_w = [1, 8, 2]
+    x = relay.var("x", shape=shape_x, dtype="int8")
+    w = relay.var("w", shape=shape_w, dtype="int8")
+
+    # a = relay.qnn.op.dequantize(x, relay.const(1.5), relay.const(0)) # input, scale, shift
+    # b = relay.qnn.op.dequantize(w, relay.const(0.5), relay.const(0)) # input, scale, shift
+    # op = relay.op.nn.batch_matmul(a, b)
+    # op = relay.op.add(op, relay.const(2.0, "float32"))
+    # op = relay.qnn.op.quantize(op, relay.const(2.5), relay.const(0), out_dtype="int8") #input, scale, shift, type
+
+
+    # a = relay.qnn.op.dequantize(x, relay.const(1.5), relay.const(0)) # input, scale, shift
+    # b = relay.qnn.op.dequantize(w, relay.const(0.5), relay.const(0)) # input, scale, shift
+    # op = relay.op.nn.batch_matmul(a, b)
+    # op = relay.op.add(a, b)
+    # op = relay.qnn.op.quantize(op, relay.const(2.5), relay.const(0), out_dtype="int8") #input, scale, shift, type
+    # op = relay.op.subtract(op, relay.const(1, "int8"))
+
+    # op = relay.op.erf(op) # HERE
+    # op = relay.op.multiply(op, relay.const(3.0))
+    # op = relay.op.subtract(op, relay.const(1, "int8"))
+    
+    a = x
+    b = w
+
+    # a = relay.op.abs(x)
+    # b = relay.op.abs(w)
+
+    # a = relay.op.add(a, relay.const(2.0, "int8"))
+    # b = relay.op.add(b, relay.const(3.0, "int8"))
+
+    a = relay.qnn.op.dequantize(a, relay.const(1.5), relay.const(0)) # input, scale, shift
+    b = relay.qnn.op.dequantize(b, relay.const(0.5), relay.const(0)) # input, scale, shift
+
+    # op = relay.op.add(a, b)
+
+    # op1 = relay.op.nn.batch_matmul(a, b)
+    # op2 = relay.op.nn.batch_matmul(b, a)
+    # op11 = relay.op.nn.batch_matmul(op1, op2)
+    # op22 = relay.op.nn.batch_matmul(op2, op1)
+    # op = relay.op.nn.batch_matmul(op11, op22)
+
+        # broadcast_to
+
+    ax = relay.op.broadcast_to(b, (3,3))
+    # ax = a
+    op = ax
+    # op = relay.op.nn.batch_matmul(ax, b)
+    # op2 = relay.op.nn.batch_matmul(b, a)
+    # op = relay.op.nn.batch_matmul(op, op2)
+    # op = relay.op.add(op, relay.const(2.0, "float32"))
+
+    # op = relay.op.erf(op) # here
+    # op = relay.op.multiply(op, relay.const(3.0))
+    # op = relay.qnn.op.quantize(op, relay.const(2.5), relay.const(0), out_dtype="int8") #input, scale, shift, type
+    # op = relay.qnn.op.quantize(op, relay.const(2.5), relay.const(0), out_dtype="int8") #input, scale, shift, type
+    # op = relay.op.subtract(op, relay.const(1, "int8"))
+
+    x_np = np.random.randint(-128, 127, size=shape_x, dtype="int8")
+    w_np = np.random.randint(-128, 127, size=shape_w, dtype="int8")
+
+    expr = op
+    args = [w_np]
+    # args = [x_np, w_np]
+    allow_rounding_error=False
+
+    mod = tvm.IRModule.from_expr(expr)
+    mod_def = tvm.relay.transform.InferType()(mod)
+    mod_int = tvm.relay.transform.FakeQuantizationToInteger(False)(mod_def)
+    print("mod tvm.relay.transform.InferType\n", mod_def, "\n")
+    print("mod tvm.relay.transform.FakeQuantizationToInteger\n", mod_int, "\n")
+    assert not tvm.ir.structural_equal(mod, mod_int)
+
+    result = (
+        relay.create_executor("vm", mod=mod_def, device=tvm.cpu(), target="llvm")
+        .evaluate()(*args)
+        .numpy()
+    )
+    result_int = (
+        relay.create_executor("vm", mod=mod_int, device=tvm.cpu(), target="llvm")
+        .evaluate()(*args)
+        .numpy()
+    )
+    print("result.astype(int32)", result.astype("int32"))
+    print("result_int.astype(int32)", result_int.astype("int32"))
+    if allow_rounding_error:
+        assert np.all(np.abs(result.astype("int32") - result_int.astype("int32")) <= 1)
+    else:
+        assert np.array_equal(result, result_int)
+
+
+
+test_dequantize_propagation_broadcast_to()

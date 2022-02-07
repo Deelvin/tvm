@@ -29,6 +29,7 @@
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/qnn/attrs.h>
 #include <tvm/relay/transform.h>
+#include <tvm/relay/dataflow_matcher.h>
 
 #include "../src/relay/qnn/op/dequantize.h"
 #include "../src/relay/transforms/pattern_utils.h"
@@ -87,6 +88,10 @@ bool is_enabled_op(const CallNode* call_node) {
     Op::Get("nn.relu"),
     Op::Get("nn.pad"),
 
+    // new
+    Op::Get("broadcast_to"),
+    
+
     // register_binary_qnn
     // Op::Get("add"), // output_scale
     // Op::Get("multiply"), // output_scale
@@ -101,8 +106,8 @@ bool is_enabled_op(const CallNode* call_node) {
 
   auto result = std::find_if(std::begin(ops), std::end(ops), is_enabled);
 
+  
   return result != ops.end() && fqfq.count(Downcast<Op>(op));
-  // return call_node->op != dequantize_op_ && call_node->op != quantize_op_ &&  fqfq.count(Downcast<Op>(op));
 }
 
 class SubgraphExtractorOne : public ExprVisitor {
@@ -122,20 +127,20 @@ class SubgraphExtractorOne : public ExprVisitor {
     VisitExpr(expr);
 
     ExprSet subgraph;
-    // // std::cout << "collect subgraph" << std::endl;
+    // std::cout << "collect subgraph" << std::endl;
     if (is_fake_quantized_) {  //?
       for (auto kv : this->visit_counter_) {
         if (auto call_node = GetRef<ObjectRef>(kv.first).as<CallNode>()) {
-          // // std::cout << "k " << call_node->op << " " << call_node << std::endl;
+          // std::cout << "k " << call_node->op << " " << call_node << std::endl;
 
           if (call_node != expr_call_node) {  //?
-            // // std::cout << "v " << kv.second << std::endl;
+            std::cout << "v " << kv.second << std::endl;
             subgraph.insert(Downcast<Expr>(GetRef<ObjectRef>(kv.first)));
           }
         }
       }
     }
-    // // std::cout << "/collect subgraph" << std::endl;
+    //std::cout << "/collect subgraph" << std::endl;
     return subgraph;
   }
   const AffineTypeMap GetAffineTypes() { return affine_types_; }
@@ -144,7 +149,7 @@ class SubgraphExtractorOne : public ExprVisitor {
     // i.e. call nodes/tuples/constants/etc. If we see anything else (like control flow) we
     // abort the rewrite.
     std::string expr_str = to_expr_str(expr);
-    // std::cout << ">>>>>> SEO::VisitExpr " << expr_str << std::endl;
+    //std::cout << ">>>>>> SEO::VisitExpr " << expr_str << std::endl;
     if (expr.as<CallNode>() == nullptr && expr.as<OpNode>() == nullptr &&
         expr.as<TupleNode>() == nullptr && expr.as<TupleGetItemNode>() == nullptr &&
         expr.as<ConstantNode>() == nullptr) {
@@ -159,7 +164,7 @@ class SubgraphExtractorOne : public ExprVisitor {
 
  protected:
   void VisitExpr_(const CallNode* call_node) override {
-    // std::cout << ">>>>>> SEO::VisitExpr_1 " << call_node->op << " " << call_node << std::endl;
+    //std::cout << ">>>>>> SEO::VisitExpr_1 " << call_node->op << " " << call_node << std::endl;
 
     static auto fqfq =
         Op::GetAttrMap<FTVMFakeQuantizationToInteger>("FTVMFakeQuantizationToInteger");
@@ -209,7 +214,7 @@ class SubgraphExtractorOne : public ExprVisitor {
 
       
 
-      auto t = TensorAffineType(MakeConstantScalar(DataType::Int(32), 88),
+      auto t = TensorAffineType(MakeConstantScalar(DataType::Int(32), 88), // FIXME
                                 MakeConstantScalar(DataType::Int(32), 44),
                                 tvm::relay::transform::InferTypeLocal(call_node->args[0]).as<TensorTypeNode>()->dtype, 1);
                                 //call_node->args[0]->checked_type().as<TensorTypeNode>()->dtype, 1);
@@ -234,7 +239,7 @@ class SubgraphMutatorOne : public ExprMutator {
 
   Expr MutateSubgraph(const Expr& expr) {
     std::string expr_str = to_expr_str(expr);
-    // std::cout << ">>>>>> SMO::MutateSubgraph " << expr_str << std::endl;
+    //std::cout << ">>>>>> SMO::MutateSubgraph " << expr_str << std::endl;
     if (subgraph_.size() == 0) {
       return expr;
     }
@@ -279,7 +284,7 @@ class SubgraphMutatorOne : public ExprMutator {
       if (hard_fail_) {
         throw e;
       } else {
-        // // std::cout << "Ran into an error rewriting a subgraph, skipping " << expr << std::endl;
+        //std::cout << "Ran into an error rewriting a subgraph, skipping " << expr << std::endl;
         DLOG(INFO) << "Ran into an error rewriting a subgraph, skipping" << expr << std::endl;
         return expr;
       }
@@ -289,7 +294,7 @@ class SubgraphMutatorOne : public ExprMutator {
  protected:
   const CallNode* quantize_node;
   Expr VisitExpr_(const CallNode* call_node) {
-    // std::cout << ">>>>>> SMO::VisitExpr_ " << call_node->op << " " << call_node << std::endl;
+    //std::cout << ">>>>>> SMO::VisitExpr_ " << call_node->op << " " << call_node << std::endl;
     Expr out;
 
     static auto fqfq =
@@ -387,22 +392,12 @@ class SubgraphMutatorOne : public ExprMutator {
 class FakeQuantizationRewriterOne : public MixedModeMutator {
  public:
   explicit FakeQuantizationRewriterOne(bool hard_fail) : hard_fail_(hard_fail) {}
-  Expr InferType(const Expr& expr) {
-    // std::cout << "InferType" << std::endl;
-    auto mod = IRModule::FromExpr(expr);
-    mod = transform::InferType()(mod);
-    if (expr.as<FunctionNode>()) {
-      return mod->Lookup("main");
-    } else {
-      return mod->Lookup("main").as<FunctionNode>()->body;
-    }
-  }
-  bool mutated = false;
+
  protected:
 
 
   Expr Rewrite_(const CallNode* pre, const Expr& post) override {
-     // std::cout << ">>>>>> FQORewriter::Rewrite_ " << std::endl;
+     //std::cout << ">>>>>> FQORewriter::Rewrite_ " << std::endl;
     // // // std::cout << "memo_ " << std::endl;
     // for (const auto& it : memo_) {
     //   // // // std::cout << "first " << it.first << std::endl;
@@ -410,15 +405,18 @@ class FakeQuantizationRewriterOne : public MixedModeMutator {
     // }
     // // // std::cout << "/memo_ " << std::endl;
 
-     // std::cout << "pre  " << pre->op << std::endl;
+     //std::cout << "pre  " << pre->op << std::endl;
     // // std::cout << "pre  " << GetRef<Expr>(pre) << std::endl;
     if (const CallNode* call_node = post.as<CallNode>()) {
-      // std::cout << "post " << call_node->op << std::endl;
+      //std::cout << "post " << call_node->op << std::endl;
       // // std::cout << "post " << post << std::endl;
       static auto fqfq =
           Op::GetAttrMap<FTVMFakeQuantizationToInteger>("FTVMFakeQuantizationToInteger");
       const Op op = Downcast<Op>(call_node->op);
       if (is_enabled_op(call_node)) {
+        //if (call_node->op == Op::Get("broadcast_to")) {
+        //  std::cout << "broadcast_to found" << std::endl;
+        //}
       //if (/* call_node->op != batch_matmul_op_ &&  */ call_node->op != dequantize_op_ && call_node->op != quantize_op_ && fqfq.count(Downcast<Op>(op))) {
         SubgraphExtractorOne extractor;
         // // std::cout << "GetSubgraph" << std::endl;
@@ -464,7 +462,7 @@ class FakeQuantizationRewriterOne : public MixedModeMutator {
              if (it != memo_.end()) {
                post_affine_types.Set(memo_.at(kv.first), kv.second);
             } else {
-               post_affine_types.Set(kv.first, kv.second);
+               post_affine_types.Set(kv.first, kv.second);// FIXME
             }
              // // std::cout << "pre != kv.first.as<CallNode>() " << kv.first << std::endl;
              // // std::cout << "pre != kv.first.as<CallNode>() memo " << memo_.at(kv.first) << std::endl;
@@ -484,7 +482,7 @@ class FakeQuantizationRewriterOne : public MixedModeMutator {
            if (it != memo_.end()) {
              post_subgraph.insert(memo_.at(expr));
           } else {
-             post_subgraph.insert(expr);
+             post_subgraph.insert(expr);// FIXME
           }
           /*post_subgraph.insert(memo_.at(expr));*/
           //post_subgraph.insert(memo_[expr]);
@@ -502,10 +500,14 @@ class FakeQuantizationRewriterOne : public MixedModeMutator {
         //   // // // std::cout << "v " << it.second << std::endl;
         // }
         // // // std::cout << "/post_affine_types" << std::endl;
-        // std::cout << "MutateSubgraph" << std::endl;
+        //std::cout << "MutateSubgraph" << std::endl;
         Expr out =
             SubgraphMutatorOne(post_subgraph, post_affine_types, hard_fail_).MutateSubgraph(post);
-        // std::cout << "/MutateSubgraph" << std::endl;
+
+        //if (call_node->op == Op::Get("broadcast_to")) {
+        //  //std::cout << "broadcast_to mutated " << std::boolalpha << (out != post) << std::endl;
+        //}
+        //std::cout << "/MutateSubgraph" << std::endl;
           // std::cout << "out           " << out << std::endl;
 
         //if (out != post) {
@@ -563,29 +565,15 @@ class FakeQuantizationRewriterOne : public MixedModeMutator {
  * rewritten subgraph and the processing continues
  */
 
-// std::string to_expr_str(const Expr& expr) {
-//  if (const CallNode* call_node = expr.as<CallNode>()) {
-//    std::ostringstream os;
-//    os << call_node->op;
-//    return os.str();
-//  }
-//  return "<null>";
-//}
-
 class SubgraphExtractor : public ExprVisitor {
  public:
   const ExprSet GetSubgraph(const Expr& expr) {
-    std::string expr_str = to_expr_str(expr);
-    // // std::cout << ">>>>>> SE::GetSubgraph " << expr_str << std::endl;
 
     VisitExpr(expr);
     ExprSet subgraph;
-    // // std::cout << "collect subgraph" << std::endl;
     if (is_fake_quantized_) {
       for (auto kv : this->visit_counter_) {
         if (auto call_node = GetRef<ObjectRef>(kv.first).as<CallNode>()) {
-          // // std::cout << "k " << call_node->op << std::endl;
-          // // std::cout << "v " << kv.second << std::endl;
           if (call_node->op != quantize_op_) {
             subgraph.insert(Downcast<Expr>(GetRef<ObjectRef>(kv.first)));
           }
@@ -600,8 +588,6 @@ class SubgraphExtractor : public ExprVisitor {
     // When looking for fake quantized subgraphs, we only support data-flow regions of the graph,
     // i.e. call nodes/tuples/constants/etc. If we see anything else (like control flow) we
     // abort the rewrite.
-    std::string expr_str = to_expr_str(expr);
-    // // std::cout << ">>>>>> SE::VisitExpr " << expr_str << std::endl;
     if (expr.as<CallNode>() == nullptr && expr.as<OpNode>() == nullptr &&
         expr.as<TupleNode>() == nullptr && expr.as<TupleGetItemNode>() == nullptr &&
         expr.as<ConstantNode>() == nullptr) {
@@ -616,7 +602,6 @@ class SubgraphExtractor : public ExprVisitor {
 
  protected:
   void VisitExpr_(const CallNode* call_node) override {
-    // // std::cout << ">>>>>> SE::VisitExpr_ " << call_node->op << std::endl;
     if (call_node->op == quantize_op_) {
       const auto* attrs = call_node->attrs.as<qnn::QuantizeAttrs>();
       ICHECK(attrs != nullptr);
@@ -629,7 +614,6 @@ class SubgraphExtractor : public ExprVisitor {
     } else if (call_node->op == dequantize_op_) {
       const auto* attrs = call_node->attrs.as<qnn::DequantizeAttrs>();
       ICHECK(attrs != nullptr);
-      // VisitExpr(call_node->args[0]);// for abs
       // Collect type of dequantize ops
       affine_types_.Set(
           GetRef<Expr>(call_node),
@@ -654,8 +638,6 @@ class SubgraphMutator : public ExprMutator {
       : subgraph_(subgraph), affine_types_(affine_types), hard_fail_(hard_fail) {}
 
   Expr MutateSubgraph(const Expr& expr) {
-    std::string expr_str = to_expr_str(expr);
-    // // std::cout << ">>>>>> SM::MutateSubgraph " << expr_str << std::endl;
     if (subgraph_.size() == 0) {
       return expr;
     }
@@ -665,7 +647,6 @@ class SubgraphMutator : public ExprMutator {
     out_type_ = affine_types_[expr];
     static auto fqfq =
         Op::GetAttrMap<FTVMFakeQuantizationToInteger>("FTVMFakeQuantizationToInteger");
-    // // std::cout << "subgraph_" << std::endl;
 
     for (auto node : subgraph_) {
       const Op op = Downcast<Op>(node.as<CallNode>()->op);
@@ -694,7 +675,6 @@ class SubgraphMutator : public ExprMutator {
 
  protected:
   Expr VisitExpr_(const CallNode* call_node) {
-    // // std::cout << ">>>>>> SM::VisitExpr_ " << call_node->op << std::endl;
     Expr out;
 
     static auto fqfq =
@@ -758,77 +738,29 @@ class FakeQuantizationRewriter : public MixedModeMutator {
 
  protected:
   Expr Rewrite_(const CallNode* pre, const Expr& post) override {
-    // // std::cout << ">>>>>> FQRewriter::Rewrite_ " << std::endl;
-    // // std::cout << "memo_ " << std::endl;
-    //for (const auto& it : memo_) {
-      // // std::cout << "first " << it.first << std::endl;
-      // // std::cout << "second " << it.second << std::endl;
-    //}
-    // // std::cout << "/memo_ " << std::endl;
-    // // std::cout << "pre " << pre->op << std::endl;
     if (const CallNode* call_node = post.as<CallNode>()) {
-      // // std::cout << "post " << call_node->op << std::endl;
       if (call_node->op == quantize_op_) {
         SubgraphExtractor extractor;
-        // // std::cout << "GetSubgraph" << std::endl;
         ExprSet subgraph = extractor.GetSubgraph(GetRef<Expr>(pre));
         AffineTypeMap affine_types = extractor.GetAffineTypes();
-        // // std::cout << "/GetSubgraph" << std::endl;
-        // // std::cout << "subgraph" << std::endl;
-        // for (const auto& it : subgraph) {
-        //   // // std::cout << "k " << it << std::endl << std::endl;
-        // }
-        // // std::cout << "/subgraph" << std::endl;
-
-        // // // std::cout << "affine_types" << std::endl;
-        // for (const auto& it : affine_types) {
-        //   // // std::cout << "k " << it.first << std::endl;
-        //   // // std::cout << "v " << it.second << std::endl;
-        // }
-        // // std::cout << "/affine_types" << std::endl;
 
         ExprSet post_subgraph;
         AffineTypeMap post_affine_types;
-        // // std::cout << "make post_affine_types" << std::endl;
         for (auto kv : affine_types) {
           if (pre == kv.first.as<CallNode>()) {
             // we havent memoized the current op yet
-            // // std::cout << "pre == kv.first.as<CallNode>() " << post << std::endl;
             post_affine_types.Set(post, kv.second);
           } else {
-            // // std::cout << "pre != kv.first.as<CallNode>() " << kv.first << std::endl;
-            // // std::cout << "pre != kv.first.as<CallNode>() memo " << memo_.at(kv.first) << std::endl;
             post_affine_types.Set(memo_.at(kv.first), kv.second);
           }
         }
-        // // std::cout << "/make post_affine_types" << std::endl;
-        // // std::cout << "make post_subgraph" << std::endl;
+
         for (auto expr : subgraph) {
-          // std::unordered_map<Expr, Expr, ObjectPtrHash, ObjectPtrEqual> memo_;
-          // // std::cout << "insert " << expr << std::endl;
-          // // std::cout << "insert memo " << memo_[expr] << std::endl;
           post_subgraph.insert(memo_[expr]);
         }
-        // // std::cout << "/make post_subgraph" << std::endl;
-        // // std::cout << "post_subgraph" << std::endl;
-        // for (const auto& it : post_subgraph) {
-        //   // // std::cout << "k " << it << std::endl << std::endl;
-        // }
-        // // std::cout << "/post_subgraph" << std::endl;
 
-        // // std::cout << "post_affine_types" << std::endl;
-        // for (const auto& it : post_affine_types) {
-        //   // // std::cout << "k " << it.first << std::endl;
-        //   // // std::cout << "v " << it.second << std::endl;
-        // }
-        // // std::cout << "/post_affine_types" << std::endl;
-        // // std::cout << "MutateSubgraph" << std::endl;
         Expr out =
-            SubgraphMutator(post_subgraph, post_affine_types, hard_fail_).MutateSubgraph(post);
-        // // std::cout << "/MutateSubgraph" << std::endl;
-
-        // // std::cout << "out " << out << std::endl;
-        
+            SubgraphMutator(post_subgraph, post_affine_types, hard_fail_).MutateSubgraph(post);     
 
         return out;
       }
@@ -841,51 +773,9 @@ class FakeQuantizationRewriter : public MixedModeMutator {
 };
 
 Expr FakeQuantizationToInteger(const Expr& expr, const IRModule& mod, bool hard_fail) {
-  auto before_expr = FakeQuantizationRewriter(hard_fail).Mutate(expr);
-   //// std::cout << "Mutate(expr) " << to_expr_str(expr) << std::endl;
-
-  // std::cout << "FakeQuantizationRewriter " << before_expr << std::endl;
-  // std::cout << "####################################################################" << std::endl;
-  // std::cout << "####################################################################" << std::endl;
-  // std::cout << "####################################################################"<< std::endl;
-
-  auto pass = FakeQuantizationRewriterOne(hard_fail);
-
-
-  // std::cout << "InferType " << before_expr << std::endl;
-  // std::cout << "####################################################################" << std::endl;
-  // std::cout << "####################################################################" << std::endl;
-  // std::cout << "####################################################################" << std::endl;
-  before_expr = pass.InferType(before_expr);
-
-
-
-  //const Expr& before_expr = expr;
-  auto after_expr = pass.Mutate(before_expr);
-
-
-
-  //int i = 1;
-  //while (pass.mutated /* && i < 10*/) {
-  ////while (before_expr != after_expr) {
-  // // std::cout << "inter: " << i << std::endl;
-  // after_expr = pass.InferType(after_expr);
-  // pass.mutated = false;
-  // after_expr = pass.Mutate(after_expr);
-  // i++;
-  //}
-  // auto rewritten_expr = before_expr;
-  auto rewritten_expr = after_expr;
-
-
-  
-
-  // auto rewritten_expr = FakeQuantizationRewriter(hard_fail).Mutate(expr);
-  // // // std::cout << "(expr == rewritten_expr) " << std::boolalpha << (expr == rewritten_expr) <<
-  // std::endl; if (expr == rewritten_expr)
-  //  return FakeQuantizationRewriterOne(hard_fail).Mutate(rewritten_expr);
-  // else
-  return rewritten_expr;
+  auto rewritten_expr = FakeQuantizationRewriter(hard_fail).Mutate(expr);
+  rewritten_expr = tvm::relay::InferType(rewritten_expr);
+  return FakeQuantizationRewriterOne(hard_fail).Mutate(rewritten_expr);
 }
 
 namespace transform {

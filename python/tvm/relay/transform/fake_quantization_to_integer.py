@@ -152,6 +152,28 @@ def global_avgpool2d(expr, type_map):
     return [out, t]
 
 
+@register_fake_quantization_to_integer("broadcast_to")
+def broadcast_to(expr, type_map):
+    """Rewrite a broadcast_to op"""
+    # print("broadcast_to")
+    # print("expr\n ", expr, "\n")
+    # print("args\n", expr.args, "\n")
+    # print("args\n", {**expr.attrs}, "\n")
+    arg = expr.args[0]
+    t = type_map[arg]
+    # out_t = type_map[expr]
+    # print("out_t\n", out_t, "\n")
+    shape = expr.attrs.shape
+    # print("shape\n", shape, "\n")
+    # arg = relay.op.cast(arg, "int32")
+    out = relay.op.broadcast_to(arg, shape)
+    # out = relay.op.cast(out, t.dtype)
+    # print("[out, out_t] \n", [out, out_t], "\n")
+    # print("/broadcast_to")
+    return [out, t]
+    # return [out, out_t]
+
+
 @register_fake_quantization_to_integer("rsqrt")
 def rsqrt(expr, type_map):
     """Rewrite a rsqrt op"""
