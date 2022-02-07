@@ -19,6 +19,7 @@
 This  script contains demo configuration parameters.
 """
 
+import subprocess
 MODEL_SUFF = 'model'
 CONV_SUFF = 'converted'
 TEST_DATA_SUFF = 'test_data'
@@ -38,5 +39,17 @@ dtype_dict = {
     "lS_i": "int64"
 }
 
-target = "llvm -mcpu=znver3"
-target_host = "llvm -mcpu=znver3"
+def getCPUVendor():
+    cpu_info = (subprocess.check_output("lscpu", shell=True).strip()).decode()
+    spl = cpu_info.split('\n')
+    print(len(spl))
+    for i in range(len(spl)):
+        if spl[i].find('Model name') != -1:
+            print(spl[i])
+            if spl[i].find('AMD') != -1:
+                target = "llvm -mcpu=znver3"
+                target_host = "llvm -mcpu=znver3"
+            else:
+                target = "llvm -mcpu=cascadelake"
+                target_host = "llvm -cascadelake"
+            return target, target_host
