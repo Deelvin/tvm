@@ -1,3 +1,4 @@
+psutil
 torch
 torchvision
 scikit-learn
@@ -9,3 +10,5 @@ tqdm
 onnxruntime
 tokenization
 boto3
+decorator
+onnx

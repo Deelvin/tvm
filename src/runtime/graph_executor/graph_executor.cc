@@ -44,8 +44,12 @@
 #include "../file_utils.h"
 #include <chrono>
 #include <atomic>
+#define USE_LOCAL_PROFILER (1)
+
+#if USE_LOCAL_PROFILER
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 using namespace std::chrono;
 
@@ -63,6 +67,7 @@ inline size_t GetDataAlignment(const DLTensor& arr) {
  * \brief Run all the operations one by one.
  */
 
+#if USE_LOCAL_PROFILER
 static std::mutex mtx; // just to print correctly
 
 class Guard
@@ -93,6 +98,7 @@ public:
             total += val;
           }
         }
+
         std::cout << "-------------------\n";
         std::cout << "total : " << total << " us.\n" << std::flush;
         std::cout << "runs : " << ((int)runs_counter_ - 2) << " times\n" << std::flush;
@@ -109,7 +115,7 @@ public:
     }
 
   }
-  std::atomic<int>         runs_counter_{0};
+  int                      runs_counter_{0};
   std::vector<int64_t>     counters_;
   std::vector<int64_t>     countersMin_;
   std::vector<int64_t>     countersMax_;
@@ -117,8 +123,6 @@ public:
 };
 
 thread_local std::unique_ptr<Guard> s_guard;
-
-static std::once_flag s_once_flag;
 
 class LocalTimer
 {
@@ -137,6 +141,7 @@ protected:
   high_resolution_clock::time_point start;
   size_t ind_;
 };
+#endif // USE_LOCAL_PROFILER
 
 void GraphExecutor::Run() {
 
@@ -144,13 +149,17 @@ void GraphExecutor::Run() {
   for (size_t i = 0; i < sz; ++i) {
     if (op_execs_[i]) {
       {
+#if USE_LOCAL_PROFILER
         LocalTimer timer(i);
+#endif
         op_execs_[i]();
       }
     }
   }
+#if USE_LOCAL_PROFILER
   if (s_guard)
-    s_guard->runs_counter_.fetch_add(1);
+    s_guard->runs_counter_++; // this is tls object
+#endif
 }
 
 /*!
@@ -188,6 +197,7 @@ void GraphExecutor::Init(const std::string& graph_json, tvm::runtime::Module mod
     std::string& name = nodes_[nid].name;
     output_map_[name] = i;
   }
+#if USE_LOCAL_PROFILER
   s_guard.reset();
   if (!s_guard) {
     auto sz = op_execs_.size();
@@ -197,6 +207,7 @@ void GraphExecutor::Init(const std::string& graph_json, tvm::runtime::Module mod
     }
     s_guard = std::make_unique<Guard>(names);
   }
+#endif // USE_LOCAL_PROFILER
 }
 
 /*!

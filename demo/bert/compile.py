@@ -67,7 +67,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--onnx-model", help="reference to the onnx model", default="__data/dlrm_onnx/dlrm_s_pytorch_0505.onnx")
 parser.add_argument("--tuning-log-file", required=False, help="path to the tuning log", default=None)
 parser.add_argument("--output-name", required=False, help="name of compiled model", )
-parser.add_argument("--batch-size", type=int, help="optional, batch size for the model", default=100)
+parser.add_argument("--batch-size", type=int, required=False, help="optional, batch size for the model", default=1)
 args = parser.parse_args()
 
 
