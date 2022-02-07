@@ -98,6 +98,7 @@ public:
             total += val;
           }
         }
+
         std::cout << "-------------------\n";
         std::cout << "total : " << total << " us.\n" << std::flush;
         std::cout << "runs : " << ((int)runs_counter_ - 2) << " times\n" << std::flush;
