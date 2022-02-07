@@ -93,8 +93,8 @@ def getCPUVendor():
                 target = "llvm -mcpu=znver3"
                 target_host = "llvm -mcpu=znver3"
             else:
-                target = "llvm -mcpu=cascadelake"
-                target_host = "llvm -cascadelake"
+                target = "llvm -mcpu=skylake-avx512"
+                target_host = "llvm -mcpu=skylake-avx512"
             return target, target_host
 
 target, target_host = getCPUVendor()
