@@ -1,0 +1,47 @@
+diff --git a/python/tvm/relay/frontend/onnx.py b/python/tvm/relay/frontend/onnx.py
+index 4ba9c07e4..fc28a0853 100644
+--- a/python/tvm/relay/frontend/onnx.py
++++ b/python/tvm/relay/frontend/onnx.py
+@@ -249,7 +249,15 @@ def matmul_out_dtype(inputs, out_dtype):
+             a = flatten_to_nd(inputs[0], a_shape, 3)
+             b = flatten_to_nd(inputs[1], b_shape, 3)
+             # Perform a NN batch matmul.
+-            output = _op.nn.batch_matmul(a, b, out_dtype=out_dtype, transpose_b=False)
++            # output = _op.nn.batch_matmul(a, b, out_dtype=out_dtype, transpose_b=False)
++            if ONNX_DEFAULT_CONFIGS["use_nt_batch_matmul"]:
++                # Transpose matrix dimensions of b.
++                bt = _op.transpose(b, [0, 2, 1])
++                # Perform a NT batch matmul.
++                output = _op.nn.batch_matmul(a, bt, out_dtype=out_dtype)
++            else:
++                # Perform a NN batch matmul.
++                output = _op.nn.batch_matmul(a, b, out_dtype=out_dtype, transpose_b=False)
+         # Determine the output batch dimension.
+         if a_rank > b_rank:
+             out_batch = _op.strided_slice(a_shape, [0], [a_rank - 2])
+diff --git a/python/tvm/relay/op/strategy/generic.py b/python/tvm/relay/op/strategy/generic.py
+index 388902274..b93dcdd9f 100644
+--- a/python/tvm/relay/op/strategy/generic.py
++++ b/python/tvm/relay/op/strategy/generic.py
+@@ -1720,7 +1720,7 @@ def concatenate_strategy(attrs, inputs, out_type, target):
+ def concatenate_strategy_cpu(attrs, inputs, out_type, target):
+     """concatenate x86 strategy"""
+     strategy = _op.OpStrategy()
+-    use_old_concat = True
++    use_old_concat = False
+     if use_old_concat:
+         strategy.add_implementation(
+             wrap_compute_concat(topi.transform.concatenate),
+diff --git a/src/relay/op/tensor/transform.cc b/src/relay/op/tensor/transform.cc
+index 2264c36e0..a1ab77f5f 100644
+--- a/src/relay/op/tensor/transform.cc
++++ b/src/relay/op/tensor/transform.cc
+@@ -275,7 +275,7 @@ RELAY_REGISTER_OP("concatenate")
+     .add_type_rel("Concatenate", ConcatenateRel<ConcatenateAttrs>)
+     .set_attr<FInferCorrectLayout>("FInferCorrectLayout", ConcatenateLayout)
+     // .set_attr<FTVMCompute>("FTVMCompute", ConcatenateCompute)
+-    .set_attr<TOpPattern>("TOpPattern", kInjective);
++    .set_attr<TOpPattern>("TOpPattern", kOpaque);
+ 
+ TVM_REGISTER_NODE_TYPE(StackAttrs);
+ 

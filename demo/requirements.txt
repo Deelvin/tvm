@@ -12,3 +12,5 @@ tokenization
 boto3
 decorator
 onnx
+xgboost
+cloudpickle

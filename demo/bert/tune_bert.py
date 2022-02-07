@@ -22,6 +22,7 @@ This  script perfroms tuning of DLRM model using local tuner for Zen 3 HW.
 import os
 import sys
 import argparse
+import subprocess
 
 file_path = os.path.realpath(__file__)
 demo_folder = os.path.dirname(file_path)
@@ -47,8 +48,6 @@ BATCH_SIZE = 1
 MODEL_SUFF = 'model'
 CONV_SUFF = 'converted'
 TEST_DATA_SUFF = 'test_data'
-target = "llvm -mcpu=znver3"
-target_host = "llvm -mcpu=znver3"
 
 def checkDir(pth):
   if not os.path.exists(pth):
@@ -83,11 +82,27 @@ def doPreprocess(mod):
     mod = seq(mod)
     return mod
 
+def getCPUVendor():
+    cpu_info = (subprocess.check_output("lscpu", shell=True).strip()).decode()
+    spl = cpu_info.split('\n')
+    print(len(spl))
+    for i in range(len(spl)):
+        if spl[i].find('Model name') != -1:
+            print(spl[i])
+            if spl[i].find('AMD') != -1:
+                target = "llvm -mcpu=znver3"
+                target_host = "llvm -mcpu=znver3"
+            else:
+                target = "llvm -mcpu=cascadelake"
+                target_host = "llvm -cascadelake"
+            return target, target_host
+
+target, target_host = getCPUVendor()
+
 parser = argparse.ArgumentParser()
-# parser.add_argument("--onnx-model", help="optional, reference to the onnx DLRM model", default='')
+parser.add_argument("--onnx-model", help="optional, reference to the onnx DLRM model", default=os.path.join(tvm_path, 'demo', 'inference', 'language', 'bert', 'build', 'data', 'bert_tf_v1_1_large_fp32_384_v2', 'model.onnx'))
 parser.add_argument("--output-log", required=True, help="path to the output log file")
 parser.add_argument("--output-folder", required=True, help="path to the output library and json files")
-# parser.add_argument("--batch-size", help="optional, batch size for the model", default=128)
 
 args = parser.parse_args()
 

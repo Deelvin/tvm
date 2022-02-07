@@ -82,6 +82,7 @@ parser.add_argument("--output-folder", required=True, help="path to the output l
 parser.add_argument("--batch-size", help="optional, batch size for the model", default=128)
 
 args = parser.parse_args()
+target, target_host = getCPUVendor()
 
 log_file = args.output_log
 out_dir = args.output_folder
@@ -89,7 +90,7 @@ onnx_model = args.onnx_model
 if onnx_model == '':
     file_path = os.path.realpath(__file__)
     demo_folder = os.path.dirname(file_path)
-    model_dir = os.path.join(demo_folder, MODEL_SUFF)
+    model_dir = os.path.join(tvm_path, 'demo', MODEL_SUFF)
     onnx_model = os.path.join(model_dir, ONNX_FILE_NAME)
     if os.path.isfile(onnx_model) != True:
         print("ERROR:  there is no onnx file  {} in this folder {}".format(ONNX_FILE_NAME, model_dir))

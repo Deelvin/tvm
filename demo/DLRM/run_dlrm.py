@@ -53,6 +53,8 @@ parser.add_argument("--test-data", help="optional, path to the test data.")
 parser.add_argument("--output-folder", help="optional, path to the output library and json files")
 parser.add_argument("--batch-size", help="optional, batch size for the model", default=128)
 
+target, target_host = getCPUVendor()
+
 args = parser.parse_args()
 if 'TVM_NUM_THREADS' in os.environ:
     print("current threads = {}".format(os.environ['TVM_NUM_THREADS']))
