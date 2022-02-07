@@ -191,16 +191,16 @@ if prepare_dlrm == True:
 
   if os.path.isdir(CONV_SUFF) != True:
     os.mkdir(CONV_SUFF)
-  ctx = tvm.cpu(0)
+  # ctx = tvm.cpu(0)
 
-  print("---- Extract weights ----------")
-  mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
-  with tvm.transform.PassContext(opt_level=3, config={}):
-      json, lib, param = relay.build(mod, target=target, params=params)
-      outPth = os.path.join(demo_folder, CONV_SUFF)
-      for key, val in  param.items():
-          npData = val.asnumpy()
-          npData.tofile(os.path.join(outPth, key))
+  # print("---- Extract weights ----------")
+  # mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
+  # with tvm.transform.PassContext(opt_level=3, config={}):
+  #     json, lib, param = relay.build(mod, target=target, params=params)
+  #     outPth = os.path.join(demo_folder, CONV_SUFF)
+  #     for key, val in  param.items():
+  #         npData = val.asnumpy()
+  #         npData.tofile(os.path.join(outPth, key))
   os.chdir(old_path)
 
 # BERT model prepare
