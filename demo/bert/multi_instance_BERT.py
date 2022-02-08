@@ -136,8 +136,8 @@ def main():
     lib = tvm.runtime.load_module(model_path)
     model_json_file = model_path[:-2] + "json"
     model_param_file = model_path[:-2] + "npz"
-    model_input_file = '/home/sshtin/Dev/tvm-samples/engagements/amd_mlperf_july15/bert/bert_quantized.tar.npz'
-    inpt_data  = np.load(model_input_file)
+    model_input_file = 'test_data/bert_quantized.tar.npz'
+    inpt_data  = np.load(model_param_file)
     print(inpt_data.keys())
     for k, v in inpt_data.items():
         print(k)
