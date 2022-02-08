@@ -22,6 +22,7 @@ import platform
 import time
 import argparse
 import sys
+import subprocess
 
 file_path = os.path.realpath(__file__)
 demo_folder = os.path.dirname(file_path)
@@ -59,20 +60,34 @@ def getInput(model, batch_size):
     return retval
 
 
-# target = "llvm -mcpu=skylake-avx512"
-target = "llvm -mcpu=znver3"
-# target_host = "llvm -mcpu=znver3"
+def getCPUVendor():
+    cpu_info = (subprocess.check_output("lscpu", shell=True).strip()).decode()
+    spl = cpu_info.split('\n')
+    print(len(spl))
+    for i in range(len(spl)):
+        if spl[i].find('Model name') != -1:
+            print(spl[i])
+            if spl[i].find('AMD') != -1:
+                target = "llvm -mcpu=znver3"
+                target_host = "llvm -mcpu=znver3"
+            else:
+                target = "llvm -mcpu=skylake-avx512"
+                target_host = "llvm -mcpu=skylake-avx512"
+            return target, target_host
+
+
+target, _ = getCPUVendor()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--onnx-model", help="reference to the onnx model", default="__data/dlrm_onnx/dlrm_s_pytorch_0505.onnx")
+parser.add_argument("--onnx-model", help="reference to the onnx model",
+        default=os.path.join(tvm_path, 'demo', 'inference', 'language', 'bert', 'build', 'data', 'bert_tf_v1_1_large_fp32_384_v2/model.onnx'))
 parser.add_argument("--tuning-log-file", required=False, help="path to the tuning log", default=None)
 parser.add_argument("--output-name", required=False, help="name of compiled model", )
 parser.add_argument("--batch-size", type=int, required=False, help="optional, batch size for the model", default=1)
 args = parser.parse_args()
 
 
-def load_onnx(model_path, batch_size=128):
-
+def load_onnx(model_path, batch_size=1):
     onnx_model = onnx.load(model_path)
     shape_dict = getInput(onnx_model, batch_size)
     mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
@@ -89,9 +104,7 @@ def load_onnx(model_path, batch_size=128):
           transform.DynamicToStatic()
       ]
     )
-
     mod = seq(mod)
-
     macs = get_total_mac_number(mod["main"])
     print(f"total MACs for batch {batch_size} : {macs}")
 
