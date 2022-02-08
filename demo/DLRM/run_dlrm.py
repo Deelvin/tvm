@@ -217,7 +217,22 @@ if do_check:
     print("avg error: {}".format(avg_error / (count * BATCH_SIZE)))
     print("max error: {}".format(max_error))
 print("BATCH_SIZE = ", BATCH_SIZE, ", count = ", count, ", runs = ", runs)
-# print("    average inference time = {} sec.".format((total_time)/runs))
-# print("    average inference per input = {} sec.".format((total_time)/runs/BATCH_SIZE))
-# print("    total execution time = {} sec.".format(full_end - full_start))
-# print("    total avg execution time = {} sec.".format(full_end - full_start)/runs)
+print("model export.")
+out_model_name = "test_model_i{}_b{}".format(ITERATIONS, BATCH_SIZE)
+
+model_path = os.path.join(output_folder, "{}.tar".format(out_model_name))
+lib.export_library(model_path)
+tvm.runtime.load_module(model_path)
+
+param_map = {key:val.asnumpy() for key, val in param.items()}
+np.savez(os.path.join(output_folder, "{}.tar.npz".format(out_model_name)), **param_map)
+
+np.random.seed(0)
+jsonName = os.path.join(output_folder, "{}.tar.json".format(out_model_name))
+with open(jsonName, "w") as fp:
+    fp.write(json)
+
+print("    average inference time = {} sec.".format((total_time)/runs))
+print("    average inference per input = {} sec.".format((total_time)/runs/BATCH_SIZE))
+print("    total execution time = {} sec.".format(full_end - full_start))
+print("    total avg execution time = {} sec.".format(full_end - full_start)/runs)
