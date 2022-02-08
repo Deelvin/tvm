@@ -1,5 +1,5 @@
 #!/bin/bash
-instances=(1 2 4 8 10 12 16)
+instances=(1 2 4 8 10 12 14 16)
 threads=(1 2 4 8 10 12 14 16)
 length=${#instances[@]}
 length_thr=${#threads[@]}
@@ -15,6 +15,6 @@ for (( i = 0; i < length; i++ )); do
     fname="${tuning}/log_i${instances[$i]}_t${threads[$j]}.txt"
     # python ./tune_dlrm.py --output-log="${fname}" $1 --batch-size=${AR[$i]}
     echo ${fname} ${instances[$i]} ${threads[$j]}
-    python ./multi_instance_BERT.py --model /home/ubuntu/dev/tvm/demo/DLRM/out/saved_model_3000_b100.tar.so --num-instances ${instances[$i]} --num-threads ${threads[$j]} > ${fname}
+    python ./multi_instance_BERT.py --model /home/ubuntu/dev/tvm/demo/bert/out/saved_model_3000_b100.tar.so --num-instances ${instances[$i]} --num-threads ${threads[$j]} > ${fname}
   done
 done
