@@ -137,14 +137,14 @@ def main():
     model_json_file = model_path[:-2] + "json"
     model_param_file = model_path[:-2] + "npz"
     model_input_file = 'test_data/bert_quantized.tar.npz'
-    inpt_data  = np.load(model_param_file)
+    inpt_data  = np.load(model_input_file)
     print(inpt_data.keys())
     for k, v in inpt_data.items():
         print(k)
     # {'input_ids': [1, 384], 'attention_mask': [1, 384], 'token_type_ids': [1, 384]}
     mappings = {'input_ids': 'input_ids',
-                'attention_mask': 'input_mask',
-                'token_type_ids':'segment_ids'
+                'input_mask': 'input_mask',
+                'segment_ids':'segment_ids'
                 }
 
     # if quantized:

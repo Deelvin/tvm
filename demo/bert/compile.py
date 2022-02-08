@@ -113,9 +113,9 @@ def load_onnx(model_path, batch_size=1):
 
 def compile(mod, params, output_name):
     so_ext = "dylib" if platform.system() == "Darwin" else "so"
-    export_lib_path = f"__prebuilt/{output_name}.{so_ext}"
-    export_json_path = f"__prebuilt/{output_name}.json"
-    export_param_path = f"__prebuilt/{output_name}.npz"
+    export_lib_path = f"{output_name}.{so_ext}"
+    export_json_path = f"{output_name}.json"
+    export_param_path = f"{output_name}.npz"
 
     start_timestamp = time.time()
     if args.tuning_log_file is not None:
@@ -143,7 +143,7 @@ def compile(mod, params, output_name):
 
 
 def main():
-    os.makedirs("__prebuilt", exist_ok=True)
+    # os.makedirs("__prebuilt", exist_ok=True)
 
     mod, params = load_onnx(model_path=args.onnx_model, batch_size=args.batch_size)
     compile(mod, params, output_name=f"{args.output_name}_b{args.batch_size}")
