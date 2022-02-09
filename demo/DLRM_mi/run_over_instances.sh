@@ -9,7 +9,7 @@ pth_twm="${PWD}/../../"
 
 export TVM_HOME=$pth_twm
 export PYTHONPATH=$TVM_HOME/python:${PYTHONPATH}
-python ./compile.py --tuning-log-file ../DLRM/log_b100_thr8.json --output-name dlrm_test --onnx-model ../model/dlrm_s_pytorch_0505.
+python ./compile.py --tuning-log-file ../DLRM/log_b100_thr8.json --output-name dlrm_test --onnx-model ../model/dlrm_s_pytorch_0505.onnx
 for (( i = 0; i < length; i++ )); do
   for (( j = 0; j < length_thr; j++ )); do
     fname="${tuning}/log_i${instances[$i]}_t${threads[$j]}.txt"
