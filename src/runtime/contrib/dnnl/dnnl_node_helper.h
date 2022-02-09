@@ -52,6 +52,7 @@ inline static dnnl::memory::data_type convert2dnnl(DLDataType dtype) {
   if (dtype.code == DLDataTypeCode::kDLInt) {
     if (dtype.bits == 8) return dnnl::memory::data_type::s8;
     if (dtype.bits == 32) return dnnl::memory::data_type::s32;
+    if (dtype.bits == 64) return dnnl::memory::data_type::s32;
   } else if (dtype.code == DLDataTypeCode::kDLUInt) {
     if (dtype.bits == 8) return dnnl::memory::data_type::u8;
   } else if (dtype.code == DLDataTypeCode::kDLFloat) {
