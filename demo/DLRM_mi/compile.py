@@ -21,14 +21,28 @@ import os
 import platform
 import time
 import argparse
-
+import subprocess
 import tvm
 from tvm.relay.analysis import get_total_mac_number
 from tvm import relay, auto_scheduler
 from tvm.relay import transform
 
+def getCPUVendor():
+    cpu_info = (subprocess.check_output("lscpu", shell=True).strip()).decode()
+    spl = cpu_info.split('\n')
+    print(len(spl))
+    for i in range(len(spl)):
+        if spl[i].find('Model name') != -1:
+            print(spl[i])
+            if spl[i].find('AMD') != -1:
+                target = "llvm -mcpu=znver3"
+                target_host = "llvm -mcpu=znver3"
+            else:
+                target = "llvm -mcpu=skylake-avx512"
+                target_host = "llvm -mcpu=skylake-avx512"
+            return target, target_host
 
-target = "llvm -mcpu=skylake-avx512"
+target, _ = getCPUVendor()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--onnx-model", help="reference to the onnx DLRM model", default="__data/dlrm_onnx/dlrm_s_pytorch_0505.onnx")

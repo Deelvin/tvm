@@ -120,7 +120,7 @@ def runer_queued(init_f, process_f, *, duration_sec=5, num_instance=8):
 
     latency = total_duration / total_count * 1000
     throughput = int(total_count / duration_sec)
-    print(f"NUM_INST :{num_instance}, AVG_LATENCY:{latency:.2f} ms, AVG_THR:{throughput}")
+    # print(f"NUM_INST :{num_instance}, AVG_LATENCY:{latency:.2f} ms, AVG_THR:{throughput}")
 
     return latency, throughput
 
@@ -138,9 +138,9 @@ def main():
     model_param_file = model_path[:-2] + "npz"
     model_input_file = 'test_data/bert_quantized.tar.npz'
     inpt_data  = np.load(model_input_file)
-    print(inpt_data.keys())
-    for k, v in inpt_data.items():
-        print(k)
+    # print(inpt_data.keys())
+    # for k, v in inpt_data.items():
+    #     print(k)
     # {'input_ids': [1, 384], 'attention_mask': [1, 384], 'token_type_ids': [1, 384]}
     mappings = {'input_ids': 'input_ids',
                 'input_mask': 'input_mask',
@@ -186,7 +186,7 @@ def main():
         if idx == 0:
             start_timestamp = time.time()
 
-            print("Loading params...")
+            # print("Loading params...")
             params = np.load(model_param_file)
             g_mod.set_input(**params)
 
@@ -195,7 +195,7 @@ def main():
                 params_names[param_name] = tvm.nd.empty([1])  # stub tensors
 
             load_param_dur = time.time() - start_timestamp
-            print(f"Load param time : {load_param_dur}")
+            # print(f"Load param time : {load_param_dur}")
 
             main_g_mod = g_mod
             shared_weight_names = tvm.runtime.save_param_dict(params_names)
