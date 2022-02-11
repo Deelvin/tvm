@@ -39,6 +39,7 @@ tvm_option(USE_THREADS "Build with thread support" ON)
 tvm_option(USE_LLVM "Build with LLVM, can be set to specific llvm-config path" OFF)
 tvm_option(USE_STACKVM_RUNTIME "Include stackvm into the runtime" OFF)
 tvm_option(USE_GRAPH_EXECUTOR "Build with tiny graph executor" ON)
+tvm_option(USE_DYN_BATCH "Build with graph executor dyn batch wrapper" ON)
 tvm_option(USE_GRAPH_EXECUTOR_CUDA_GRAPH "Build with tiny graph executor with CUDA Graph for GPUs" OFF)
 tvm_option(USE_PROFILER "Build profiler for the VM and graph executor" ON)
 tvm_option(USE_OPENMP "Build with OpenMP thread pool implementation" OFF)
@@ -391,6 +392,15 @@ if(USE_PROFILER)
   tvm_file_glob(GLOB RUNTIME_VM_PROFILER_SRCS src/runtime/vm/profiler/*.cc)
   list(APPEND RUNTIME_SRCS ${RUNTIME_VM_PROFILER_SRCS})
 endif(USE_PROFILER)
+
+if(USE_DYN_BATCH)
+  message(STATUS "Build with dyn batch executor...")
+
+  tvm_file_glob(GLOB RUNTIME_GRAPH_EXECUTOR_DYN_BATCH_SRCS src/runtime/graph_executor/dyn_batch/*.cc)
+  list(APPEND RUNTIME_SRCS ${RUNTIME_GRAPH_EXECUTOR_DYN_BATCH_SRCS})
+#  set_source_files_properties(${RUNTIME_GRAPH_EXECUTOR_DYN_BATCH_SRCS}
+#          PROPERTIES COMPILE_DEFINITIONS "TVM_GRAPH_EXECUTOR_DEBUG")
+endif()
 
 # Enable ctest if gtest is available
 if(USE_GTEST)
