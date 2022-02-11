@@ -130,7 +130,7 @@ class ADT : public ObjectRef {
   /*!
    * \brief Construct a tuple object.
    *
-   * \tparam Args Type params of tuple feilds.
+   * \tparam Args Type params of tuple fields.
    * \param args Tuple fields.
    * \return ADT The tuple object reference.
    */
