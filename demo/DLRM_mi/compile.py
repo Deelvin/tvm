@@ -17,14 +17,14 @@
 
 import numpy as np
 import os
-import platform
 import time
 import argparse
 import tvm
 
-from models import models, get_cpu_info, get_so_ext
-from tvm.relay.analysis import get_total_mac_number
+from models import models, get_host_target, get_so_ext
 from tvm import relay, auto_scheduler
+from tvm.relay.analysis import get_total_mac_number
+from tvm.relay.op.contrib.dnnl import partition_for_dnnl
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model-path", help="reference to the original model", default="__data/dlrm_onnx/dlrm_s_pytorch_0505.onnx")
@@ -32,11 +32,12 @@ parser.add_argument("--model-name", help="Model name [resnet, dlrm, bert]", defa
 parser.add_argument("--tuning-log-file", required=False, help="path to the tuning log", default=None)
 parser.add_argument("--output-name", required=False, help="name of compiled model", )
 parser.add_argument("--batch-size", type=int, help="optional, batch size for the model", default=100)
+parser.add_argument("--with-dnnl", required=False, help="name of compiled model", )
 args = parser.parse_args()
 
 
 def compile_mod(mod, params, output_name, opt_level):
-    target, _ = get_cpu_info()
+    target = get_host_target()
     so_ext = get_so_ext()
 
     os.makedirs(f"__prebuilt/{output_name}", exist_ok=True)
@@ -44,6 +45,9 @@ def compile_mod(mod, params, output_name, opt_level):
     export_lib_path = f"__prebuilt/{output_name}/{output_name}.{so_ext}"
     export_json_path = f"__prebuilt/{output_name}/{output_name}.json"
     export_param_path = f"__prebuilt/{output_name}/{output_name}.npz"
+
+    if args.with_dnnl:
+        mod = partition_for_dnnl(mod)
 
     start_timestamp = time.time()
     if args.tuning_log_file is not None:
@@ -71,7 +75,7 @@ def compile_mod(mod, params, output_name, opt_level):
 
 
 def main():
-    loader, _ = models[args.model_name]
+    loader, _, _ = models[args.model_name]
     mod, params = loader(args.model_path, args.batch_size)
 
     macs = get_total_mac_number(mod["main"])
@@ -81,6 +85,7 @@ def main():
     print(f" Model Name : {args.model_name}")
     print(f" Model Path : {args.model_path}")
     print(f" Batch Size : {args.batch_size}")
+    print(f" Precision  : {'INT8' if args.model_name.endswith('i8') else 'FP32'}")
     print(f" MACs       : {macs}")
     print("===================================")
     print(f" Tuning stat: {args.tuning_log_file}")
