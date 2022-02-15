@@ -24,7 +24,7 @@ import threading
 from queue import Queue
 
 import tvm
-from tvm.contrib import graph_executor
+from tvm.contrib import graph_executor, dyn_batch_slicer
 
 from models import get_so_ext, models
 
@@ -33,7 +33,8 @@ parser.add_argument("--model-name", help="model name [resnet50, ]", default="dlr
 parser.add_argument("--model-path", help="path to compiled model", default="__prebuilt/dlrm_avx512.so")
 parser.add_argument("--num-instances", type=int, help="path to compiled model", default=1)
 parser.add_argument("--num-threads", type=int, help="path to compiled model", default=1)
-parser.add_argument("--hyper-threading", type=bool, help="path to compiled model", default=True)
+parser.add_argument("--batch-size", type=int, help="Batch to process with", default=1)
+
 args = parser.parse_args()
 
 
@@ -170,10 +171,13 @@ def main():
         if idx != 0:
             g_mod.share_params(main_g_mod, shared_weight_names)
 
-        batch = get_batch_size(g_mod)
-        _, input_gen = models[args.model_name]
+        _, input_gen, dyn_batch_config = models[args.model_name]
 
-        for key, data in input_gen(batch).items():
+        # If original batch is not equal to requested will use dyn_batch_slicer
+        if args.batch_size != get_batch_size(g_mod):
+            g_mod = dyn_batch_slicer.create(g_mod, config=dyn_batch_config)
+
+        for key, data in input_gen(args.batch_size).items():
             g_mod.set_input(key, data)
 
         return g_mod
