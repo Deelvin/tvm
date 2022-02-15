@@ -70,8 +70,8 @@ class GraphExecutorDynBatch : public ModuleNode {
     // Convert
     std::vector<std::tuple<int, int, bool>> conf;
     for (const auto &l : config) {
-      auto input_idx = l[0].as<IntImmNode>()->value;
-      auto batch_dim = l[1].as<IntImmNode>()->value;
+      auto input_idx = l[0].as<IntImmNode>()->value; // int
+      auto batch_dim = l[1].as<IntImmNode>()->value; // int
       auto is_output = l[2].as<IntImmNode>()->value; // bool
       conf.push_back({input_idx, batch_dim, is_output});
     }
@@ -129,6 +129,7 @@ class GraphExecutorDynBatch : public ModuleNode {
     cur_inputs_ = orig_inputs_;
     cur_outputs_ = orig_outputs_;
 
+    // Default state is batch coordinated
     is_dyn_batch_coordinated_ = true;
   }
 
@@ -349,6 +350,8 @@ class GraphExecutorDynBatch : public ModuleNode {
     ICHECK(!use_external_output_);
     for (int i = 0; i < num_outputs_; i++) {
       auto batch_axis = output_batch_axis_[i];
+      if (batch_axis == -1) continue;
+
       auto cur_shape = cur_outputs_[i].Shape();
       if (cur_shape[batch_axis] != cur_batch_size_) {
         auto orig_data = orig_outputs_[i];
@@ -415,7 +418,7 @@ PackedFunc GraphExecutorDynBatch::GetFunction(const std::string& name,
                                            const ObjectPtr<Object>& sptr_to_self) {
   // return member functions during query.
   if (name == "get_output") {
-    // TODO: it support 2 args mode
+    // TODO: it should support 2 args mode
     return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
       ICHECK_EQ(args.size(), 1);
       if (String::CanConvertFrom(args[0])) {
