@@ -26,8 +26,11 @@ from queue import Queue
 import tvm
 from tvm.contrib import graph_executor
 
+from models import get_so_ext, models
+
 parser = argparse.ArgumentParser()
-parser.add_argument("--model", help="path to compiled model", default="__prebuilt/dlrm_avx512.so")
+parser.add_argument("--model-name", help="model name [resnet50, ]", default="dlrm")
+parser.add_argument("--model-path", help="path to compiled model", default="__prebuilt/dlrm_avx512.so")
 parser.add_argument("--num-instances", type=int, help="path to compiled model", default=1)
 parser.add_argument("--num-threads", type=int, help="path to compiled model", default=1)
 parser.add_argument("--hyper-threading", type=bool, help="path to compiled model", default=True)
@@ -112,11 +115,11 @@ def get_batch_size(g_mod):
 
 
 def main():
-    model_path = args.model
+    model_path = args.model_path
+    model_json_file = model_path[:-len(get_so_ext())] + "json"
+    model_param_file = model_path[:-len(get_so_ext())] + "npz"
 
     lib = tvm.runtime.load_module(model_path)
-    model_json_file = model_path[:-2] + "json"
-    model_param_file = model_path[:-2] + "npz"
 
     weights_are_ready = threading.Barrier(args.num_instances, timeout=6000)  # 10 min like infinity value
 
@@ -132,7 +135,7 @@ def main():
     if set_affinity is None:
         warnings.warn(
             "Looks like your version of TVM doesn't have 'tvm.set_affinity' function. "
-            "Thread pinnig has a positive effect of final performance. "
+            "Thread pinning has a positive effect of final performance. "
             "Please apply patch from __patches/set_affinity.patch"
         )
 
@@ -168,22 +171,17 @@ def main():
             g_mod.share_params(main_g_mod, shared_weight_names)
 
         batch = get_batch_size(g_mod)
+        _, input_gen = models[args.model_name]
 
-        # set random input
-        x_in = np.random.randint(0, 100, size=(batch, 13)).astype("float32")
-        ls_i_in = np.random.randint(0, 100, size=(26, batch)).astype("int64")
-        ls_o_in = np.array([range(batch) for _ in range(26)]).astype("int64")
-
-        g_mod.set_input("input.1", x_in)
-        g_mod.set_input("lS_o", ls_o_in)
-        g_mod.set_input("lS_i", ls_i_in)
+        for key, data in input_gen(batch).items():
+            g_mod.set_input(key, data)
 
         return g_mod
 
     def process_f(g_mod):
         g_mod.run()
 
-    runer_queued(init_f, process_f, duration_sec=200, num_instance=args.num_instances)
+    runer_queued(init_f, process_f, duration_sec=30, num_instance=args.num_instances)
 
 
 if __name__ == "__main__":
