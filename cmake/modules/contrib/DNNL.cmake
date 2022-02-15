@@ -19,7 +19,6 @@
 macro(find_dnnl)
   # 1. Try to find via dnnl-config.cmake
   find_package(dnnl CONFIG)
-  message("XXX DNNL ${dnnl_FOUND}")
 
   if (NOT dnnl_FOUND)
     # 2. Try to find dnnl like a lib + headers distribution
