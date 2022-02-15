@@ -16,66 +16,34 @@
 # under the License.
 
 import numpy as np
-import onnx
 import os
 import platform
 import time
 import argparse
-import subprocess
 import tvm
+
+from models import models, get_cpu_info, get_so_ext
 from tvm.relay.analysis import get_total_mac_number
 from tvm import relay, auto_scheduler
-from tvm.relay import transform
-
-def getCPUVendor():
-    cpu_info = (subprocess.check_output("lscpu", shell=True).strip()).decode()
-    spl = cpu_info.split('\n')
-    print(len(spl))
-    for i in range(len(spl)):
-        if spl[i].find('Model name') != -1:
-            print(spl[i])
-            if spl[i].find('AMD') != -1:
-                target = "llvm -mcpu=znver3"
-                target_host = "llvm -mcpu=znver3"
-            else:
-                target = "llvm -mcpu=skylake-avx512"
-                target_host = "llvm -mcpu=skylake-avx512"
-            return target, target_host
-
-target, _ = getCPUVendor()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--onnx-model", help="reference to the onnx DLRM model", default="__data/dlrm_onnx/dlrm_s_pytorch_0505.onnx")
+parser.add_argument("--model-path", help="reference to the original model", default="__data/dlrm_onnx/dlrm_s_pytorch_0505.onnx")
+parser.add_argument("--model-name", help="Model name [resnet, dlrm, bert]", default="dlrm")
 parser.add_argument("--tuning-log-file", required=False, help="path to the tuning log", default=None)
 parser.add_argument("--output-name", required=False, help="name of compiled model", )
 parser.add_argument("--batch-size", type=int, help="optional, batch size for the model", default=100)
 args = parser.parse_args()
 
 
-def load_onnx(model_path, batch_size=128):
-    shape_dict = {
-        "input.1": (batch_size, 13),
-        "lS_o": (26, batch_size),
-        "lS_i": (26, batch_size)
-    }
+def compile_mod(mod, params, output_name):
+    target, _ = get_cpu_info()
+    so_ext = get_so_ext()
 
-    onnx_model = onnx.load(model_path)
-    mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
-    
-    mod = transform.InferType()(mod)
-    mod = transform.DynamicToStatic()(mod)
+    os.makedirs(f"__prebuilt/{output_name}", exist_ok=True)
 
-    macs = get_total_mac_number(mod["main"])
-    print(f"total MACs for batch {batch_size} : {macs}")
-
-    return mod, params
-
-
-def compile(mod, params, output_name):
-    so_ext = "dylib" if platform.system() == "Darwin" else "so"
-    export_lib_path = f"__prebuilt/{output_name}.{so_ext}"
-    export_json_path = f"__prebuilt/{output_name}.json"
-    export_param_path = f"__prebuilt/{output_name}.npz"
+    export_lib_path = f"__prebuilt/{output_name}/{output_name}.{so_ext}"
+    export_json_path = f"__prebuilt/{output_name}/{output_name}.json"
+    export_param_path = f"__prebuilt/{output_name}/{output_name}.npz"
 
     start_timestamp = time.time()
     if args.tuning_log_file is not None:
@@ -85,7 +53,7 @@ def compile(mod, params, output_name):
     else:
         with tvm.transform.PassContext(opt_level=3, config={}):    
             json, lib, param = relay.build(mod, target=target, params=params)
-    
+
     compile_dur = time.time() - start_timestamp
     print(f"Compilation time : {compile_dur}")
 
@@ -95,7 +63,7 @@ def compile(mod, params, output_name):
         fp.write(json)
 
     start_timestamp = time.time()
-    param_map = {key:val.asnumpy() for key, val in param.items()}
+    param_map = {key: val.asnumpy() for key, val in param.items()}
     np.savez(export_param_path, **param_map)
 
     param_dump_dur = time.time() - start_timestamp
@@ -103,10 +71,24 @@ def compile(mod, params, output_name):
 
 
 def main():
-    os.makedirs("__prebuilt", exist_ok=True)
+    loader, _ = models[args.model_name]
+    mod, params = loader(args.model_path, args.batch_size)
 
-    mod, params = load_onnx(model_path=args.onnx_model, batch_size=args.batch_size)
-    compile(mod, params, output_name=f"{args.output_name}_b{args.batch_size}")
+    macs = get_total_mac_number(mod["main"])
+
+    print()
+    print("===================================")
+    print(f" Model Name : {args.model_name}")
+    print(f" Model Path : {args.model_path}")
+    print(f" Batch Size : {args.batch_size}")
+    print(f" MACs       : {macs}")
+    print("===================================")
+    print(f" Tuning stat: {args.tuning_log_file}")
+    print("===================================")
+    print()
+
+    export_name = f"{args.model_name}_b{args.batch_size}"
+    compile_mod(mod, params, output_name=export_name)
 
 
 if __name__ == "__main__":
