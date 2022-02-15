@@ -29,8 +29,6 @@ from tvm.contrib import graph_executor, dyn_batch_slicer
 
 from models import get_so_ext, models
 
-from models import get_so_ext, models
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--model-name", help="model name [resnet50, ]", default="dlrm")
 parser.add_argument("--model-path", help="path to compiled model", default="__prebuilt/dlrm_avx512.so")
