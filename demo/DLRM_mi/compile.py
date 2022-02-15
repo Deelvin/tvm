@@ -35,7 +35,7 @@ parser.add_argument("--batch-size", type=int, help="optional, batch size for the
 args = parser.parse_args()
 
 
-def compile_mod(mod, params, output_name):
+def compile_mod(mod, params, output_name, opt_level):
     target, _ = get_cpu_info()
     so_ext = get_so_ext()
 
@@ -48,10 +48,10 @@ def compile_mod(mod, params, output_name):
     start_timestamp = time.time()
     if args.tuning_log_file is not None:
         with auto_scheduler.ApplyHistoryBest(args.tuning_log_file):
-            with tvm.transform.PassContext(opt_level=3, config={"relay.backend.use_auto_scheduler": True}):
+            with tvm.transform.PassContext(opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True}):
                 json, lib, param = relay.build(mod, target=target, params=params)
     else:
-        with tvm.transform.PassContext(opt_level=3, config={}):    
+        with tvm.transform.PassContext(opt_level=opt_level, config={}):
             json, lib, param = relay.build(mod, target=target, params=params)
 
     compile_dur = time.time() - start_timestamp
@@ -86,9 +86,11 @@ def main():
     print(f" Tuning stat: {args.tuning_log_file}")
     print("===================================")
     print()
-
+    opt_level = 3
+    if args.model_name.find('resnet') != -1:
+        opt_level = 2
     export_name = f"{args.model_name}_b{args.batch_size}"
-    compile_mod(mod, params, output_name=export_name)
+    compile_mod(mod, params, output_name=export_name, opt_level)
 
 
 if __name__ == "__main__":

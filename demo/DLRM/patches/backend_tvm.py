@@ -17,7 +17,7 @@ class BackendTVM(backend.Backend):
     def __init__(self):
         super(BackendTVM, self).__init__()
         self.model = None
-        self.batch_size = 128
+        self.batch_size = 100
         self.dense = None
         self.ls_o  = np.zeros((26, self.batch_size))
         for i in range(0, self.batch_size):
