@@ -50,11 +50,6 @@ class GraphExecutorDynBatch : public ModuleNode {
    */
   using DynBatchConfig = tvm::runtime::Array<tvm::runtime::Array<ObjectRef>>;
 
-  /*!
-   * \brief GetFunction Get the function based on input.
-   * \param name The function which needs to be invoked.
-   * \param sptr_to_self Packed function pointer.
-   */
   void Init(Module origin, DynBatchConfig config) {
     ICHECK(origin.defined());
     ICHECK_EQ(origin->type_key(), std::string("GraphExecutor"));
@@ -82,8 +77,8 @@ class GraphExecutorDynBatch : public ModuleNode {
 
     // Validate config
     for (const auto &p : conf) {
-      bool idx = std::get<0>(p);
-      bool axis = std::get<1>(p);
+      int idx = std::get<0>(p);
+      int axis = std::get<1>(p);
       bool is_output = std::get<2>(p);
       auto batch_size = is_output ? get_output(idx).Shape()[axis] : get_input(idx).Shape()[axis];
 
@@ -219,7 +214,7 @@ class GraphExecutorDynBatch : public ModuleNode {
     int num_of_slices = cur_batch_size_ / origin_batch_size_;
     for (int s = 0; s < num_of_slices; s++) {
       // Specify inputs
-      for (int i = 0; i < cur_inputs_.size(); i++) {
+      for (size_t i = 0; i < cur_inputs_.size(); i++) {
         auto batch_axis = input_batch_axis_[i];
 
         if (batch_axis == -1) {
@@ -236,7 +231,7 @@ class GraphExecutorDynBatch : public ModuleNode {
         }
       }
       // Specify outputs
-      for (int i = 0; i < cur_outputs_.size(); i++) {
+      for (size_t i = 0; i < cur_outputs_.size(); i++) {
         auto batch_axis = output_batch_axis_[i];
 
         outputs[i] = cur_outputs_[i];
@@ -254,7 +249,7 @@ class GraphExecutorDynBatch : public ModuleNode {
       run_();
 
       // Copy output if it was not a view
-      for (int i = 0; i < cur_outputs_.size(); i++) {
+      for (size_t i = 0; i < cur_outputs_.size(); i++) {
         if (outputs[i] == orig_outputs_[i] && outputs[i] != cur_outputs_[i])
           CopySlice<false>(orig_outputs_[i], cur_outputs_[i], output_batch_axis_[i],
                            origin_batch_size_ * s, origin_batch_size_);
@@ -365,26 +360,6 @@ class GraphExecutorDynBatch : public ModuleNode {
       }
     }
   }
-
-  // XXX =================
-  void print(NDArray arr) {
-    auto dlt = arr.operator->();
-
-    auto ptr = static_cast<char*>(dlt->data);
-    ptr += dlt->byte_offset;
-
-    auto shape = arr.Shape();
-    auto size = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<>());
-    auto data = reinterpret_cast<float*>(ptr);
-
-    std::cout << "[";
-    for (int i = 0; i < size; i++) {
-      std::cout << data[i] << " ";
-    }
-    std::cout << "]" << std::endl;
-  }
-
-  // XXX =================
 
   Module origin_;  // just a holder
   TypedPackedFunc<void(int, NDArray)> set_input_zero_copy_;

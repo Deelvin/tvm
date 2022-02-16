@@ -30,10 +30,9 @@ def create(orig_g_mod, config="default"):
     #     dyn_batch_conf = [(i, 0, False) for i in range(orig_g_mod.get_num_inputs())]
     #     dyn_batch_conf += [(i, 0, True) for i in range(orig_g_mod.get_num_outputs())]
 
-    dyn_batch_conf = [(0, 0, False), (0, 0, True), (1, 0, True)]
     dyn_batch_factory = tvm.get_global_func("tvm.graph_executor_dyn_batch.create")
 
-    return DynBatchSlicer(dyn_batch_factory(orig_g_mod.module, dyn_batch_conf))
+    return DynBatchSlicer(dyn_batch_factory(orig_g_mod.module, config))
 
 
 class DynBatchSlicer(object):
