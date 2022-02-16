@@ -34,6 +34,7 @@ parser.add_argument("--model-path", help="path to compiled model", default="__pr
 parser.add_argument("--num-instances", type=int, help="path to compiled model", default=1)
 parser.add_argument("--num-threads", type=int, help="path to compiled model", default=1)
 parser.add_argument("--batch-size", type=int, help="Batch to process with", default=1)
+parser.add_argument("--hyper-threading", type=bool, help="path to compiled model", default=True)
 
 args = parser.parse_args()
 
