@@ -95,7 +95,7 @@ def main():
     if args.model_name.find('resnet') != -1:
         opt_level = 2
     export_name = f"{args.model_name}_b{args.batch_size}"
-    compile_mod(mod, params, output_name=export_name, opt_level)
+    compile_mod(mod, params, output_name=export_name, opt_level=opt_level)
 
 
 if __name__ == "__main__":
