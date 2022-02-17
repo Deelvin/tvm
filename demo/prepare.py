@@ -76,7 +76,7 @@ index 0d054c6..aaac93a 100755
 +export PYTHONPATH=$TVM_HOME/python:${{PYTHONPATH}}
 +export DATA_DIR={2}/recommendation/dlrm/pytorch/tools/fake_criteo/
 +export MODEL_DIR={1}/model
-+export DLRM_DIR={1}
++export DLRM_DIR={1}/dlrm
  source ./run_common.sh
  
  common_opt="--mlperf_conf ../../../mlperf.conf"
