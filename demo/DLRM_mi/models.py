@@ -15,8 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import onnx
-import torch
 import numpy as np
 
 import platform
@@ -32,11 +30,20 @@ def get_so_ext():
     return "dylib" if platform.system() == "Darwin" else "so"
 
 
-CpuInfo = namedtuple("CpuInfo", ["name", "base_freq", "num_cores", "num_sockets", "num_threads", "avx2", "avx512"])
+class CpuInfo:
+    def __init__(self) -> None:
+        self.name = None
+        self.base_freq = None
+        self.num_cores = None
+        self.num_sockets = None
+        self.num_threads = None
+        self.avx2 = None
+        self.avx512 = None
+        self.hyper_threading = None
 
 
 def get_cpu_info():
-    res = CpuInfo
+    res = CpuInfo()
     if platform.system() == "Darwin":
         cpu_info = (subprocess.check_output("sysctl -a", shell=True).strip()).decode()
         spl = cpu_info.split('\n')
@@ -56,13 +63,40 @@ def get_cpu_info():
             if line.startswith('hw.optional.avx512f'):
                 res.avx512 = int(line.split(":", 1)[1])
 
-        return res
-    else:
+        res.hyper_threading = res.num_cores != res.num_threads
+
+    elif platform.system() == "Linux":
         cpu_info = (subprocess.check_output("lscpu", shell=True).strip()).decode()
         spl = cpu_info.split('\n')
         for line in spl:
             if line.startswith('Model name'):
-                res.name = line.split(":", 1)[1]
+                res.name = line.split(":", 1)[1].lstrip()
+            if line.startswith('CPU MHz'):
+                res.base_freq = float(line.split(":", 1)[1].lstrip())
+            if line.startswith('CPU(s)'):
+                res.num_threads = int(line.split(":", 1)[1].lstrip())
+            if line.startswith('Socket(s)'):
+                res.num_sockets = int(line.split(":", 1)[1].lstrip())
+            if line.startswith('Thread(s) per core'):
+                res.hyper_threading = line.split(":", 1)[1].lstrip() == "2"
+            if line.startswith('Flags'):
+                flags = line.split(":", 1)[1].lstrip()
+                flags = flags.split(" ")
+                res.avx2 = "avx2" in flags
+                res.avx512 = "avx512f" in flags
+
+        res.num_cores = res.num_threads / 2 if res.hyper_threading else res.num_threads
+
+    else:
+        res.name = "N/A"
+        res.base_freq = 1
+        res.num_cores = 1
+        res.num_threads = 1
+        res.num_sockets = 1
+        res.avx2 = False
+        res.avx512 = False
+        res.hyper_threading = False
+
     return res
 
 
@@ -73,6 +107,15 @@ def get_host_target():
         return "llvm -mcpu=znver3"
     else:
         return "llvm -mcpu=core-avx2"
+
+def get_host_isa():
+    info = get_cpu_info()
+    if info.avx512:
+        return "avx512"
+    if info.avx2:
+        return "avx2"
+    else:
+        return "x86_64"
 
 
 ###########################
@@ -86,6 +129,7 @@ def load_dlrm(model_path, batch_size):
         "lS_i": (26, batch_size)
     }
 
+    import onnx
     onnx_model = onnx.load(model_path)
     mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
 
@@ -116,10 +160,56 @@ dyn_batch_config_dlrm = [(0, 0, False), (1, 1, False), (2, 1, False), (0, 0, Tru
 ###########################
 
 def load_bert(model_path, batch_size):
-    assert False, "Unimplemented"
+    shape_dict = {
+        "input_ids": (batch_size, 384),
+        "input_mask": (batch_size, 384),
+        "segment_ids": (batch_size, 384),
+    }
+
+    import onnx
+    onnx_model = onnx.load(model_path)
+    mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
+
+    mod = transform.InferType()(mod)
+    mod = transform.DynamicToStatic()(mod)
+
+    return mod, params
 
 
 def inputs_bert(batch_size):
+    ids_in = np.random.randint(0, 100, size=(batch_size, 384)).astype("int64")
+    mask_in = np.random.randint(0, 100, size=(batch_size, 384)).astype("int64")
+    segment_in = np.random.randint(0, 100, size=(batch_size, 384)).astype("int64")
+
+    return {
+        "input_ids": ids_in,
+        "input_mask": mask_in,
+        "segment_ids": segment_in,
+    }
+
+
+###########################
+# BERT large - INT8
+###########################
+
+def load_bert_i8(model_path, batch_size):
+    # shape_dict = {
+    #     "input_ids": (batch_size, 13),
+    #     "attention_mask": (26, batch_size),
+    #     "token_type_ids": (26, batch_size)
+    # }
+
+    # import onnx
+    # onnx_model = onnx.load(model_path)
+    # mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
+
+    # mod = transform.InferType()(mod)
+    # mod = transform.DynamicToStatic()(mod)
+
+    # return mod, params
+    assert False, "Unimplemented"
+
+def inputs_bert_i8(batch_size):
     assert False, "Unimplemented"
 
 
@@ -132,6 +222,7 @@ def load_resnet(model_path, batch_size):
         "input_tensor:0": [batch_size, 3, 224, 224],
     }
 
+    import onnx
     onnx_model = onnx.load(model_path)
     mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
 
@@ -156,6 +247,8 @@ dyn_batch_config_resnet = [(0, 0, False), (0, 0, True), (1, 0, True)]
 def load_resnet_i8(model_path, batch_size):
     shape_list = [("X", [batch_size, 3, 224, 224])]
 
+    import torch
+
     torch_model = torch.jit.load(model_path)
     torch_model.eval()
 
@@ -174,8 +267,18 @@ dyn_batch_config_resnet_i8 = [(0, 0, False), (0, 0, True)]
 
 
 models = {
-    "dlrm": (load_dlrm, inputs_dlrm, dyn_batch_config_dlrm),
-    "bert": (load_bert, inputs_bert, None),
-    "resnet50": (load_resnet, inputs_resnet, dyn_batch_config_resnet),
-    "resnet50_i8": (load_resnet_i8, inputs_resnet_i8, dyn_batch_config_resnet),
+    "dlrm":      (load_dlrm,      3, inputs_dlrm,      dyn_batch_config_dlrm),
+    "bert":      (load_bert,      3, inputs_bert,      None),
+    "bert_i8":   (load_bert_i8,   3, inputs_bert_i8,   None),
+    "resnet":    (load_resnet,    2, inputs_resnet,    dyn_batch_config_resnet),  # opt_level=3 lead to change dense->matmul with wrong shapes. Cannot tune
+    "resnet_i8": (load_resnet_i8, 3, inputs_resnet_i8, dyn_batch_config_resnet),
+}
+
+
+default_model_path = {
+    "resnet": "__models/resnet50_fp32/resnet50_v1.onnx",
+    "resnet_i8": "__models/resnet50_int8/resnet50_INT8bit_quantized.pt",
+    "bert": "__models/bert_fp32/model.onnx",
+    "bert_i8": "__models/bert_int8/bert_large_v1_1_fake_quant.onnx",
+    "dlrm": "__models/dlrm_99_fp32/dlrm_s_pytorch_0505.onnx",
 }
