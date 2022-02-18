@@ -41,16 +41,6 @@
 #include <vector>
 
 #include "../file_utils.h"
-#include <chrono>
-#include <atomic>
-#define USE_LOCAL_PROFILER (1)
-
-#if USE_LOCAL_PROFILER
-#include <sys/types.h>
-#include <unistd.h>
-#endif
-
-using namespace std::chrono;
 
 namespace tvm {
 namespace runtime {
@@ -65,100 +55,11 @@ inline size_t GetDataAlignment(const DLTensor& arr) {
 /*!
  * \brief Run all the operations one by one.
  */
-
-#if USE_LOCAL_PROFILER
-static std::mutex mtx; // just to print correctly
-
-class Guard
-{
-public:
-  Guard(std::vector<std::string>& names) {
-    auto sz = names.size();
-    counters_.resize(sz, 0);
-    countersMin_.resize(sz, std::numeric_limits<size_t>::max());
-    countersMax_.resize(sz, 0);
-    names_ = names;
-  }
-  virtual ~Guard(){
-    printOut();
-  }
-  void printOut() {
-    if (counters_.size() == names_.size()) {
-      float total = 0;
-      if (runs_counter_ > 2) {
-        std::unique_lock<std::mutex> lck (mtx,std::defer_lock);
-        lck.lock();
-        std::cout << "TID = " << gettid() << "\n";
-        for (size_t i = 0; i < counters_.size(); ++i) {
-          if (counters_[i] != 0) {
-            int x = runs_counter_ - 2; // exclude min, max values
-            float val = (counters_[i] - countersMin_[i]- countersMax_[i]) / (float)(x * 1000.);
-            std::cout << names_[i] << "\t" << val << "\n";
-            total += val;
-          }
-        }
-
-        std::cout << "-------------------\n";
-        std::cout << "total : " << total << " us.\n" << std::flush;
-        std::cout << "runs : " << ((int)runs_counter_ - 2) << " times\n" << std::flush;
-        lck.unlock();
-      }
-      // std::cout << "iter : " << total/(float)s_counter << "  us.\n" << std::flush;
-    }
-  }
-  void update(int64_t elapsed, size_t ind) {
-    {
-      counters_[ind] += elapsed;
-      countersMax_[ind] = std::max(countersMax_[ind], elapsed);
-      countersMin_[ind] = std::min(countersMin_[ind], elapsed);
-    }
-
-  }
-  int                      runs_counter_{0};
-  std::vector<int64_t>     counters_;
-  std::vector<int64_t>     countersMin_;
-  std::vector<int64_t>     countersMax_;
-  std::vector<std::string> names_;
-};
-
-thread_local std::unique_ptr<Guard> s_guard;
-
-class LocalTimer
-{
-public:
-  LocalTimer(size_t ind) {
-    ind_ = ind;
-    start = high_resolution_clock::now();
-  }
-  virtual ~LocalTimer() {
-    high_resolution_clock::time_point end = high_resolution_clock::now();
-    auto elapsed = duration_cast<nanoseconds>(end - start).count();
-    if (s_guard)
-      s_guard->update(elapsed, ind_);
-  }
-protected:
-  high_resolution_clock::time_point start;
-  size_t ind_;
-};
-#endif // USE_LOCAL_PROFILER
-
 void GraphExecutor::Run() {
-
-  auto sz = op_execs_.size();
-  for (size_t i = 0; i < sz; ++i) {
-    if (op_execs_[i]) {
-      {
-#if USE_LOCAL_PROFILER
-        LocalTimer timer(i);
-#endif
-        op_execs_[i]();
-      }
-    }
+  // setup the array and requirements.
+  for (size_t i = 0; i < op_execs_.size(); ++i) {
+    if (op_execs_[i]) op_execs_[i]();
   }
-#if USE_LOCAL_PROFILER
-  if (s_guard)
-    s_guard->runs_counter_++; // this is tls object
-#endif
 }
 
 /*!
@@ -170,7 +71,6 @@ void GraphExecutor::Run() {
  * executed on.
  * \param lookup_linked_param_func Linked parameter lookup function. Default is nullptr.
  */
-
 void GraphExecutor::Init(const std::string& graph_json, tvm::runtime::Module module,
                          const std::vector<Device>& devs,
                          const PackedFunc lookup_linked_param_func) {
@@ -196,17 +96,6 @@ void GraphExecutor::Init(const std::string& graph_json, tvm::runtime::Module mod
     std::string& name = nodes_[nid].name;
     output_map_[name] = i;
   }
-#if USE_LOCAL_PROFILER
-  s_guard.reset();
-  if (!s_guard) {
-    auto sz = op_execs_.size();
-    std::vector<std::string> names(nodes_.size());
-    for (size_t i = 0; i < sz; ++i) {
-      names[i] = nodes_[i].name;
-    }
-    s_guard = std::make_unique<Guard>(names);
-  }
-#endif // USE_LOCAL_PROFILER
 }
 /*!
  * \brief Get the input index given the name of input.
