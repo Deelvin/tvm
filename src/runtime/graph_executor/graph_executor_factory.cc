@@ -238,7 +238,6 @@ int set_affinity_action(int task_id, TVMParallelGroupEnv* penv, void* cdata) {
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
   pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-  std::cout << "Pinnigs to " << core_id << std::endl;
   return 0;
 }
 
