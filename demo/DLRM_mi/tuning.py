@@ -20,37 +20,35 @@ import os
 import argparse
 import tvm
 
-from models import models, get_host_target
-from tvm import relay, auto_scheduler
-from tvm.relay.analysis import get_total_mac_number
-from tvm.relay.op.contrib.dnnl import partition_for_dnnl
+from models import models, default_model_path, get_host_isa, get_host_target
+from tvm import auto_scheduler
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--model-path", help="reference to the original model", default="__data/dlrm_onnx/dlrm_s_pytorch_0505.onnx")
-parser.add_argument("--model-name", help="Model name [resnet, dlrm, bert]", default="dlrm")
-parser.add_argument("--tuning-log-file", required=False, help="path to the tuning log", default=None)
-parser.add_argument("--batch-size", type=int, help="optional, batch size for the model", default=100)
+parser.add_argument("--model-name", required=True, help="Model name [resnet, dlrm, bert]",)
+parser.add_argument("--model-path", required=False, help="reference to the original model", default="default")
+parser.add_argument("--batch-size", required=False, type=int, help="optional, batch size for the model", default=1)
 args = parser.parse_args()
 
 
-def tune_mod(mod, params, output_name):
+def tune_mod(mod, params, output_name, opt_level):
     os.makedirs(f"__tuning/{output_name}", exist_ok=True)
     log_file = f"__tuning/{output_name}/{output_name}.log"
 
     target = get_host_target()
 
-    # TODO:  opt_level=2. Because of limitation. opt_level=3 lead to change dense->matmul with wrong shapes.
-    tasks, task_weights = auto_scheduler.extract_tasks(mod, params, target=target, target_host=target, opt_level=2)
+    tasks, task_weights = auto_scheduler.extract_tasks(mod, params, target=target, target_host=target, opt_level=opt_level)
+    # tasks = tasks[5:6]
+    # task_weights = task_weights[5:6]
 
     tuner = auto_scheduler.TaskScheduler(tasks, task_weights)
-    builder = auto_scheduler.LocalBuilder(build_func="default", n_parallel=1, timeout=10)
-    runner = auto_scheduler.LocalRunner(min_repeat_ms=500, timeout=10)
+    builder = auto_scheduler.LocalBuilder(build_func="default", n_parallel=60, timeout=30)
+    runner = auto_scheduler.LocalRunner(min_repeat_ms=300, timeout=30)
 
     tune_option = auto_scheduler.TuningOptions(
         builder=builder,
         runner=runner,
-        num_measure_trials=3000,
-        num_measures_per_round=4,
+        num_measure_trials=60000,
+        num_measures_per_round=64,
         measure_callbacks=[auto_scheduler.RecordToFile(log_file)],
         verbose=2
     )
@@ -59,10 +57,13 @@ def tune_mod(mod, params, output_name):
 
 
 def main():
-    loader, _, _ = models[args.model_name]
-    mod, params = loader(args.model_path, args.batch_size)
+    if args.model_path == "default":
+        args.model_path = default_model_path[args.model_name]
 
-    macs = get_total_mac_number(mod["main"])
+    isa = get_host_isa()
+
+    loader, opt_level, _, _ = models[args.model_name]
+    mod, params = loader(args.model_path, args.batch_size)
 
     print()
     print("===================================")
@@ -70,12 +71,11 @@ def main():
     print(f" Model Path : {args.model_path}")
     print(f" Batch Size : {args.batch_size}")
     print(f" Precision  : {'INT8' if args.model_name.endswith('i8') else 'FP32'}")
-    print(f" MACs       : {macs}")
     print("===================================")
     print()
 
-    export_name = f"{args.model_name}_b{args.batch_size}"
-    tune_mod(mod, params, output_name=export_name)
+    export_name = f"{args.model_name}_b{args.batch_size}_{isa}"
+    tune_mod(mod, params, output_name=export_name, opt_level=opt_level)
 
 
 if __name__ == "__main__":
