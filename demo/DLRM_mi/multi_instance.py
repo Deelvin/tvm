@@ -113,20 +113,13 @@ def runer_queued(init_f, process_f, *, duration_sec=5, num_instance=8):
     return avg_latency, avg_throughput
 
 
-def load_model(model_path):
-    model_json_file = model_path[:-len(get_so_ext())] + "json"
-    model_param_file = model_path[:-len(get_so_ext())] + "npz"
-    model_param_file_common = model_path[:-len(get_so_ext()) - 1] + "_common.npz"
+def get_macs(model_path):
+    model_macs_file = model_path[:-len(get_so_ext()) - 1] + ".macs.txt"
 
-    lib = tvm.runtime.load_module(model_path)
+    with open(model_macs_file, "r") as f:
+        macs = int(f.read())
 
-    with open(model_json_file, "r") as f:
-        json = f.read()
-
-    params = None
-    macs = 0
-
-    json, lib, params, macs
+    return macs
 
 
 def get_batch_size(g_mod):
@@ -210,7 +203,7 @@ def bench_round(num_inst):
             time.sleep(timeDelay)
             g_mod.share_params(main_g_mod, shared_weight_names)
 
-        _, input_gen, dyn_batch_config = models[args.model_name]
+        _, _, input_gen, dyn_batch_config = models[args.model_name]
 
         # If original batch is not equal to requested will use dyn_batch_slicer
         if args.batch_size != get_batch_size(g_mod):
@@ -224,7 +217,7 @@ def bench_round(num_inst):
     def process_f(g_mod):
         g_mod.run()
 
-    avg_latency, avg_throughput = runer_queued(init_f, process_f, duration_sec=240, num_instance=num_inst)
+    avg_latency, avg_throughput = runer_queued(init_f, process_f, duration_sec=30, num_instance=num_inst)
 
     # print(f"NUM_INST :{num_inst}, NUM_THR : {args.num_threads}, BATCH_SIZE : {args.batch_size}")
     # print(f"AVG_LATENCY:{avg_latency:.2f} ms, AVG_THR:{avg_throughput:.2f}")
@@ -235,7 +228,7 @@ def main():
     if args.model_path == "default":
         args.model_path = default_model_path[args.model_name]
 
-    load_model()
+    get_macs(args.model_path)
 
     # for num in range(1, 61):
         # bench_round(num)
