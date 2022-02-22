@@ -72,7 +72,7 @@ def get_host_target():
     if cpu_name.find("AMD") != -1:
         return "llvm -mcpu=znver3"
     else:
-        return "llvm -mcpu=core-avx2"
+        return "llvm -mcpu=skylake-avx512"
 
 
 ###########################

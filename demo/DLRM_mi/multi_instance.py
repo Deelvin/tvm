@@ -21,6 +21,7 @@ import time
 import warnings
 import argparse
 import threading
+import random
 from queue import Queue
 
 import tvm
@@ -170,6 +171,8 @@ def main():
 
         # share weights from instance id==0
         if idx != 0:
+            timeDelay = random.uniform(0, 5)
+            time.sleep(timeDelay)
             g_mod.share_params(main_g_mod, shared_weight_names)
 
         _, input_gen, dyn_batch_config = models[args.model_name]

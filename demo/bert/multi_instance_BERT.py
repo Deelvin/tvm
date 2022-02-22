@@ -22,6 +22,7 @@ import warnings
 import argparse
 import threading
 import sys
+import random
 from queue import Queue
 
 file_path = os.path.realpath(__file__)
@@ -119,8 +120,8 @@ def runer_queued(init_f, process_f, *, duration_sec=5, num_instance=8):
         total_duration += duration
 
     latency = total_duration / total_count * 1000
-    throughput = int(total_count / duration_sec)
-    # print(f"NUM_INST :{num_instance}, AVG_LATENCY:{latency:.2f} ms, AVG_THR:{throughput}")
+    throughput = (total_count / duration_sec)
+    print(f"NUM_INST :{num_instance}, AVG_LATENCY:{latency:.2f} ms, AVG_THR:{throughput}")
 
     return latency, throughput
 
@@ -204,6 +205,8 @@ def main():
 
         # share weights from instance id==0
         if idx != 0:
+            timeDelay = random.uniform(0, 5)
+            time.sleep(timeDelay)
             g_mod.share_params(main_g_mod, shared_weight_names)
 
         # batch = get_batch_size(g_mod)
