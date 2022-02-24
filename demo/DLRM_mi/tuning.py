@@ -40,9 +40,17 @@ def tune_mod(mod, params, output_name, opt_level):
     # tasks = tasks[5:6]
     # task_weights = task_weights[5:6]
 
+    # # XXX
+    # for i, t in enumerate(tasks):
+    #     print(f"=== task #{i} {t.workload_key} ===")
+    #     print(t.compute_dag)
+
+    # exit()
+    # # XXX
+
     tuner = auto_scheduler.TaskScheduler(tasks, task_weights)
     builder = auto_scheduler.LocalBuilder(build_func="default", n_parallel=60, timeout=30)
-    runner = auto_scheduler.LocalRunner(min_repeat_ms=300, timeout=30)
+    runner = auto_scheduler.LocalRunner(repeat=10, min_repeat_ms=300, timeout=30, enable_cpu_cache_flush=True)
 
     tune_option = auto_scheduler.TuningOptions(
         builder=builder,

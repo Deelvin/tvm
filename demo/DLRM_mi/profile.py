@@ -21,9 +21,11 @@ import argparse
 
 import tvm
 from tvm.contrib.debugger import debug_executor
+from models import models
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--model", help="path to compiled model", default="__prebuilt/dlrm_avx512.so")
+parser.add_argument("--model-name", required=True, help="model name")
+parser.add_argument("--model-path", required=False, help="model name", default="default")
 args = parser.parse_args()
 
 
@@ -45,6 +47,13 @@ def load_graph(model_path):
     load_param_dur = time.time() - start_timestamp
     print(f"Load param time : {load_param_dur}")
 
+    _, _, input_gen, _ = models[args.model_name]
+
+    batch = get_batch_size(g_module)
+
+    for key, data in input_gen(batch).items():
+        g_module.set_input(key, data)
+
     return g_module
 
 
@@ -54,18 +63,16 @@ def get_batch_size(g_mod):
 
 
 def main():
-    g_mod = load_graph(args.model)
-    batch = get_batch_size(g_mod)
-    
-    x_in = np.random.randint(0, 100, size=(batch, 13)).astype("float32")
-    ls_i_in = np.random.randint(0, 100, size=(26, batch)).astype("int64")
-    ls_o_in = np.array([range(batch) for _ in range(26)]).astype("int64")
-    
-    g_mod.set_input("input.1", x_in)
-    g_mod.set_input("lS_o", ls_o_in)
-    g_mod.set_input("lS_i", ls_i_in)
-    
-    g_mod.run()
+    g_mod = load_graph(args.model_path)
+
+    set_affinity = tvm._ffi.get_global_func("tvm.set_affinity", allow_missing=True)
+    if set_affinity:
+        set_affinity(0, 60, False)
+        print("Affinity !!!")
+    # g_mod.run()
+
+    score = g_mod.run_individual(500, repeat=1, min_repeat_ms=0)
+    # print(score)
 
 
 if __name__ == "__main__":
