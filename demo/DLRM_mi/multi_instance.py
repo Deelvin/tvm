@@ -222,7 +222,7 @@ def bench_round(num_inst):
     # print(f"NUM_INST :{num_inst}, NUM_THR : {args.num_threads}, BATCH_SIZE : {args.batch_size}")
     # print(f"AVG_LATENCY:{avg_latency:.2f} ms, AVG_THR:{avg_throughput:.2f}")
     # print(f"AGR_LATENCY:{avg_latency / args.batch_size:.2f} ms, AGR_THR:{avg_throughput * args.batch_size:.2f}")
-    print(f"NUM_INST :{num_inst}, AVG_THR:{avg_throughput:.2f}")
+    print(f"CFG:{num_inst}-{args.num_threads}, AVG_LAT:{avg_latency:.2f}, AVG_THR:{avg_throughput:.2f}")
 
 def main():
     if args.model_path == "default":

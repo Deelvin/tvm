@@ -268,7 +268,7 @@ dyn_batch_config_resnet_i8 = [(0, 0, False), (0, 0, True)]
 
 models = {
     "dlrm":      (load_dlrm,      3, inputs_dlrm,      dyn_batch_config_dlrm),
-    "bert":      (load_bert,      3, inputs_bert,      None),
+    "bert":      (load_bert,      4, inputs_bert,      None),
     "bert_i8":   (load_bert_i8,   3, inputs_bert_i8,   None),
     "resnet":    (load_resnet,    2, inputs_resnet,    dyn_batch_config_resnet),  # opt_level=3 lead to change dense->matmul with wrong shapes. Cannot tune
     "resnet_i8": (load_resnet_i8, 3, inputs_resnet_i8, dyn_batch_config_resnet),
