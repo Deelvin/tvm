@@ -34,6 +34,8 @@
 #include <vector>
 #include <sched.h>
 
+#include <pmmintrin.h>
+
 namespace tvm {
 namespace runtime {
 
@@ -260,6 +262,15 @@ TVM_REGISTER_GLOBAL("tvm.set_affinity").set_body([](TVMArgs args, TVMRetValue* r
   affinity_ctx ctx {start_core_id, arena_size, only_even};
   TVMBackendParallelLaunch(set_affinity_action, &ctx, arena_size);
 });
+
+TVM_REGISTER_GLOBAL("tvm.set_daz").set_body([](TVMArgs args, TVMRetValue* rv) {
+  _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+});
+
+TVM_REGISTER_GLOBAL("tvm.set_ftz").set_body([](TVMArgs args, TVMRetValue* rv) {
+  _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+});
+
 
 }  // namespace runtime
 }  // namespace tvm
