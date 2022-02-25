@@ -28,6 +28,7 @@
 #include <tvm/runtime/device_api.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/runtime/c_backend_api.h>
+#include <tvm/ir/expr.h>
 
 #include <iterator>
 #include <vector>
@@ -225,17 +226,10 @@ Module GraphRuntimeFactoryModuleLoadBinary(void* strm) {
 TVM_REGISTER_GLOBAL("runtime.module.loadbinary_GraphRuntimeFactory")
     .set_body_typed(GraphRuntimeFactoryModuleLoadBinary);
 
-
-struct affinity_ctx {
-  int start_core_id_;
-  int arena_size_;
-  bool only_even_;
-};
-
 int set_affinity_action(int task_id, TVMParallelGroupEnv* penv, void* cdata) {
-  const auto* ctx = reinterpret_cast<affinity_ctx*>(cdata);
+  auto idxs = reinterpret_cast<int*>(cdata);
 
-  int core_id = (ctx->start_core_id_ + task_id) * (ctx->only_even_ ? 2 : 1);
+  int core_id = idxs[task_id];
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(core_id, &cpuset);
@@ -243,22 +237,19 @@ int set_affinity_action(int task_id, TVMParallelGroupEnv* penv, void* cdata) {
   return 0;
 }
 
+TVM_REGISTER_GLOBAL("tvm.set_affinity").set_body_typed([](tvm::runtime::Array<ObjectRef> idxs) {
+  std::vector<int> core_idxs;
+  for (auto el : idxs)
+    core_idxs.push_back(el.as<IntImmNode>()->value);
 
-TVM_REGISTER_GLOBAL("tvm.set_affinity").set_body([](TVMArgs args, TVMRetValue* rv) {
-  ICHECK_GE(args.size(), 3);
-  auto start_core_id = args[0].operator int();
-  auto arena_size = args[1].operator int();
-  auto only_even = args[2].operator bool();
-
-  affinity_ctx ctx {start_core_id, arena_size, only_even};
-  TVMBackendParallelLaunch(set_affinity_action, &ctx, arena_size);
+  TVMBackendParallelLaunch(set_affinity_action, core_idxs.data(), core_idxs.size());
 });
 
-TVM_REGISTER_GLOBAL("tvm.set_daz").set_body([](TVMArgs args, TVMRetValue* rv) {
+TVM_REGISTER_GLOBAL("tvm.set_daz").set_body_typed([]() {
   _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
 });
 
-TVM_REGISTER_GLOBAL("tvm.set_ftz").set_body([](TVMArgs args, TVMRetValue* rv) {
+TVM_REGISTER_GLOBAL("tvm.set_ftz").set_body_typed([]() {
   _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
 });
 
