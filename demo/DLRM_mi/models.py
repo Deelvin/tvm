@@ -33,6 +33,7 @@ def get_so_ext():
 class CpuInfo:
     def __init__(self) -> None:
         self.name = None
+        self.family = None
         self.base_freq = None
         self.num_cores = None
         self.num_sockets = None
@@ -71,6 +72,8 @@ def get_cpu_info():
         for line in spl:
             if line.startswith('Model name'):
                 res.name = line.split(":", 1)[1].lstrip()
+            if line.startswith('CPU family'):
+                res.family = int(line.split(":", 1)[1].lstrip())
             if line.startswith('CPU MHz'):
                 res.base_freq = float(line.split(":", 1)[1].lstrip())
             if line.startswith('CPU(s)'):
@@ -89,6 +92,7 @@ def get_cpu_info():
 
     else:
         res.name = "N/A"
+        res.family = 0
         res.base_freq = 1
         res.num_cores = 1
         res.num_threads = 1
@@ -103,10 +107,28 @@ def get_cpu_info():
 def get_host_target():
     info = get_cpu_info()
     cpu_name = info.name
+    family = info.family
+    isa = get_host_isa()
+
     if cpu_name.find("AMD") != -1:
-        return "llvm -mcpu=znver3"
-    else:
-        return "llvm -mcpu=skylake-avx512"
+        assert isa == "avx2", "Unknown AMD CPU ..."
+        # family info from: https://en.wikipedia.org/wiki/List_of_AMD_CPU_microarchitectures
+        if family == 25:
+            return "llvm -mcpu=znver3"
+        elif family == 24:
+            return "llvm -mcpu=znver2"
+        else:
+            assert False, "Unknown AMD CPU ..."
+    elif cpu_name.find("Intel") != -1:
+        if isa == "avx2":
+            return "llvm -mcpu=core-avx2"
+        elif isa == "avx512":
+            return "llvm -mcpu=skylake-avx512"
+        else:
+            assert False, "Unknown Intel CPU ..."
+
+    return "llvm"
+
 
 def get_host_isa():
     info = get_cpu_info()
