@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from audioop import mul
 import numpy as np
 import os
 import time
@@ -34,6 +35,7 @@ parser.add_argument("--model-path", help="path to compiled model", default="__pr
 parser.add_argument("--num-instances", type=int, help="path to compiled model", default=1)
 parser.add_argument("--num-threads", type=int, help="path to compiled model", default=1)
 parser.add_argument("--batch-size", type=int, help="Batch to process with", default=1)
+parser.add_argument("--trial-time", type=int, help="Time of one trial (sec)", default=10)
 args = parser.parse_args()
 
 
@@ -65,7 +67,7 @@ def runer_loop(init_f, process_f, tasks_queue, idx, initialized_barier, res_coun
 
 
 def runer_queued(init_f, process_f, *, duration_sec=5, num_instance=8):
-    tasks = Queue(maxsize=num_instance * 15)
+    tasks = Queue(maxsize=num_instance * 1)
     workers = []
 
     initialized_barier = threading.Barrier(num_instance + 1, timeout=6000)  # 100 min like infinity value
@@ -118,45 +120,95 @@ def get_macs(model_path):
 
     return macs
 
+_set_affinity = tvm._ffi.get_global_func("tvm.set_affinity", allow_missing=True)
+_setup_thr_arena_mutex = threading.Lock()
 
-def get_batch_size(g_mod):
-    in0 = g_mod.get_input(0).numpy()
-    return in0.shape[0]
+def setup_thread_scheme(arena_ids):
+    assert isinstance(arena_ids, list)
 
-main_g_mod = None
-shared_weight_names = None
-
-def bench_round(num_inst):
-    info = get_cpu_info()
-
-    model_path = args.model_path
-    model_json_file = model_path[:-len(get_so_ext())] + "json"
-    model_param_file = model_path[:-len(get_so_ext())] + "npz"
-    model_param_file_common = model_path[:-len(get_so_ext()) - 1] + "_common.npz"
-
-    lib = tvm.runtime.load_module(model_path)
-
-    weights_are_ready = threading.Barrier(num_inst, timeout=6000)  # 10 min like infinity value
-
-    with open(model_json_file, "r") as json_f:
-        json = json_f.read()
-
-    # thread engine preparations
+    _setup_thr_arena_mutex.acquire()
     os.environ["TVM_BIND_THREADS"] = "0"
-    os.environ["TVM_NUM_THREADS"] = str(args.num_threads)
-    os.environ["OMP_NUM_THREADS"] = str(args.num_threads)
+    os.environ["TVM_NUM_THREADS"] = str(len(arena_ids))
+    os.environ["OMP_NUM_THREADS"] = str(len(arena_ids))
 
-    set_affinity = tvm._ffi.get_global_func("tvm.set_affinity", allow_missing=True)
-    if set_affinity is None:
+    if _set_affinity:
+        _set_affinity(arena_ids)
+    else:
         warnings.warn(
             "Looks like your version of TVM doesn't have 'tvm.set_affinity' function. "
             "Thread pinning has a positive effect of final performance. "
             "Please apply patch from __patches/set_affinity.patch"
         )
 
+    _setup_thr_arena_mutex.release()
+
+class AffinityScheme:
+    def __init__(self, scheme):
+        self.scheme_ = scheme
+
+    def __len__(self):
+        return len(self.scheme_)
+
+    def __getitem__(self, idx):
+        return self.scheme_[idx]
+
+    def __str__(self):
+        arena_sizes = [len(indxs) for indxs in self.scheme_]
+        min_arena_size = min(arena_sizes)
+        max_arena_size = max(arena_sizes)
+        return f"{len(self.scheme_)}-{min_arena_size}/{max_arena_size}"
+
+    @staticmethod
+    def unisize_scheme(num_inst, num_thr):
+        arena_sizes = [num_thr] * num_inst
+        return AffinityScheme._scheme(arena_sizes)
+
+    @staticmethod
+    def balanced_scheme(num_inst, total_num_thr=os.cpu_count()):
+        arena_sizes = [total_num_thr // num_inst] * num_inst
+
+        for i in range(total_num_thr % num_inst):
+            arena_sizes[i] += 1
+
+        return AffinityScheme._scheme(arena_sizes)
+
+    @staticmethod
+    def _scheme(arena_sizes):
+        scl = 2 if get_cpu_info().hyper_threading else 1
+        scheme = []
+        arena_start = 0
+        for arena_size in arena_sizes:
+            scheme.append([i * scl for i in range(arena_start, arena_start + arena_size)])
+            arena_start += arena_size
+
+        return AffinityScheme(scheme)
+
+
+def get_batch_size(g_mod):
+    in0 = g_mod.get_input(0).numpy()
+    return in0.shape[0]
+
+
+main_g_mod = None
+shared_weight_names = None
+
+def bench_round(affinity_scheme):
+    model_path = args.model_path
+    model_json_file = model_path[:-len(get_so_ext())] + "json"
+    model_param_file = model_path[:-len(get_so_ext())] + "npz"
+    model_param_file_common = model_path[:-len(get_so_ext()) - 1] + "_common.npz"
+
+    num_inst = len(affinity_scheme)
+
+    lib = tvm.runtime.load_module(model_path)
+
+    with open(model_json_file, "r") as json_f:
+        json = json_f.read()
+
+    weights_are_ready = threading.Barrier(num_inst, timeout=6000)  # 10 min like infinity value
+
     def init_f(idx):
-        if set_affinity is not None:
-            set_affinity(int(idx * args.num_threads), args.num_threads, info.hyper_threading)
+        setup_thread_scheme(affinity_scheme[idx])
 
         global main_g_mod
         global shared_weight_names
@@ -212,12 +264,10 @@ def bench_round(num_inst):
     def process_f(g_mod):
         g_mod.run()
 
-    avg_latency, avg_throughput = runer_queued(init_f, process_f, duration_sec=30, num_instance=num_inst)
+    avg_latency, avg_throughput = runer_queued(init_f, process_f, duration_sec=args.trial_time, num_instance=num_inst)
 
-    # print(f"NUM_INST :{num_inst}, NUM_THR : {args.num_threads}, BATCH_SIZE : {args.batch_size}")
-    # print(f"AVG_LATENCY:{avg_latency:.2f} ms, AVG_THR:{avg_throughput:.2f}")
-    # print(f"AGR_LATENCY:{avg_latency / args.batch_size:.2f} ms, AGR_THR:{avg_throughput * args.batch_size:.2f}")
-    print(f"CFG:{num_inst}-{args.num_threads}, AVG_LAT:{avg_latency:.2f}, AVG_THR:{avg_throughput:.2f}")
+    print(f"CFG:{affinity_scheme}, AVG_LAT:{avg_latency:.2f}, AVG_THR:{avg_throughput:.2f}")
+
 
 def main():
     if args.model_path == "default":
@@ -225,9 +275,29 @@ def main():
 
     get_macs(args.model_path)
 
-    # for num in range(1, 61):
-        # bench_round(num)
-    bench_round(args.num_instances)
+    num_cpu = os.cpu_count()
+    num_cpu = 60
+    unisize = AffinityScheme.unisize_scheme
+    balanced = AffinityScheme.balanced_scheme
+
+    # 1-INST
+    # for num in range(1, num_cpu + 1):
+        # bench_round(unisize(1, num))
+
+    # 1-THR
+    # for num in range(1, num_cpu + 1):
+    #     bench_round(unisize(num, 1))
+
+    # 2-THR
+    # for num in range(1, num_cpu / 2 + 1):
+    #     bench_round(unisize(num, 2))
+
+    # FULL
+    # for num in range(1, num_cpu / 2): 
+    #     bench_round(balanced(num))
+
+    bench_round(unisize(args.num_instances, args.num_threads))
+
 
 if __name__ == "__main__":
     main()
