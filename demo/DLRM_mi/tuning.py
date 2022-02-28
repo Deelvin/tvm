@@ -50,7 +50,8 @@ def tune_mod(mod, params, output_name, opt_level):
 
     tuner = auto_scheduler.TaskScheduler(tasks, task_weights)
     builder = auto_scheduler.LocalBuilder(build_func="default", n_parallel=60, timeout=30)
-    runner = auto_scheduler.LocalRunner(repeat=10, min_repeat_ms=300, timeout=30, enable_cpu_cache_flush=True)
+    # runner = auto_scheduler.LocalRunner(repeat=10, min_repeat_ms=300, timeout=30, enable_cpu_cache_flush=True)
+    runner = auto_scheduler.LocalRunner(number=10, min_repeat_ms=300, timeout=30, enable_cpu_cache_flush=False)
 
     tune_option = auto_scheduler.TuningOptions(
         builder=builder,

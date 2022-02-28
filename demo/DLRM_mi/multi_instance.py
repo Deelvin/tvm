@@ -279,25 +279,24 @@ def main():
     get_macs(args.model_path)
 
     num_cpu = os.cpu_count()
-    num_cpu = 60
     unisize = AffinityScheme.unisize_scheme
     balanced = AffinityScheme.balanced_scheme
 
     # 1-INST
     # for num in range(1, num_cpu + 1):
-        # bench_round(unisize(1, num))
+    #     bench_round(unisize(1, num))
 
     # 1-THR
     # for num in range(1, num_cpu + 1):
     #     bench_round(unisize(num, 1))
 
     # 2-THR
-    # for num in range(1, num_cpu / 2 + 1):
+    # for num in range(1, num_cpu // 2 + 1):
     #     bench_round(unisize(num, 2))
 
     # FULL
-    # for num in range(1, num_cpu / 2): 
-    #     bench_round(balanced(num))
+    # for num in range(1, num_cpu // 2 + 1):
+    #     bench_round(balanced(num, num_cpu))
 
     bench_round(unisize(args.num_instances, args.num_threads))
 
