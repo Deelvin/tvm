@@ -22,7 +22,7 @@ import tvm
 import psutil
 
 from models import models, default_model_path, get_host_isa, get_host_target
-from tvm import auto_scheduler
+from tvm import auto_scheduler, relay
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model-name", required=True, help="Model name [resnet, dlrm, bert]",)
@@ -32,6 +32,22 @@ args = parser.parse_args()
 
 
 def tune_mod(mod, params, output_name, opt_level):
+    desired_layouts = {
+        "nn.conv2d": ["NHWC", "default"],
+        "nn.conv2d_transpose": ["NHWC", "default"],
+        "nn.upsampling": ["NHWC", "default"],
+        "vision.roi_align": ["NHWC", "default"],
+    }
+    seq = tvm.transform.Sequential(
+        [
+            relay.transform.InferType(),
+            relay.transform.ConvertLayout(desired_layouts),
+            relay.transform.EliminateCommonSubexpr(),
+            relay.transform.FoldConstant(),
+        ]
+    )
+    mod = seq(mod)
+
     os.makedirs(f"__tuning/{output_name}", exist_ok=True)
     log_file = f"__tuning/{output_name}/{output_name}.log"
 
