@@ -20,7 +20,7 @@ import tvm
 from tvm import te
 import scipy
 from tvm import relay
-from tvm.relay import transform
+import pytest
 from tvm.relay.testing import run_infer_type
 import tvm.topi.testing
 from tvm.contrib.nvcc import have_fp16
@@ -65,18 +65,16 @@ class TestUnaryOp:
 
     def test_unary_op(self, target, dev, relay_op, ref_func, dtype):
         target = tvm.target.Target(target)
-        if (
-            dtype == "float16"
-            and target.kind.name == "cuda"
-            and not have_fp16(tvm.cuda(0).compute_version)
-        ):
-            pytest.xfail("No float16 support on local cuda device")
-        elif (
-            dtype == "float16"
-            and target.kind.name == "cuda"
-            and not target.attrs.get("supports_float16", False)
-        ):
-            pytest.xfail("No float16 support on vulkan target")
+        if dtype == "float16":
+            if target.kind.name == "cuda":
+                if not have_fp16(tvm.cuda(0).compute_version):
+                    pytest.xfail(
+                        "No float16 support on local cuda device (compute_version != 5.3 and < 6.0)"
+                    )
+            elif target.kind.name == "vulkan" and not target.attrs.get("supports_float16", False):
+                pytest.xfail("No float16 support on vulkan target (supports_float16=False)")
+            else:
+                pytest.xfail(f"No float16 support on {target.kind.name} target")
 
         if target.kind.name == "vulkan" and relay_op in [
             tvm.relay.erf,
@@ -87,8 +85,8 @@ class TestUnaryOp:
 
         shape = (10, 4)
         dtype = dtype
-        tp = relay.TensorType(shape)
-        x = relay.var("x", tp, dtype=dtype)
+        tp = relay.TensorType(shape, dtype=dtype)
+        x = relay.var("x", type_annotation=tp)
         y = relay_op(x)
         # test printer
         assert ("{}(%x)".format(y.op.name)) in y.astext()
@@ -98,12 +96,12 @@ class TestUnaryOp:
 
         if ref_func is not None:
             data = np.random.rand(*shape).astype(dtype)
-            ref_res = ref_func(data)
+            ref_res = ref_func(data).astype(dtype)
             func = relay.Function([x], y)
             # use graph by execuor default for testing, as we need
             # create function explicitly to avoid constant-folding.
             op_res = relay.create_executor("graph", device=dev, target=target).evaluate(func)(data)
-            np.testing.assert_allclose(op_res.numpy(), ref_res, rtol=0.01)
+            np.testing.assert_allclose(op_res.numpy(), ref_res, rtol=1e-5)
 
 
 @tvm.testing.uses_gpu
@@ -343,6 +341,97 @@ def test_concatenate():
             )
             tvm.testing.assert_allclose(op_res2.numpy(), ref_res, rtol=0.01)
 
+
+def do_concat_test(shapes, t_shape, dtype, axis, dev, target):
+    varsToConcat = []
+    inputData = []
+    pos = 0
+    for s in shapes:
+        varsToConcat.append(relay.var("x{}".format(pos), shape=s))
+        inputData.append(np.random.rand(*s).astype(dtype))
+        pos += 1
+    t = relay.var("z", shape=t_shape, dtype=dtype)
+    z = relay.concatenate(varsToConcat, axis=axis)
+    z = relay.add(z, t)
+    params = varsToConcat
+    params.append(t)
+    func = relay.Function(params, z)
+    t_data = np.random.uniform(low=-10, high=10, size=t_shape).astype(dtype)
+    ref_res = np.concatenate((tuple(inputData)), axis=axis) + t_data
+    mod = tvm.IRModule.from_expr(func)
+
+    executor = relay.create_executor("graph", mod=mod, device=dev, target=target)
+    op_res1 = executor.evaluate()(*inputData, t_data)
+
+    tvm.testing.assert_allclose(op_res1.numpy(), ref_res, rtol=0.000001)
+    op_res2 = relay.create_executor("debug", device=dev, target=target).evaluate(func)(
+        *inputData, t_data
+    )
+    tvm.testing.assert_allclose(op_res2.numpy(), ref_res, rtol=0.000001)
+
+
+@tvm.testing.uses_gpu
+def test_concatenate1():
+    for target, dev in tvm.testing.enabled_targets():
+        if target != "llvm":
+            continue
+        np.random.seed(471)
+        maxNumDimensions = 6
+        shape = [4, 32, 16, 1, 31, 20, 21, 8, 28, 7]  # just randomly selected 10 numbers
+        for dtype in ["float32"]:
+            for dimsNum in range(1, maxNumDimensions):
+                np.random.shuffle(shape)
+                for axis in range(0, dimsNum):  # range should be (-dimsNum + 1, dimsNum)
+                    numToConcat = np.random.uniform(low=2, high=10, size=(1)).astype("int64")[0]
+                    shapes = []
+                    # the code below to normalize axes index. For some reasons tvm notifies about error if the axis is negative
+                    normalizedAxis = axis
+                    if axis < 0:
+                        normalizedAxis += dimsNum
+                    finalSize = 0
+                    for i in range(0, numToConcat):
+                        shp = tuple(shape[:dimsNum])
+                        finalSize += shape[(i % len(shape))]
+                        shapes.append(
+                            shp[:normalizedAxis]
+                            + tuple([shape[(i % len(shape))]])
+                            + shp[normalizedAxis + 1 :]
+                        )
+                    t_shape = shp[:normalizedAxis] + tuple([finalSize]) + shp[normalizedAxis + 1 :]
+                    do_concat_test(shapes, t_shape, dtype, axis, dev, target)
+
+
+@tvm.testing.uses_gpu
+def test_concatenate2():
+    # test to cover cases (1, .. , x, 1, .. , 1)
+    for target, dev in tvm.testing.enabled_targets():
+        if target != "llvm":
+            continue
+        np.random.seed(13)
+        maxNumDimensions = 6
+        shape = [8, 3, 25, 33, 12, 29, 5, 11, 29, 11]  # just randomly selected 10 numbers
+        ind = 0
+        for dtype in ["float32"]:
+            for dimsNum in range(2, maxNumDimensions):
+                np.random.shuffle(shape)
+                for axis in range(-dimsNum + 1, dimsNum):  # range should be (-dimsNum + 1, dimsNum)
+                    numToConcat = np.random.uniform(low=2, high=10, size=(1)).astype("int64")[0]
+                    shapes = []
+                    # the code below to normalize axes index. For some reasons tvm notifies about error if the axis is negative
+                    normalizedAxis = axis
+                    if axis < 0:
+                        normalizedAxis += dimsNum
+                    finalSize = 0
+                    for i in range(0, numToConcat):
+                        axisVal = [1] * dimsNum
+                        axisVal[axis] = shape[(ind % len(shape))]
+                        ind += 1
+                        finalSize += axisVal[axis]
+                        shapes.append(tuple(axisVal))
+                    temp = [1] * dimsNum
+                    temp[axis] = finalSize
+                    t_shape = tuple(temp)
+                    do_concat_test(shapes, t_shape, dtype, axis, dev, target)
 
 def do_concat_test(shapes, t_shape, dtype, axis, dev, target):
     varsToConcat = []
@@ -728,21 +817,39 @@ def test_bitserial_dense():
     assert yy.checked_type == relay.TensorType((m, 32), "int16")
 
 
+@pytest.mark.skip("Requires cascadelake")
+def test_dense_vnni():
+    data_shape = (32, 96)
+    weight_shape = (128, 96)
+
+    data = relay.var("data", shape=data_shape, dtype="uint8")
+    weight = relay.var("weight", shape=weight_shape, dtype="int8")
+    bias = relay.var("bias", shape=(weight_shape[0],), dtype="int32")
+    dense = relay.nn.dense(data, weight, out_dtype="int32")
+    out = relay.nn.bias_add(dense, bias)
+    mod = tvm.IRModule.from_expr(out)
+
+    target = "llvm -mcpu=cascadelake"
+    with tvm.transform.PassContext(opt_level=3):
+        lib = relay.build(mod, target=target)
+
+    dev = tvm.device(target, 0)
+    runtime = tvm.contrib.graph_executor.GraphModule(lib["default"](dev))
+
+    a = np.random.uniform(1, 10, size=data_shape).astype("uint8")
+    b = np.random.uniform(1, 10, size=weight_shape).astype("int8")
+    c = np.random.uniform(1, 10, size=(weight_shape[0],)).astype("int32")
+
+    runtime.set_input("data", a)
+    runtime.set_input("weight", b)
+    runtime.set_input("bias", c)
+    runtime.run()
+
+    out = runtime.get_output(0).numpy()
+    ref = np.dot(a, b.transpose()) + c
+
+    np.testing.assert_equal(out, ref)
+
+
 if __name__ == "__main__":
-    test_concatenate()
-    test_concatenate1()  # test for cpu
-    test_concatenate2()
-    test_bias_add()
-    test_bias_add_type_failure()
-    # test_unary_op()
-    test_binary_op()
-    test_expand_dims_infer_type()
-    test_expand_dims()
-    test_softmax()
-    test_log_softmax()
-    test_dropout()
-    test_batch_norm()
-    test_matmul()
-    test_dense()
-    test_bitserial_dense()
-    test_dense_dtype()
+    pytest.main([__file__])

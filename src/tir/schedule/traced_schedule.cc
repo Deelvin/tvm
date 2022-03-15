@@ -29,7 +29,7 @@ Schedule Schedule::Traced(IRModule mod, support::LinearCongruentialEngine::TRand
   n->symbol_table_ = {};
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   n->trace_ = Trace();
-  support::LinearCongruentialEngine(&n->rand_state_).Seed(seed);
+  n->Seed(seed);
   return Schedule(std::move(n));
 }
 
@@ -71,6 +71,20 @@ Array<ExprRV> TracedScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n
                                       /*outputs=*/{results.begin(), results.end()}),
                  /*decision=*/decision);
   return results;
+}
+
+LoopRV TracedScheduleNode::SampleComputeLocation(const BlockRV& block_rv,
+                                                 Optional<Integer> decision) {
+  LoopRV result = CreateRV<LoopRV>(tir::SampleComputeLocation(this->state_, &this->rand_state_,
+                                                              this->GetSRef(block_rv), &decision));
+
+  static const InstructionKind& kind = InstructionKind::Get("SampleComputeLocation");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,  //
+                                      /*inputs=*/{block_rv},
+                                      /*attrs=*/{},
+                                      /*outputs=*/{result}),
+                 /*decision=*/decision);
+  return result;
 }
 
 /******** Schedule: Get blocks & loops ********/
@@ -341,6 +355,37 @@ void TracedScheduleNode::SetScope(const BlockRV& block_rv, int buffer_index,
 }
 
 /******** Schedule: Blockize & Tensorize ********/
+
+BlockRV TracedScheduleNode::Blockize(const LoopRV& loop_rv) {
+  BlockRV new_block = ConcreteScheduleNode::Blockize(loop_rv);
+  static const InstructionKind& kind = InstructionKind::Get("Blockize");
+  trace_->Append(/*inst=*/Instruction(
+      /*kind=*/kind,
+      /*inputs=*/{loop_rv},
+      /*attrs=*/{},
+      /*outputs=*/{new_block}));
+  return new_block;
+}
+
+void TracedScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin) {
+  ConcreteScheduleNode::Tensorize(loop_rv, intrin);
+  static const InstructionKind& kind = InstructionKind::Get("Tensorize");
+  trace_->Append(/*inst=*/Instruction(
+      /*kind=*/kind,
+      /*inputs=*/{loop_rv},
+      /*attrs=*/{intrin},
+      /*outputs=*/{}));
+}
+
+void TracedScheduleNode::Tensorize(const BlockRV& block_rv, const String& intrin) {
+  ConcreteScheduleNode::Tensorize(block_rv, intrin);
+  static const InstructionKind& kind = InstructionKind::Get("Tensorize");
+  trace_->Append(/*inst=*/Instruction(
+      /*kind=*/kind,
+      /*inputs=*/{block_rv},
+      /*attrs=*/{intrin},
+      /*outputs=*/{}));
+}
 
 /******** Schedule: Annotation ********/
 

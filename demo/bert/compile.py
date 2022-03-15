@@ -120,10 +120,10 @@ def compile(mod, params, output_name):
     start_timestamp = time.time()
     if args.tuning_log_file is not None:
         with auto_scheduler.ApplyHistoryBest(args.tuning_log_file):
-            with tvm.transform.PassContext(opt_level=3, config={"relay.backend.use_auto_scheduler": True}):
+            with tvm.transform.PassContext(opt_level=4, config={"relay.backend.use_auto_scheduler": True}):
                 json, lib, param = relay.build(mod, target=target, params=params)
     else:
-        with tvm.transform.PassContext(opt_level=3, config={}):    
+        with tvm.transform.PassContext(opt_level=4, config={}):
             json, lib, param = relay.build(mod, target=target, params=params)
     
     compile_dur = time.time() - start_timestamp

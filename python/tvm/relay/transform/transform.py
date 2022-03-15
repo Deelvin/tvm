@@ -99,6 +99,25 @@ def InferType():
     return _ffi_api.InferType()
 
 
+def InferTypeLocal(expr):
+    """Infer the type of a single expr, reusing type information to do so.
+
+    This populates the checked_type field in expr. We assume existing type information
+    in the graph is correct!
+
+    Parameters
+    ----------
+    expr: relay.Expr
+        The expression we want to know the type of
+
+    Returns
+    -------
+    type: relay.Type
+        The type of the expression
+    """
+    return _ffi_api.InferTypeLocal(expr)
+
+
 def FoldScaleAxis():
     """Fold the scaling of axis into weights of conv2d/dense. This pass will
     invoke both forward and backward scale folding.
@@ -1184,6 +1203,14 @@ def PlanDevices(config):
     return _ffi_api.PlanDevices(config)
 
 
+def ManifestLifetimes():
+    """
+    Manifest the lifetimes of variables after allocations have been manifested, by inserting kill
+    operations once variables become dead.
+    """
+    return _ffi_api.ManifestLifetimes()
+
+
 def FoldExplicitPadding():
     """
     FoldExplicitPadding finds explict padding before an op that can support
@@ -1211,7 +1238,7 @@ def AnnotateSpans():
     return _ffi_api.AnnotateSpans()
 
 
-def FakeQuantizationToInteger(hard_fail=False):
+def FakeQuantizationToInteger(hard_fail=False, use_qat=False):
     # pylint: disable=anomalous-backslash-in-string
     """
     Find regions of the graph of the form
@@ -1240,12 +1267,30 @@ def FakeQuantizationToInteger(hard_fail=False):
         If true, raise an error.
         If false, skip rewriting the subgraph.
 
+    use_qat : boolean
+        To perform an additional QAT pass - convert enabled operations with dequantized inputs.
+        Example: in the graph above op2 is not registered with the FakeQuantizationToInteger
+        attribute, op1 operation can still be converted. Converted pattern below:
+
+        .. code-block:: text
+
+            x    w
+            |    |
+            \\   /
+              op1
+              |
+              dq
+              |
+              op2
+              |
+              q
+
     Returns
     -------
     ret : tvm.transform.Pass
-        The registered SimplifyExpr pass.
+        The registered FakeQuantizationToInteger pass.
     """
-    return _ffi_api.FakeQuantizationToInteger(hard_fail)
+    return _ffi_api.FakeQuantizationToInteger(hard_fail, use_qat)
 
 
 def ToMixedPrecision(mixed_precision_type="float16", missing_op_mode=1):

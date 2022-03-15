@@ -141,7 +141,7 @@ class ScheduleBuilder : public backend::MemoizedExprTranslator<Array<te::Tensor>
     if (candidate_name.size() > kMaxFuncNameLength) {
       std::stringstream truncated_name;
       truncated_name << candidate_name.substr(0, kMaxFuncNameLength);
-      truncated_name << "_" << std::hash<std::string>{}(candidate_name) << "_";
+      truncated_name << "_" << std::hex << std::hash<std::string>{}(candidate_name) << "_";
       candidate_name = truncated_name.str();
     }
 
@@ -184,7 +184,7 @@ class ScheduleBuilder : public backend::MemoizedExprTranslator<Array<te::Tensor>
         prim_func = (*f_create_func)(tensor_outs);
         Optional<ObjectRef> opt_mod_or_base_func =
             (*f_meta_schedule)(prim_fn_var->name_hint, IRModule({{prim_fn_var, relay_func}}),
-                               Array<IRModule>{IRModule({{prim_fn_var, prim_func}})});
+                               target_, Array<IRModule>{IRModule({{prim_fn_var, prim_func}})});
         if (const auto* result = opt_mod_or_base_func.as<tir::PrimFuncNode>()) {
           prim_func = GetRef<tir::PrimFunc>(result);
         } else {
@@ -192,7 +192,7 @@ class ScheduleBuilder : public backend::MemoizedExprTranslator<Array<te::Tensor>
         }
       }
 
-      // Use TOPI schdule if user specificed, or the function has no auto_scheduler schedule.
+      // Use TOPI schedule if user specificed, or the function has no auto_scheduler schedule.
       if (!schedule.defined() && !prim_func.defined()) {
         ICHECK(anchor_implementation_.defined());
         schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);
@@ -412,7 +412,7 @@ class MakeShapeFunc : public backend::MemoizedExprTranslator<Array<te::Tensor>> 
     if (candidate_name.size() > kMaxFuncNameLength) {
       std::stringstream truncated_name;
       truncated_name << candidate_name.substr(0, kMaxFuncNameLength);
-      truncated_name << "_" << std::hash<std::string>{}(candidate_name) << "_";
+      truncated_name << "_" << std::hex << std::hash<std::string>{}(candidate_name) << "_";
       candidate_name = truncated_name.str();
     }
 

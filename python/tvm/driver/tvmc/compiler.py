@@ -29,11 +29,14 @@ from tvm.driver.tvmc.registry import generate_registry_args, reconstruct_registr
 from tvm.target import Target
 from tvm.relay.backend import Executor, Runtime
 
-from . import common, composite_target, frontends
+from . import composite_target, frontends
 from .model import TVMCModel, TVMCPackage
 from .main import register_parser
-from .target import generate_target_args, reconstruct_target_args
-
+from .target import target_from_cli, generate_target_args, reconstruct_target_args
+from .pass_config import parse_configs
+from .pass_list import parse_pass_list_str
+from .transform import convert_graph_layout
+from .shape_parser import parse_shape_string
 
 # pylint: disable=invalid-name
 logger = logging.getLogger("TVMC")
@@ -92,7 +95,8 @@ def add_compile_parser(subparsers, _):
         metavar=("name=value"),
         help="configurations to be used at compile time. This option can be provided multiple "
         "times, each one to set one configuration value, "
-        "e.g. '--pass-config relay.backend.use_auto_scheduler=0'.",
+        "e.g. '--pass-config relay.backend.use_auto_scheduler=0', "
+        "e.g. '--pass-config tir.add_lower_pass=opt_level1,pass1,opt_level2,pass2'.",
     )
 
     generate_target_args(parser)
@@ -124,13 +128,13 @@ def add_compile_parser(subparsers, _):
         "--input-shapes",
         help="specify non-generic shapes for model to run, format is "
         '"input_name:[dim1,dim2,...,dimn] input_name2:[dim1,dim2]".',
-        type=common.parse_shape_string,
+        type=parse_shape_string,
         default=None,
     )
     parser.add_argument(
         "--disabled-pass",
         help="disable specific passes, comma-separated list of pass names.",
-        type=common.parse_pass_list_str,
+        type=parse_pass_list_str,
         default="",
     )
 
@@ -249,12 +253,12 @@ def compile_model(
     """
     mod, params = tvmc_model.mod, tvmc_model.params
 
-    config = common.parse_configs(pass_context_configs)
+    config = parse_configs(pass_context_configs)
 
     if desired_layout:
-        mod = common.convert_graph_layout(mod, desired_layout)
+        mod = convert_graph_layout(mod, desired_layout)
 
-    tvm_target, extra_targets = common.target_from_cli(target, additional_target_options)
+    tvm_target, extra_targets = target_from_cli(target, additional_target_options)
     tvm_target, target_host = Target.check_and_update_host_consist(tvm_target, target_host)
 
     for codegen_from_cli in extra_targets:

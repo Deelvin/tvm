@@ -114,7 +114,6 @@ tasks, task_weights = auto_scheduler.extract_tasks(
     mod["main"], params, target=target, target_host=target_host, include_simple_tasks = False)
 
 run_tuning(tasks, task_weights, log_file)
-
 with auto_scheduler.ApplyHistoryBest(log_file):
     with tvm.transform.PassContext(opt_level=3, config={"relay.backend.use_auto_scheduler": True
                                                         }):

@@ -43,7 +43,7 @@ from tvm.relay import transform
 # from tvm.contrib import graph_executor
 # from params_demo import *
 
-ITERATIONS = 10000
+ITERATIONS = 20000
 BATCH_SIZE = 1
 MODEL_SUFF = 'model'
 CONV_SUFF = 'converted'
@@ -141,7 +141,7 @@ mod = doPreprocess(mod)
 del onnx_model
 
 tasks, task_weights = auto_scheduler.extract_tasks(
-    mod["main"], params, target=target, target_host=target_host, include_simple_tasks = False)
+    mod["main"], params, target=target, target_host=target_host, include_simple_tasks = False, opt_level=4)
 
 run_tuning(tasks, task_weights, log_file)
 

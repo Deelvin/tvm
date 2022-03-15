@@ -167,5 +167,38 @@ def schedule_concatenate_cpu(outs):
     return s
 
 
+def schedule_concatenate_cpu(outs):
+    """X86 schedule for concatenate op.
+
+    Parameters
+    ----------
+    outs: Array of Tensor
+          The computation graph description of injective in the format
+          of an array of tensors.
+
+    Returns
+    -------
+    sch: Schedule
+        The computation schedule for the op.
+    """
+
+    outs = [outs] if isinstance(outs, te.tensor.Tensor) else outs
+    s = te.create_schedule([x.op for x in outs])
+    scheduled_ops = []
+
+    def traverse(op):
+        if tag.is_injective(op.tag):
+            schedule_injective_from_existing(s, op.output(0))
+        for tensor in op.input_tensors:
+            if tensor.op.input_tensors and tensor.op not in scheduled_ops:
+                traverse(tensor.op)
+        scheduled_ops.append(op)
+
+    for out in outs:
+        traverse(out.op)
+
+    return s
+
+
 schedule_elemwise = schedule_injective
 schedule_broadcast = schedule_injective

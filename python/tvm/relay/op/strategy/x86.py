@@ -360,24 +360,41 @@ def conv3d_strategy_cpu(attrs, inputs, out_type, target):
 def conv1d_strategy_cpu(attrs, inputs, out_type, target):
     """conv1d x86 strategy"""
     layout = attrs.data_layout
+    groups = attrs.groups
     dilation = get_const_tuple(attrs.dilation)
     if dilation[0] < 1:
         raise ValueError("dilation should be a positive value")
     strategy = _op.OpStrategy()
-    if layout == "NCW":
-        strategy.add_implementation(
-            wrap_compute_conv1d(topi.nn.conv1d_ncw),
-            wrap_topi_schedule(topi.x86.schedule_conv1d_ncw),
-            name="conv1d_ncw.x86",
-        )
-    elif layout == "NWC":
-        strategy.add_implementation(
-            wrap_compute_conv1d(topi.nn.conv1d_nwc),
-            wrap_topi_schedule(topi.x86.schedule_conv1d_nwc),
-            name="conv1d_nwc.x86",
-        )
+    if groups == 1:
+        if layout == "NCW":
+            strategy.add_implementation(
+                wrap_compute_conv1d(topi.nn.conv1d_ncw),
+                wrap_topi_schedule(topi.x86.schedule_conv1d_ncw),
+                name="conv1d_ncw.x86",
+            )
+        elif layout == "NWC":
+            strategy.add_implementation(
+                wrap_compute_conv1d(topi.nn.conv1d_nwc),
+                wrap_topi_schedule(topi.x86.schedule_conv1d_nwc),
+                name="conv1d_nwc.x86",
+            )
+        else:
+            raise ValueError("Unsupported conv1d layout {}".format(layout))
     else:
-        raise ValueError("Unsupported conv1d layout {}".format(layout))
+        if layout == "NCW":
+            strategy.add_implementation(
+                wrap_compute_group_conv1d(topi.nn.group_conv1d_ncw),
+                wrap_topi_schedule(topi.x86.schedule_group_conv1d_ncw),
+                name="group_conv1d_ncw.x86",
+            )
+        elif layout == "NWC":
+            strategy.add_implementation(
+                wrap_compute_group_conv1d(topi.nn.group_conv1d_nwc),
+                wrap_topi_schedule(topi.x86.schedule_group_conv1d_nwc),
+                name="group_conv1d_nwc.x86",
+            )
+        else:
+            raise ValueError("Unsupported conv1d layout {}".format(layout))
     return strategy
 
 
@@ -513,11 +530,27 @@ def dense_strategy_cpu(attrs, inputs, out_type, target):
 def dense_pack_strategy_cpu(attrs, inputs, out_type, target):
     """dense_pack x86 strategy"""
     strategy = _op.OpStrategy()
-    strategy.add_implementation(
-        wrap_compute_dense(topi.x86.dense_pack),
-        wrap_topi_schedule(topi.x86.schedule_dense_pack),
-        name="dense_pack.x86",
-    )
+
+    if (
+        inputs[0].dtype == "uint8"
+        and inputs[1].dtype == "int8"
+        and out_type.dtype == "int32"
+        and attrs["weight_layout"] == "NC16n4c"
+    ):
+        strategy.add_implementation(
+            wrap_compute_dense(topi.x86.dense_vnni),
+            wrap_topi_schedule(topi.x86.schedule_dense_vnni),
+            name="dense_vnni.x86",
+            plevel=12,
+        )
+    else:
+        strategy.add_implementation(
+            wrap_compute_dense(topi.x86.dense_pack),
+            wrap_topi_schedule(topi.x86.schedule_dense_pack),
+            name="dense_pack.x86",
+            plevel=10,
+        )
+
     return strategy
 
 

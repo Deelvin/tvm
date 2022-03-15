@@ -23,9 +23,9 @@ import tvm
 from tvm.contrib import graph_executor
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--model", help="path to compiled model", default="__prebuilt/dlrm_avx512.so")
+parser.add_argument("--model-name", required=False, help="model name")
+parser.add_argument("--model-path", required=False, help="model name")
 args = parser.parse_args()
-
 
 def load_graph(model_path):
     model_json_file = model_path[:-2] + "json"

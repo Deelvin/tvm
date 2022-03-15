@@ -16,83 +16,110 @@
 # under the License.
 
 import numpy as np
-import onnx
 import os
-import platform
 import time
 import argparse
-
 import tvm
-from tvm.relay.analysis import get_total_mac_number
+
+from models import get_host_isa, get_host_target, get_so_ext, models, default_model_path
 from tvm import relay, auto_scheduler
-from tvm.relay import transform
-
-
-target = "llvm -mcpu=skylake-avx512"
+from tvm.relay.analysis import get_total_mac_number
+from tvm.relay.op.contrib.dnnl import partition_for_dnnl
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--onnx-model", help="reference to the onnx DLRM model", default="__data/dlrm_onnx/dlrm_s_pytorch_0505.onnx")
-parser.add_argument("--tuning-log-file", required=False, help="path to the tuning log", default=None)
-parser.add_argument("--output-name", required=False, help="name of compiled model", )
-parser.add_argument("--batch-size", type=int, help="optional, batch size for the model", default=100)
+parser.add_argument("--model-name", required=True, help="Model name [resnet, dlrm, bert]")
+parser.add_argument("--model-path", required=False, help="path to the original model", default="default")
+parser.add_argument("--tuning-log-file", required=False, help="path to the tuning log", default="default")
+parser.add_argument("--batch-size", required=False, type=int, help="optional, batch size for the model", default=1)
+parser.add_argument("--with-dnnl", required=False, help="name of compiled model", default=0)
 args = parser.parse_args()
 
 
-def load_onnx(model_path, batch_size=128):
-    shape_dict = {
-        "input.1": (batch_size, 13),
-        "lS_o": (26, batch_size),
-        "lS_i": (26, batch_size)
-    }
+def compile_mod(mod, params, output_name, opt_level):
+    target = get_host_target()
+    so_ext = get_so_ext()
 
-    onnx_model = onnx.load(model_path)
-    mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
-    
-    mod = transform.InferType()(mod)
-    mod = transform.DynamicToStatic()(mod)
+    os.makedirs(f"__prebuilt/{output_name}", exist_ok=True)
+
+    export_lib_path = f"__prebuilt/{output_name}/{output_name}.{so_ext}"
+    export_json_path = f"__prebuilt/{output_name}/{output_name}.json"
+    export_param_path = f"__prebuilt/{output_name}/{output_name}.npz"
+    export_macs_path = f"__prebuilt/{output_name}/{output_name}.macs.txt"
 
     macs = get_total_mac_number(mod["main"])
-    print(f"total MACs for batch {batch_size} : {macs}")
 
-    return mod, params
+    if args.with_dnnl:
+        mod = partition_for_dnnl(mod)
+    desired_layouts = {
+        "nn.conv2d": ["NHWC", "default"],
+        "nn.conv2d_transpose": ["NHWC", "default"],
+        "nn.upsampling": ["NHWC", "default"],
+        "vision.roi_align": ["NHWC", "default"],
+    }
 
-
-def compile(mod, params, output_name):
-    so_ext = "dylib" if platform.system() == "Darwin" else "so"
-    export_lib_path = f"__prebuilt/{output_name}.{so_ext}"
-    export_json_path = f"__prebuilt/{output_name}.json"
-    export_param_path = f"__prebuilt/{output_name}.npz"
-
-    start_timestamp = time.time()
-    if args.tuning_log_file is not None:
+    if args.tuning_log_file is not None and os.path.exists(args.tuning_log_file):
         with auto_scheduler.ApplyHistoryBest(args.tuning_log_file):
-            with tvm.transform.PassContext(opt_level=3, config={"relay.backend.use_auto_scheduler": True}):
-                json, lib, param = relay.build(mod, target=target, params=params)
+            with tvm.transform.PassContext(opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True, "relay.FuseOps.max_depth": 30}):
+              seq = tvm.transform.Sequential(
+                    [
+                        relay.transform.InferType(),
+                        relay.transform.ConvertLayout(desired_layouts),
+                        relay.transform.EliminateCommonSubexpr(),
+                        relay.transform.FoldConstant(),
+                    ]
+                )
+              irmod = seq(mod)
+              f_lib = relay.build(irmod, target=target, params=params)
     else:
-        with tvm.transform.PassContext(opt_level=3, config={}):    
-            json, lib, param = relay.build(mod, target=target, params=params)
-    
-    compile_dur = time.time() - start_timestamp
-    print(f"Compilation time : {compile_dur}")
+        with tvm.transform.PassContext(opt_level=opt_level, config={}):
+            f_lib = relay.build(mod, target=target, params=params)
 
-    lib.export_library(export_lib_path)
+    g_json = f_lib.get_graph_json()
+    g_lib = f_lib.get_lib()
+    g_params = f_lib.get_params()
+
+    g_lib.export_library(export_lib_path)
 
     with open(export_json_path, "w") as fp:
-        fp.write(json)
+        fp.write(g_json)
 
-    start_timestamp = time.time()
-    param_map = {key:val.asnumpy() for key, val in param.items()}
+    with open(export_macs_path, "w") as fp:
+        fp.write(str(macs))
+
+    # filter = ["p0", "p2", "p4", "p33", "p35", "p37", "p39", "p41"]
+    # param_map = {key: val.asnumpy() for key, val in g_params.items() if key in filter}
+    param_map = {key: val.asnumpy() for key, val in g_params.items()}
     np.savez(export_param_path, **param_map)
-
-    param_dump_dur = time.time() - start_timestamp
-    print(f"Param dump time : {param_dump_dur}")
 
 
 def main():
-    os.makedirs("__prebuilt", exist_ok=True)
+    isa = get_host_isa()
+    target = get_host_target()
 
-    mod, params = load_onnx(model_path=args.onnx_model, batch_size=args.batch_size)
-    compile(mod, params, output_name=f"{args.output_name}_b{args.batch_size}")
+    if args.tuning_log_file == "default":
+        args.tuning_log_file = f"__data/common.{isa}.tune"
+
+    if args.model_path == "default":
+        args.model_path = default_model_path[args.model_name]
+
+    print()
+    print("=================================================")
+    print(f" Model Name : {args.model_name}")
+    print(f" Model Path : {args.model_path}")
+    print(f" Batch Size : {args.batch_size}")
+    print(f" Precision  : {'INT8' if args.model_name.endswith('i8') else 'FP32'}")
+    print("=================================================")
+    print(f" Compiler : {target}")
+    print(f" ISA      : {isa}")
+    print(f" Tuning   : {args.tuning_log_file}")
+    print("=================================================")
+    print()
+
+    loader, opt_level, _, _ = models[args.model_name]
+    mod, params = loader(args.model_path, args.batch_size)
+
+    export_name = f"{args.model_name}_b{args.batch_size}_{isa}"
+    compile_mod(mod, params, output_name=export_name, opt_level=opt_level)
 
 
 if __name__ == "__main__":

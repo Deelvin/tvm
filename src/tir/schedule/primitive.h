@@ -30,12 +30,22 @@ namespace tir {
 /******** Schedule: Sampling ********/
 /*!
  * \brief Sample a random integer from a given range.
+ * \param rand_state The pointer to schedule's random state.
  * \param min_inclusive The minimum value of the range, inclusive.
  * \param max_exclusive The maximum value of the range, exclusive.
  * \return The random integer sampled in the given range.
  */
 TVM_DLL int32_t SampleInt(support::LinearCongruentialEngine::TRandState* rand_state,
                           int32_t min_inclusive, int32_t max_exclusive);
+/*!
+ * \brief Sample k random integers from given range without replacement, i.e, no duplication.
+ * \param rand_state The pointer to schedule's random state
+ * \param n The range is defined as 0 to n-1.
+ * \param k The total number of samples.
+ * \return The randomly selected samples from the n candidates.
+ */
+std::vector<int32_t> SampleWithoutReplacement(
+    support::LinearCongruentialEngine::TRandState* rand_state, int32_t n, int32_t k);
 /*!
  * \brief Sample once category from candidates according to the probability weights.
  * \param rand_state The pointer to schedule's random state
@@ -47,6 +57,14 @@ TVM_DLL int32_t SampleInt(support::LinearCongruentialEngine::TRandState* rand_st
 TVM_DLL int64_t SampleCategorical(support::LinearCongruentialEngine::TRandState* rand_state,
                                   const Array<Integer>& candidates, const Array<FloatImm>& probs,
                                   Optional<Integer>* decision);
+/*!
+ * \brief Create a sampling function that does multinomial sampling.
+ * \param rand_state The random state.
+ * \param weights The weights for multinomial sampling.
+ * \return The multinomial sampling function.
+ */
+TVM_DLL std::function<int32_t()> MakeMultinomialSampler(
+    support::LinearCongruentialEngine::TRandState* rand_state, const std::vector<double>& weights);
 /*!
  * \brief Sample the factors to perfect tile a specific loop
  * \param rand_state The random state
@@ -81,6 +99,17 @@ TVM_DLL std::vector<int64_t> SamplePerfectTile(
     support::LinearCongruentialEngine::TRandState* rand_state,  //
     const tir::StmtSRef& loop_sref, int32_t n_split, int32_t max_innermost_factor,
     Optional<Array<Integer>>* decision);
+/*!
+ * \brief Sample a compute-at location of the given block
+ * \param self The schedule state
+ * \param rand_state The random state
+ * \param block_sref The sref of the block whose compute-at location is to be sampled
+ * \param decision The sampling decision
+ * \return The sampled loop where the input block is to be computed at
+ */
+TVM_DLL tir::StmtSRef SampleComputeLocation(
+    tir::ScheduleState self, support::LinearCongruentialEngine::TRandState* rand_state,
+    const tir::StmtSRef& block_sref, Optional<Integer>* decision);
 
 /******** Schedule: Get blocks & loops ********/
 /*!
@@ -350,6 +379,24 @@ TVM_DLL void SetScope(ScheduleState self, const StmtSRef& block_sref, int buffer
                       const String& storage_scope);
 
 /******** Schedule: Blockize & Tensorize ********/
+
+/*!
+ * \brief Convert the subtree rooted at a specific loop into a block.
+ * \param self The state of the schedule
+ * \param loop_sref The root of the subtree
+ * \return The new block
+ */
+TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref);
+
+/*!
+ * \brief Tensorize the computation enclosed by loop with the tensor intrinsic.
+ * \param self The state of the schedule
+ * \param block_or_loop_sref The block or loop to be tensorized.
+ * \param intrin The tensor intrinsic.
+ */
+TVM_DLL void Tensorize(ScheduleState self, const StmtSRef& block_or_loop_sref,
+                       const TensorIntrin& intrin);
+
 /******** Schedule: Annotation ********/
 /*!
  * \brief Annotate a block/loop with a key value pair

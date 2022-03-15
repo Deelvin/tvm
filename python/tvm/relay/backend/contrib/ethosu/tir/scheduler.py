@@ -17,6 +17,7 @@
 # pylint: disable=invalid-name, unused-argument
 """Scheduling for Arm(R) Ethos(TM)-U NPU."""
 import tvm
+from tvm.contrib.ethosu.cascader import Propagator
 
 
 def schedule(cached_func, const_dict, cascader=None):
@@ -135,7 +136,10 @@ def copy_constants():
             if tensor not in planned:
                 planned.add(tensor)
                 if isinstance(tensor.op, tvm.te.PlaceholderOp) and tensor != lut:
-                    index = list(cached_func.inputs).index(tensor)
+                    # Find index of input using 'same_as' check to prevent equality
+                    # ambiguity when encountering a scalar.
+                    is_same = [var.same_as(tensor) for var in cached_func.inputs]
+                    index = is_same.index(True)
                     if index in const_dict:
                         sch.cache_read(tensor, "global", [reader])
 
@@ -203,7 +207,7 @@ def schedule_pragmas(sch):
         if "op" in [attr for attr, val in stage.op.attrs.items()]:
             stage.pragma(ax, "op", stage.op.attrs["op"])
             for attr, val in stage.op.attrs.items():
-                if attr not in ("op", "lut"):
+                if attr not in ("op", "lut") and not isinstance(val, Propagator):
                     stage.pragma(ax, str(attr), val)
 
     for stage in sch.stages:
@@ -300,7 +304,8 @@ class Convolution2DCompute:
         convert_to_nhcwb16 = write.op.input_tensors[0]
         conv2d = convert_to_nhcwb16.op.input_tensors[0]
         pad = conv2d.op.input_tensors[0]
-        convert_to_nhwc = pad.op.input_tensors[0]
+        upscale = pad.op.input_tensors[0]
+        convert_to_nhwc = upscale.op.input_tensors[0]
         read = convert_to_nhwc.op.input_tensors[0]
         return cls(read, convert_to_nhwc, pad, conv2d, convert_to_nhcwb16, write)
 

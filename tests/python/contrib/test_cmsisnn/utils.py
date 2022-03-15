@@ -54,6 +54,29 @@ def count_num_calls(mod):
     return counter.count
 
 
+def assert_partitioned_function(orig_mod, cmsisnn_mod):
+    attrs = [
+        cmsisnn_mod[var.name_hint].attrs
+        for var in cmsisnn_mod.get_global_vars()
+        if cmsisnn_mod[var.name_hint].attrs
+    ]
+    assert any(attrs), "At least one function with external attributes was expected."
+
+    compilers = [
+        key == "Compiler" and value == "cmsis-nn" for attr in attrs for key, value in attr.items()
+    ]
+    assert any(compilers), "Module does not contain function for cmsisnn target."
+
+    assert count_num_calls(orig_mod) == count_num_calls(
+        cmsisnn_mod
+    ), "Number of calls changed during partitioning"
+
+
+def assert_no_external_function(mod):
+    attrs = [mod[var.name_hint].attrs for var in mod.get_global_vars() if mod[var.name_hint].attrs]
+    assert not any(attrs), "No function should have an external attribute."
+
+
 def get_range_for_dtype_str(dtype):
     """
     Produces the min,max for a give data type.
@@ -92,14 +115,16 @@ def get_same_padding(in_shape, kernel, dilation, stride):
     This is TFLu's "SAME" padding case.
     """
     dilated_kernel_h = dilation[0] * (kernel[0] - 1) + 1
-    dilated_kernel_w = dilation[1] * (kernel[1] - 1) + 1
     out = int(math.ceil(float(in_shape[0]) / float(stride[0])))
     pad = max(0, (out - 1) * stride[0] + dilated_kernel_h - in_shape[0])
-    pad_top, pad_bottom = (pad, 0)
+    pad_top = pad // 2
+    pad_bottom = pad - pad_top
 
+    dilated_kernel_w = dilation[1] * (kernel[1] - 1) + 1
     out = int(math.ceil(float(in_shape[1]) / float(stride[1])))
     pad = max(0, (out - 1) * stride[1] + dilated_kernel_w - in_shape[1])
-    pad_left, pad_right = (pad, 0)
+    pad_left = pad // 2
+    pad_right = pad - pad_left
     return [pad_top, pad_left, pad_bottom, pad_right]
 
 

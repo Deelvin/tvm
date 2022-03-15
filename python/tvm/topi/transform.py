@@ -361,7 +361,64 @@ def concatenate(a_tuple, axis=0):
     -------
     ret : tvm.te.Tensor
     """
-    return cpp.concatenate(a_tuple, axis)
+    if len(a_tuple[0].shape) == 2 and axis == 1:
+        # it works a bit faster
+        return concatenate_2d(a_tuple)
+
+    def gen_ir(data_bufs, in_outers_tensor, out_buf, inner, outer):
+        ib = tvm.tir.ir_builder.create()
+        data_bufs1 = [ib.buffer_ptr(data_buf) for data_buf in data_bufs]
+        out_buf    = ib.buffer_ptr(out_buf)
+        outers     = ib.buffer_ptr(in_outers_tensor)
+        with ib.for_range(0, inner, name="inn", kind="parallel") as inn:
+            pos = inn * outer
+            for i in range(len(a_tuple)):
+                sz = outers[i]
+                offset = inn * sz
+                with ib.for_range(0, sz, name="j") as j:
+                    out_buf[pos + j] = data_bufs1[i][offset + j]
+                pos += sz
+        return ib.get()
+
+    concat_axis_sizes = [int(t.shape[axis]) for t in a_tuple]
+    join_size = int(np.sum(concat_axis_sizes))
+    in_outers = [int(np.prod(i.shape[axis:])) for i in a_tuple]
+    dtype = a_tuple[0].dtype
+    out_shape = a_tuple[0].shape[:axis] + [join_size] + a_tuple[0].shape[axis+1:]
+    inner = get_const_int(int(np.prod(out_shape[:axis])))
+    outer = get_const_int(int(np.prod(out_shape[axis:])))
+    in_outers_tensor = const_vector(in_outers)
+    return te.extern(
+        [out_shape],
+        list(a_tuple) + [in_outers_tensor],
+        lambda ins, outs: gen_ir(ins, ins[-1], outs[0] , inner, outer),
+        dtype=dtype,
+        name="concat",
+    )
+
+
+def schedule_concat(outs):
+    outs = [outs] if isinstance(outs, te.tensor.Tensor) else outs
+    s = te.create_schedule([x.op for x in outs])
+    scheduled_ops = []
+
+    from tvm.topi import tag
+    from tvm.topi.generic.injective import schedule_injective_from_existing
+
+    def traverse(op):
+        if tag.is_injective(op.tag):
+            schedule_injective_from_existing(s, op.output(0))
+        for tensor in op.input_tensors:
+            if tensor.op.input_tensors and tensor.op not in scheduled_ops:
+                traverse(tensor.op)
+        scheduled_ops.append(op)
+
+    for out in outs:
+        traverse(out.op)
+
+    return s
+
+
 
 
 def stack(a, axis):
@@ -968,3 +1025,33 @@ def invert_permutation(data):
         r_ind = data[ind]
         result[r_ind] = ind
     return result
+
+
+def sliding_window(data, axis, window_shape, strides):
+    """Slide a window over the data tensor.
+
+    Parameters
+    ----------
+    data : relay.Expr
+        The input data to the operator.
+
+    axis : int
+        What axis the window begins sliding over. Window will be slid over
+        this axis and all following axes. The axis value determines the window
+        shape (and thus, the number of strides): window shape and strides must
+        both be of length `data.ndim-axis`.
+
+    window_shape : List[int]
+        The window shape to form over the input. Window shape must be of length
+        `data.ndim-axis`.
+
+    strides : List[int]
+        How to stride the window along each dimension. Strides must be of length
+        `data.ndim-axis`.
+
+    Returns
+    -------
+    result : relay.Expr
+        The resulting tensor.
+    """
+    return cpp.sliding_window(data, axis, window_shape, strides)

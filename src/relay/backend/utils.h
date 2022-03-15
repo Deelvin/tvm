@@ -33,6 +33,7 @@
 #include <tvm/target/codegen.h>
 #include <tvm/target/virtual_device.h>
 #include <tvm/te/operation.h>
+#include <tvm/tir/usmp/utils.h>
 
 #include <string>
 #include <typeinfo>
@@ -52,6 +53,60 @@ class TECompiler;
 
 namespace backend {
 using Pass = tvm::transform::Pass;
+
+/*!
+ * \brief Structure that can be optionally used by the executor codegen
+ */
+class ExecutorCodegenMetadataNode : public Object {
+ public:
+  /*! \brief input information for the main function */
+  Array<tir::Var> inputs;
+  /*! \brief output information for the main function */
+  Array<String> outputs;
+  /*! \brief pool information for the main function */
+  Array<tir::Var> pools;
+  /*! \brief device contexts information for the main function */
+  Array<String> devices;
+  /*! \brief the executor to be used to run the model */
+  String executor = runtime::kTvmExecutorGraph;
+  /*! \brief The external API (packed or c) in use */
+  String interface_api;
+  /*! \brief The internal API (packed or unpacked) in use */
+  bool unpacked_api;
+  /*! \brief the input var names that correspond to pool_inputs */
+  Optional<Map<tir::Var, tir::usmp::AllocatedPoolInfo>> pool_inputs;
+
+  String mod_name = "";
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("inputs", &inputs);
+    v->Visit("pools", &pools);
+    v->Visit("outputs", &outputs);
+    v->Visit("devices", &devices);
+    v->Visit("executor", &executor);
+    v->Visit("unpacked_api", &unpacked_api);
+    v->Visit("pool_inputs", &pool_inputs);
+  }
+
+  static constexpr const char* _type_key = "MetadataObj";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ExecutorCodegenMetadataNode, Object);
+};
+
+/*!
+ * \brief Managed reference to ExecutorCodegenMetadataNode.
+ */
+class ExecutorCodegenMetadata : public ObjectRef {
+ public:
+  TVM_DLL ExecutorCodegenMetadata(Array<tir::Var> inputs, Array<tir::Var> pools,
+                                  Array<String> devices, Array<String> outputs, String executor,
+                                  String mod_name, String interface_api = "packed",
+                                  bool unpacked_api = false,
+                                  Map<tir::Var, tir::usmp::AllocatedPoolInfo> pool_inputs =
+                                      Map<tir::Var, tir::usmp::AllocatedPoolInfo>());
+
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ExecutorCodegenMetadata, ObjectRef,
+                                        ExecutorCodegenMetadataNode);
+};
 
 /*!
  * \brief The static storage information for each Tensor in the result of a Relay expression
@@ -147,7 +202,7 @@ struct LoweredOutput {
   Array<tvm::runtime::Module> external_mods;
   Map<String, FunctionInfo> function_metadata;
   std::unordered_map<std::string, std::pair<int, const tvm::runtime::NDArray>> params;
-  runtime::Metadata metadata;
+  ExecutorCodegenMetadata metadata;
 };
 
 /*!
@@ -389,7 +444,6 @@ inline bool IsOp(const CallNode* call, const std::string& op_name) {
  * "nn.relu"}
  * \return A CallNode corresponding to the root op, whose name is expected_op_names[0]
  */
-
 inline const CallNode* GetRootCall(const CallNode* current_call, int depth,
                                    const std::vector<std::string>& expected_op_names) {
   ICHECK(current_call && depth >= 0 && static_cast<size_t>(depth) < expected_op_names.size() &&
@@ -403,6 +457,24 @@ inline const CallNode* GetRootCall(const CallNode* current_call, int depth,
 
   const auto* next_call = current_call->args[0].as<CallNode>();
   return GetRootCall(next_call, depth - 1, expected_op_names);
+}
+
+/*!
+ * \brief Retrieve the "root" op nested inside a fused call, such as conv2d in relu(add(conv2d))
+ * Unlike the previous definition, it does not verify operator names of intermediate nodes. Instead,
+ * it recursively visit child nodes until it finds a call node with the given op_name.
+ * \param call A Relay call node.
+ * \param op_name The name of an op to look for, such as ""nn.conv2d".
+ * \return A CallNode corresponding to the root op with the given op_name
+ */
+inline const CallNode* GetRootCall(const CallNode* current_call, const std::string& op_name) {
+  if (current_call == nullptr) return nullptr;
+  if (IsOp(current_call, op_name)) return current_call;
+
+  ICHECK_GT(current_call->args.size(), 0);
+
+  const auto* next_call = current_call->args[0].as<CallNode>();
+  return GetRootCall(next_call, op_name);
 }
 
 /*!
