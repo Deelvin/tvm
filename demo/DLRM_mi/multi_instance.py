@@ -24,6 +24,7 @@ import argparse
 import threading
 import random
 from queue import Queue
+from tvm.runtime.vm import VirtualMachine
 
 import tvm
 from tvm.contrib import graph_executor, dyn_batch_slicer
@@ -175,7 +176,8 @@ class AffinityScheme:
 
     @staticmethod
     def _scheme(arena_sizes):
-        scl = 2 if get_cpu_info().hyper_threading else 1
+        # setup for google cloud
+        scl = 1 # 2 if get_cpu_info().hyper_threading else 1
         scheme = []
         arena_start = 0
         for arena_size in arena_sizes:
@@ -196,16 +198,28 @@ shared_weight_names = None
 def bench_round(affinity_scheme):
     model_path = args.model_path
     model_json_file = model_path[:-len(get_so_ext())] + "json"
-    model_param_file = model_path[:-len(get_so_ext())] + "npz"
-    model_param_file_common = model_path[:-len(get_so_ext()) - 1] + "_common.npz"
+    use_vm = False
+    if os.path.isfile(model_json_file):
+        model_param_file = model_path[:-len(get_so_ext())] + "npz"
+        model_param_file_common = model_path[:-len(get_so_ext()) - 1] + "_common.npz"
+    else:
+        use_vm = True
+        head, _ = os.path.split(model_path)
+        model_param_file = os.path.join(head, "vm_exec_code.ro")
+        model_param_file_common = os.path.join(head, "consts")
 
     num_inst = len(affinity_scheme)
 
     lib = tvm.runtime.load_module(model_path)
 
-    with open(model_json_file, "r") as json_f:
-        json = json_f.read()
 
+    json = None
+    code = None
+    if not use_vm:
+        with open(model_json_file, "r") as json_f:
+            json = json_f.read()
+    else:
+        code = bytearray(open(model_param_file, "rb").read())
     weights_are_ready = threading.Barrier(num_inst, timeout=6000)  # 10 min like infinity value
 
     def init_f(idx):
@@ -213,16 +227,20 @@ def bench_round(affinity_scheme):
 
         global main_g_mod
         global shared_weight_names
-        g_mod = graph_executor.create(json, lib, tvm.cpu())
-
+        if not use_vm:
+            g_mod = graph_executor.create(json, lib, tvm.cpu())
+        else:
+            g_mod = tvm.runtime.vm.Executable.load_exec(code, lib)
         if idx == 0:
             if main_g_mod is None:
                 start_timestamp = time.time()
 
                 print("Loading params...")
-                params = np.load(model_param_file)
-                g_mod.set_input(**params)
-
+                if not use_vm:
+                    params = np.load(model_param_file)
+                    g_mod.set_input(**params)
+                else:
+                     g_mod.load_late_bound_consts(model_param_file_common)
                 params_names = {}
                 for param_name in params:
                     params_names[param_name] = tvm.nd.empty([1])  # stub tensors
@@ -261,7 +279,8 @@ def bench_round(affinity_scheme):
 
         for key, data in input_gen(args.batch_size).items():
             g_mod.set_input(key, data)
-
+        for i in range(10):
+            g_mod.run()
         return g_mod
 
     def process_f(g_mod):

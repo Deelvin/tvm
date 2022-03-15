@@ -50,11 +50,26 @@ def compile_mod(mod, params, output_name, opt_level):
 
     if args.with_dnnl:
         mod = partition_for_dnnl(mod)
+    desired_layouts = {
+        "nn.conv2d": ["NHWC", "default"],
+        "nn.conv2d_transpose": ["NHWC", "default"],
+        "nn.upsampling": ["NHWC", "default"],
+        "vision.roi_align": ["NHWC", "default"],
+    }
 
     if args.tuning_log_file is not None and os.path.exists(args.tuning_log_file):
         with auto_scheduler.ApplyHistoryBest(args.tuning_log_file):
-            with tvm.transform.PassContext(opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True}):
-                f_lib = relay.build(mod, target=target, params=params)
+            with tvm.transform.PassContext(opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True, "relay.FuseOps.max_depth": 30}):
+              seq = tvm.transform.Sequential(
+                    [
+                        relay.transform.InferType(),
+                        relay.transform.ConvertLayout(desired_layouts),
+                        relay.transform.EliminateCommonSubexpr(),
+                        relay.transform.FoldConstant(),
+                    ]
+                )
+              irmod = seq(mod)
+              f_lib = relay.build(irmod, target=target, params=params)
     else:
         with tvm.transform.PassContext(opt_level=opt_level, config={}):
             f_lib = relay.build(mod, target=target, params=params)

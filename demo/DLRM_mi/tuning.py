@@ -19,6 +19,7 @@ import numpy as np
 import os
 import argparse
 import tvm
+import psutil
 
 from models import models, default_model_path, get_host_isa, get_host_target
 from tvm import auto_scheduler
@@ -49,14 +50,14 @@ def tune_mod(mod, params, output_name, opt_level):
     # # XXX
 
     tuner = auto_scheduler.TaskScheduler(tasks, task_weights)
-    builder = auto_scheduler.LocalBuilder(build_func="default", n_parallel=60, timeout=30)
+    builder = auto_scheduler.LocalBuilder(build_func="default", timeout=30)
     # runner = auto_scheduler.LocalRunner(repeat=10, min_repeat_ms=300, timeout=30, enable_cpu_cache_flush=True)
-    runner = auto_scheduler.LocalRunner(number=10, min_repeat_ms=300, timeout=30, enable_cpu_cache_flush=False)
+    runner = auto_scheduler.LocalRunner(number=5, min_repeat_ms=200, timeout=30, enable_cpu_cache_flush=False)
 
     tune_option = auto_scheduler.TuningOptions(
         builder=builder,
         runner=runner,
-        num_measure_trials=60000,
+        num_measure_trials=25000,
         num_measures_per_round=64,
         measure_callbacks=[auto_scheduler.RecordToFile(log_file)],
         verbose=2
