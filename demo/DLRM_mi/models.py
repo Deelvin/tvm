@@ -115,7 +115,7 @@ def get_host_target():
         # family info from: https://en.wikipedia.org/wiki/List_of_AMD_CPU_microarchitectures
         if family == 25:
             return "llvm -mcpu=znver3"
-        elif family == 24:
+        elif family in [23, 24]:
             return "llvm -mcpu=znver2"
         else:
             assert False, "Unknown AMD CPU ..."
