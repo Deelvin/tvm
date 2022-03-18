@@ -71,12 +71,10 @@ def runer_loop(init_f, process_f, tasks_queue, idx, initialized_barier, res_coun
 def runer_queued(init_f, process_f, *, duration_sec=5, num_instance=8):
     tasks = Queue(maxsize=num_instance * 1)
     workers = []
-
     initialized_barier = threading.Barrier(num_instance + 1, timeout=6000)  # 100 min like infinity value
 
     res_count = [0] * num_instance
     res_time = [0.0] * num_instance
-
     # start worker loops in sub threads
     for idx in range(num_instance):
         worker = threading.Thread(target=runer_loop,
@@ -215,19 +213,20 @@ def bench_round(affinity_scheme):
 
     json = None
     code = None
+    weights_are_ready = threading.Barrier(num_inst, timeout=6000)  # 10 min like infinity value
     if not use_vm:
         with open(model_json_file, "r") as json_f:
             json = json_f.read()
-        weights_are_ready = threading.Barrier(num_inst, timeout=6000)  # 10 min like infinity value
     else:
         code = bytearray(open(model_param_file, "rb").read())
-    
+
 
     def init_f(idx):
         setup_thread_scheme(affinity_scheme[idx])
 
         global main_g_mod
         global shared_weight_names
+        _, _, input_gen, dyn_batch_config = models[args.model_name]
         if not use_vm:
             g_mod = graph_executor.create(json, lib, tvm.cpu())
             if idx == 0:
@@ -259,17 +258,17 @@ def bench_round(affinity_scheme):
                     shared_weight_names = tvm.runtime.save_param_dict(params_names)
                 else:
                     g_mod.share_params(main_g_mod, shared_weight_names)
-                weights_are_ready.wait()
         else:
             mod = tvm.runtime.vm.Executable.load_exec(code, lib)
             mod.load_late_bound_consts(model_param_file_common)
             g_mod = VirtualMachine(mod, tvm.cpu())
-
+            inpt = input_gen(args.batch_size)
+            g_mod.invoke("main", **inpt)
         # share weights from instance id==0
-        _, _, input_gen, dyn_batch_config = models[args.model_name]
+        weights_are_ready.wait()
         if not use_vm and idx != 0:
-            timeDelay = random.uniform(0, 5)
-            time.sleep(timeDelay)
+            # timeDelay = random.uniform(0, 5)
+            # time.sleep(timeDelay)
             g_mod.share_params(main_g_mod, shared_weight_names)
 
 
@@ -279,15 +278,8 @@ def bench_round(affinity_scheme):
 
             for key, data in input_gen(args.batch_size).items():
                 g_mod.set_input(key, data)
-        if not use_vm:
-            for i in range(10):
-                g_mod.run()
-        else:
-            inpt = input_gen(args.batch_size)
-            # print(inpt)
-            # exit(0)
-            for i in range(10):
-                g_mod.invoke("main", **inpt)
+        for i in range(3):
+            g_mod.run()
         return g_mod
 
     def process_f(g_mod):
