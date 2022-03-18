@@ -71,12 +71,10 @@ def runer_loop(init_f, process_f, tasks_queue, idx, initialized_barier, res_coun
 def runer_queued(init_f, process_f, *, duration_sec=5, num_instance=8):
     tasks = Queue(maxsize=num_instance * 1)
     workers = []
-
     initialized_barier = threading.Barrier(num_instance + 1, timeout=6000)  # 100 min like infinity value
 
     res_count = [0] * num_instance
     res_time = [0.0] * num_instance
-
     # start worker loops in sub threads
     for idx in range(num_instance):
         worker = threading.Thread(target=runer_loop,
@@ -215,71 +213,72 @@ def bench_round(affinity_scheme):
 
     json = None
     code = None
+    weights_are_ready = threading.Barrier(num_inst, timeout=6000)  # 10 min like infinity value
     if not use_vm:
         with open(model_json_file, "r") as json_f:
             json = json_f.read()
     else:
         code = bytearray(open(model_param_file, "rb").read())
-    weights_are_ready = threading.Barrier(num_inst, timeout=6000)  # 10 min like infinity value
+
 
     def init_f(idx):
         setup_thread_scheme(affinity_scheme[idx])
 
         global main_g_mod
         global shared_weight_names
+        _, _, input_gen, dyn_batch_config = models[args.model_name]
         if not use_vm:
             g_mod = graph_executor.create(json, lib, tvm.cpu())
-        else:
-            g_mod = tvm.runtime.vm.Executable.load_exec(code, lib)
-        if idx == 0:
-            if main_g_mod is None:
-                start_timestamp = time.time()
+            if idx == 0:
+                if main_g_mod is None:
+                    start_timestamp = time.time()
 
-                print("Loading params...")
-                if not use_vm:
-                    params = np.load(model_param_file)
-                    g_mod.set_input(**params)
+                    print("Loading params...")
+                    if not use_vm:
+                        params = np.load(model_param_file)
+                        g_mod.set_input(**params)
+                    params_names = {}
+                    for param_name in params:
+                        params_names[param_name] = tvm.nd.empty([1])  # stub tensors
+
+                    if os.path.exists(model_param_file_common):
+                        print("detect common npz")
+                        com_params = np.load(model_param_file_common)
+                        filter = ["p0", "p2", "p4", "p33", "p35", "p37", "p39", "p41"]
+                        for key in com_params:
+                            if key in filter:
+                                continue
+                            g_mod.set_input(key, com_params[key])
+                            params_names[key] = tvm.nd.empty([1])
+
+                    load_param_dur = time.time() - start_timestamp
+                    print(f"Load param time : {load_param_dur}")
+
+                    main_g_mod = g_mod
+                    shared_weight_names = tvm.runtime.save_param_dict(params_names)
                 else:
-                     g_mod.load_late_bound_consts(model_param_file_common)
-                params_names = {}
-                for param_name in params:
-                    params_names[param_name] = tvm.nd.empty([1])  # stub tensors
-
-                if os.path.exists(model_param_file_common):
-                    print("detect common npz")
-                    com_params = np.load(model_param_file_common)
-                    filter = ["p0", "p2", "p4", "p33", "p35", "p37", "p39", "p41"]
-                    for key in com_params:
-                        if key in filter:
-                            continue
-                        g_mod.set_input(key, com_params[key])
-                        params_names[key] = tvm.nd.empty([1])
-
-                load_param_dur = time.time() - start_timestamp
-                print(f"Load param time : {load_param_dur}")
-
-                main_g_mod = g_mod
-                shared_weight_names = tvm.runtime.save_param_dict(params_names)
-            else:
-                g_mod.share_params(main_g_mod, shared_weight_names)
-
-        weights_are_ready.wait()
-
+                    g_mod.share_params(main_g_mod, shared_weight_names)
+        else:
+            mod = tvm.runtime.vm.Executable.load_exec(code, lib)
+            mod.load_late_bound_consts(model_param_file_common)
+            g_mod = VirtualMachine(mod, tvm.cpu())
+            inpt = input_gen(args.batch_size)
+            g_mod.invoke("main", **inpt)
         # share weights from instance id==0
-        if idx != 0:
-            timeDelay = random.uniform(0, 5)
-            time.sleep(timeDelay)
+        weights_are_ready.wait()
+        if not use_vm and idx != 0:
+            # timeDelay = random.uniform(0, 5)
+            # time.sleep(timeDelay)
             g_mod.share_params(main_g_mod, shared_weight_names)
 
-        _, _, input_gen, dyn_batch_config = models[args.model_name]
 
-        # If original batch is not equal to requested will use dyn_batch_slicer
-        if args.batch_size != get_batch_size(g_mod):
-            g_mod = dyn_batch_slicer.create(g_mod, config=dyn_batch_config)
+            # If original batch is not equal to requested will use dyn_batch_slicer
+            if args.batch_size != get_batch_size(g_mod):
+                g_mod = dyn_batch_slicer.create(g_mod, config=dyn_batch_config)
 
-        for key, data in input_gen(args.batch_size).items():
-            g_mod.set_input(key, data)
-        for i in range(10):
+            for key, data in input_gen(args.batch_size).items():
+                g_mod.set_input(key, data)
+        for i in range(3):
             g_mod.run()
         return g_mod
 
@@ -295,7 +294,7 @@ def main():
     if args.model_path == "default":
         args.model_path = default_model_path[args.model_name]
 
-    get_macs(args.model_path)
+    # get_macs(args.model_path)
 
     num_cpu = os.cpu_count()
     unisize = AffinityScheme.unisize_scheme
