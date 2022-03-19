@@ -32,21 +32,21 @@ args = parser.parse_args()
 
 
 def tune_mod(mod, params, output_name, opt_level):
-    desired_layouts = {
-        "nn.conv2d": ["NHWC", "default"],
-        "nn.conv2d_transpose": ["NHWC", "default"],
-        "nn.upsampling": ["NHWC", "default"],
-        "vision.roi_align": ["NHWC", "default"],
-    }
-    seq = tvm.transform.Sequential(
-        [
-            relay.transform.InferType(),
-            relay.transform.ConvertLayout(desired_layouts),
-            relay.transform.EliminateCommonSubexpr(),
-            relay.transform.FoldConstant(),
-        ]
-    )
-    mod = seq(mod)
+    # desired_layouts = {
+    #     "nn.conv2d": ["NHWC", "default"],
+    #     "nn.conv2d_transpose": ["NHWC", "default"],
+    #     "nn.upsampling": ["NHWC", "default"],
+    #     "vision.roi_align": ["NHWC", "default"],
+    # }
+    # seq = tvm.transform.Sequential(
+    #     [
+    #         relay.transform.InferType(),
+    #         relay.transform.ConvertLayout(desired_layouts),
+    #         relay.transform.EliminateCommonSubexpr(),
+    #         relay.transform.FoldConstant(),
+    #     ]
+    # )
+    # mod = seq(mod)
 
     os.makedirs(f"__tuning/{output_name}", exist_ok=True)
     log_file = f"__tuning/{output_name}/{output_name}.log"
@@ -68,12 +68,12 @@ def tune_mod(mod, params, output_name, opt_level):
     tuner = auto_scheduler.TaskScheduler(tasks, task_weights)
     builder = auto_scheduler.LocalBuilder(build_func="default", timeout=30)
     # runner = auto_scheduler.LocalRunner(repeat=10, min_repeat_ms=300, timeout=30, enable_cpu_cache_flush=True)
-    runner = auto_scheduler.LocalRunner(number=5, min_repeat_ms=200, timeout=30, enable_cpu_cache_flush=False)
+    runner = auto_scheduler.LocalRunner(number=3, min_repeat_ms=200, timeout=30, enable_cpu_cache_flush=False)
 
     tune_option = auto_scheduler.TuningOptions(
         builder=builder,
         runner=runner,
-        num_measure_trials=25000,
+        num_measure_trials=20000,
         num_measures_per_round=64,
         measure_callbacks=[auto_scheduler.RecordToFile(log_file)],
         verbose=2
