@@ -511,7 +511,7 @@ class QATRewriter : public MixedModeMutator {
  protected:
   Expr Rewrite_(const CallNode* pre, const Expr& post) override {
     if (const CallNode* call_node = post.as<CallNode>()) {
-      const Op op = Downcast<Op>(call_node->op);
+      // const Op op = Downcast<Op>(call_node->op); // ICE
       if (is_op_enabled_for_optional_fq2i(call_node)) {
         QATSubgraphExtractor extractor;
         ExprSet subgraph = extractor.GetSubgraph(post);

@@ -1293,6 +1293,10 @@ def FakeQuantizationToInteger(hard_fail=False, use_qat=False):
     return _ffi_api.FakeQuantizationToInteger(hard_fail, use_qat)
 
 
+def FlattenAtrousConv(tf=True):
+    return _ffi_api.FlattenAtrousConv(tf)
+
+
 def ToMixedPrecision(mixed_precision_type="float16", missing_op_mode=1):
     """
     Automatic mixed precision rewriter. Rewrite an FP32 relay graph into a version
