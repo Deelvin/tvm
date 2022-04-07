@@ -90,7 +90,7 @@ def compile_mod(mod, params, output_name, opt_level):
     # param_map = {key: val.asnumpy() for key, val in g_params.items() if key in filter}
     param_map = {key: val.asnumpy() for key, val in g_params.items()}
     np.savez(export_param_path, **param_map)
-
+    print("Generated library: ", export_lib_path)
 
 def main():
     isa = get_host_isa()

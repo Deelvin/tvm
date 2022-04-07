@@ -287,7 +287,7 @@ def bench_round(affinity_scheme):
 
     avg_latency, avg_throughput = runer_queued(init_f, process_f, duration_sec=args.trial_time, num_instance=num_inst)
 
-    print(f"CFG:{affinity_scheme}, AVG_LAT:{avg_latency:.2f}, AVG_THR:{avg_throughput:.2f}")
+    print(f"CFG:{affinity_scheme}, AVG_LAT:{avg_latency:.2f}, AVG_THR:{avg_throughput:.2f}", flush = True)
 
 
 def main():
@@ -315,8 +315,11 @@ def main():
     # FULL
     # for num in range(1, num_cpu // 2 + 1):
     #     bench_round(balanced(num, num_cpu))
+    for num in range(1, num_cpu  + 1):
+        for j in range(1, num_cpu // num + 1):
+            bench_round(unisize(num, j))
 
-    bench_round(unisize(args.num_instances, args.num_threads))
+    # bench_round(unisize(args.num_instances, args.num_threads))
 
 
 if __name__ == "__main__":
