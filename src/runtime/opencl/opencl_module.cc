@@ -135,6 +135,7 @@ cl::OpenCLWorkspace* OpenCLModuleNode::GetGlobalWorkspace() {
 
 PackedFunc OpenCLModuleNode::GetFunction(const std::string& name,
                                          const ObjectPtr<Object>& sptr_to_self) {
+//  std::cout << name << std::endl;
   ICHECK_EQ(sptr_to_self.get(), this);
   ICHECK_NE(name, symbol::tvm_module_main) << "Device function do not have main";
   auto it = fmap_.find(name);

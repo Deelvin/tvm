@@ -82,6 +82,7 @@ class WorkspacePool::Pool {
       }
     }
     allocated_.push_back(e);
+    // std::cout << "WorkspacePool ALLOC" << std::endl;
     return e.data;
   }
   // free resource back to pool
@@ -112,9 +113,11 @@ class WorkspacePool::Pool {
       }
       free_list_[i + 1] = e;
     }
+    // std::cout << "WorkspacePool FREE" << std::endl;
   }
   // Release all resources
   void Release(Device dev, DeviceAPI* device) {
+    // std::cout << "RELEASE WS POOL" << std::endl;
     for (size_t i = 1; i < free_list_.size(); ++i) {
       device->FreeDataSpace(dev, free_list_[i].data);
     }

@@ -128,6 +128,7 @@ void Profiler::Start() {
 
 void Profiler::StartCall(String name, Device dev,
                          std::unordered_map<std::string, ObjectRef> extra_metrics) {
+  std::cout << "Profiler::StartCall" << std::endl;
   std::vector<std::pair<MetricCollector, ObjectRef>> objs;
   for (auto& collector : collectors_) {
     ObjectRef obj = collector->Start(dev);
@@ -139,11 +140,17 @@ void Profiler::StartCall(String name, Device dev,
 }
 
 void Profiler::StopCall(std::unordered_map<std::string, ObjectRef> extra_metrics) {
+  std::cout << 41 << std::endl;
   CallFrame cf = in_flight_.top();
+  std::cout << cf.name << std::endl;
+  std::cout << cf.dev << std::endl;
   cf.timer->Stop();
+  std::cout << 43 << std::endl;
   for (auto& p : extra_metrics) {
+    std::cout << p.first << std::endl;
     cf.extra_metrics[p.first] = p.second;
   }
+  std::cout << 44 << std::endl;
   // collect the extra metrics from user defined collectors
   for (const auto& obj : cf.extra_collectors) {
     auto collector_metrics = obj.first->Stop(obj.second);
@@ -151,8 +158,11 @@ void Profiler::StopCall(std::unordered_map<std::string, ObjectRef> extra_metrics
       cf.extra_metrics[p.first] = p.second;
     }
   }
+  std::cout << 45 << std::endl;
   in_flight_.pop();
+  std::cout << 46 << std::endl;
   calls_.push_back(cf);
+  std::cout << 47 << std::endl;
 }
 
 void Profiler::Stop() {

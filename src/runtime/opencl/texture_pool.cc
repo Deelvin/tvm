@@ -26,6 +26,9 @@
 
 #include "../texture.h"
 
+#include "iostream"
+#include "iomanip"
+
 namespace tvm {
 namespace runtime {
 
@@ -35,6 +38,7 @@ class TexturePool::Pool {
   void* Alloc(Device dev, DeviceAPI* device, size_t width, size_t height, DLDataType type_hint) {
     Entry e;
     e.data = nullptr;
+//    // std::cout << "Requested: " << height * width << std::endl;
     if (free_list_.size() != 0) {
       int64_t req_size = height * width;
       Entry new_mem;
@@ -63,6 +67,7 @@ class TexturePool::Pool {
       if (min_added_size == 0) {
         // use existing block
         e = *best_mem;
+        // std::cout << "AllocTexture: reuse " << e.data << " " << e.x << " " << e.y << std::endl;
         free_list_.erase(best_mem);
       } else if (min_added_size <= req_size) {
         // if added size is less or equal to
@@ -73,21 +78,25 @@ class TexturePool::Pool {
         std::vector<int64_t> shape{int64_t(new_mem.y), int64_t(new_mem.x), 4};
         new_mem.data = device->AllocDataSpace(dev, shape.size(), shape.data(), new_mem.type,
                                               Optional<String>("global.texture"));
+        // std::cout << "AllocTexture: grow " << best_mem->data << " " << best_mem->x << " " << best_mem->y << " to " << new_mem.data << " " << new_mem.x << " " << new_mem.y << std::endl;
         e = new_mem;
       }
     }
 
     if (e.data == nullptr) {
       // create new block
+      // std::cout << "AllocTexture:" << std::endl;
       std::vector<int64_t> shape{int64_t(height), int64_t(width), 4};
       e.data = device->AllocDataSpace(dev, shape.size(), shape.data(), type_hint,
                                       Optional<String>("global.texture"));
       e.x = width;
       e.y = height;
       e.type = type_hint;
+      // std::cout << "new block " << e.data << " " << e.x << " " << e.y << std::endl;
     }
 
     allocated_.push_back(e);
+
     return e.data;
   }
 
@@ -106,10 +115,13 @@ class TexturePool::Pool {
       allocated_.erase(allocated_.begin() + index);
     }
     free_list_.push_back(e);
+    // std::cout << e.data << " " << e.x << " " << e.y << std::endl;
+//    // std::cout << "Pool, Allocated: " << allocated_.size() << ", Free: " << free_list_.size() << std::endl;
   }
 
   // Release all resources immediately
   void Release(Device dev, DeviceAPI* device) {
+    // std::cout << "RELEASE" << std::endl;
     for (auto& e : allocated_) {
       device->FreeDataSpace(dev, e.data);
     }
@@ -159,6 +171,7 @@ void* TexturePool::AllocTexture(Device dev, size_t width, size_t height, DLDataT
 void TexturePool::FreeTexture(Device dev, void* ptr) {
   ICHECK(static_cast<size_t>(dev.device_id) < array_.size() && array_[dev.device_id] != nullptr)
       << "Attempt to free texture from null texture pool";
+  // std::cout << "FreeTexture ";
   array_[dev.device_id]->Free(ptr);
 }
 

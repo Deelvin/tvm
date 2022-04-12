@@ -688,6 +688,19 @@ if(TVM_IS_DEBUG_BUILD)
   endif()
 endif()
 
+#target_compile_options(tvm PRIVATE -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=all -g)
+#target_compile_options(tvm_objs PRIVATE -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=all -g)
+#target_compile_options(tvm_libinfo_objs PRIVATE -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=all -g)
+#target_compile_options(tvm_runtime PRIVATE -fsanitize=address -fsanitize-recover=all -g)
+#target_compile_options(tvm_runtime_objs PRIVATE -fsanitize=address -fsanitize-recover=all -g)
+#
+#target_link_libraries(tvm PUBLIC -fsanitize=address)
+#target_link_libraries(tvm_objs PUBLIC -fsanitize=address)
+#target_link_libraries(tvm_libinfo_objs PUBLIC -fsanitize=address)
+#target_link_libraries(tvm_runtime PRIVATE -fsanitize=address)
+#target_link_libraries(tvm_runtime_objs PUBLIC -fsanitize=address)
+
+
 # Run dsymutil to generate debugging symbols for backtraces
 if(APPLE AND TVM_IS_DEBUG_BUILD)
   find_program(DSYMUTIL dsymutil)
@@ -740,6 +753,16 @@ if(USE_CCACHE) # True for AUTO, ON, /path/to/ccache
   # Set the flag for ccache
   set(CXX_COMPILER_LAUNCHER PATH_TO_CCACHE)
 endif(USE_CCACHE)
+
+if(ANDROID_LD STREQUAL deprecated)
+  list(APPEND ANDROID_LINKER_FLAGS -Wl,--build-id)
+else()
+  list(APPEND ANDROID_LINKER_FLAGS -Wl,--build-id=sha1)
+  if(ANDROID_PLATFORM_LEVEL LESS 29)
+    # https://github.com/android/ndk/issues/1196
+    list(APPEND ANDROID_LINKER_FLAGS -Wl,--no-rosegment)
+  endif()
+endif()
 
 if(${SUMMARIZE})
   print_summary()

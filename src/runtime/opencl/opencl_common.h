@@ -291,6 +291,8 @@ class OpenCLWorkspace : public DeviceAPI {
   void* AllocTextureWorkspace(Device dev, size_t width, size_t height, DLDataType type_hint);
   void FreeTextureWorkspace(Device dev, void* data);
 
+  void RecreateCommandQueue();
+
   /*!
    * \brief Get the thread local ThreadEntry
    */
@@ -421,20 +423,55 @@ class OpenCLTimerNode : public TimerNode {
  public:
   // Timer start
   virtual void Start() {
+    std::cout << "OpenCLTimerNode started" << std::endl;
     cl::OpenCLWorkspace::Global()->GetEventQueue(dev_).clear();
+
+//    for (size_t i = 0; i < cl::OpenCLWorkspace::Global()->devices.size(); ++i) {
+//      cl_device_id did = cl::OpenCLWorkspace::Global()->devices[i];
+//
+    auto queue = cl::OpenCLWorkspace::Global()->GetQueue(dev_);
+
+    OPENCL_CALL(clFinish(queue));
+    cl_int e = CL_SUCCESS;
+    while (e == CL_SUCCESS) {
+      e = clReleaseCommandQueue(queue);
+    }
+//    OPENCL_CALL(clReleaseCommandQueue(queue));
+
+    cl_int err_code;
+    cl_device_id did;
+
+    cl::OpenCLWorkspace::Global()->queues[dev_.device_id] = clCreateCommandQueue(
+            cl::OpenCLWorkspace::Global()->context,
+            cl::OpenCLWorkspace::Global()->devices[dev_.device_id],
+            CL_QUEUE_PROFILING_ENABLE,
+            &err_code);
+    OPENCL_CHECK_ERROR(err_code);
+//    }
+
     this->duration = 0;
   }
   // Timer stop
   virtual void Stop() {
+    std::cout << "OpenCLTimerNode stopped" << std::endl;
     std::vector<cl_event> evt_queue = cl::OpenCLWorkspace::Global()->GetEventQueue(dev_);
     cl_ulong start, end;
-    OPENCL_CALL(clWaitForEvents(1, &(cl::OpenCLWorkspace::Global()->GetEventQueue(dev_).back())));
-    for (auto& kevt : evt_queue) {
-      OPENCL_CALL(clGetEventProfilingInfo(kevt, CL_PROFILING_COMMAND_START, sizeof(cl_ulong),
-                                          &start, nullptr));
-      OPENCL_CALL(
-          clGetEventProfilingInfo(kevt, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &end, nullptr));
-      this->duration += (end - start);
+    std::cout << __FILE__ << " " << __LINE__ << std::endl;
+    cl_int e = clWaitForEvents(1, &(cl::OpenCLWorkspace::Global()->GetEventQueue(dev_).back()));
+    if (e == CL_SUCCESS) {
+      std::cout << __FILE__ << " " << __LINE__ << std::endl;
+      for (auto &kevt: evt_queue) {
+        OPENCL_CALL(clGetEventProfilingInfo(kevt, CL_PROFILING_COMMAND_START, sizeof(cl_ulong),
+                                            &start, nullptr));
+        OPENCL_CALL(
+                clGetEventProfilingInfo(kevt, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &end, nullptr));
+
+        e = CL_SUCCESS;
+        while (e == CL_SUCCESS) {
+          e = clReleaseEvent(kevt);
+        }
+        this->duration += (end - start);
+      }
     }
   }
   virtual int64_t SyncAndGetElapsedNanos() { return this->duration; }

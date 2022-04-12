@@ -25,7 +25,10 @@
 #include <tvm/runtime/profiling.h>
 #include <tvm/runtime/registry.h>
 
+#include <CL/cl_hook.h>
 #include "opencl_common.h"
+#include "iostream"
+#include "iomanip"
 
 namespace tvm {
 namespace runtime {
@@ -210,6 +213,7 @@ void* OpenCLWorkspace::AllocDataSpace(Device dev, size_t size, size_t alignment,
   desc->buffer = clCreateBuffer(this->context, CL_MEM_READ_WRITE, size, nullptr, &err_code);
   desc->layout = cl::BufferDescriptor::MemoryLayout::kBuffer1D;
   OPENCL_CHECK_ERROR(err_code);
+//  std::cout << "AllocDataSpace, clCreateBuffer, " << desc << ", size " << size << std::endl;
   return desc;
 }
 
@@ -229,6 +233,7 @@ void* OpenCLWorkspace::AllocDataSpace(Device dev, int ndim, const int64_t* shape
   size_t axis = DefaultTextureLayoutSeparator(ndim, mem_scope.value());
   auto texture = ApplyTexture2DFlattening<int64_t>(shape, ndim, axis);
   desc->buffer = AllocTexture(dev, texture.width, texture.height, dtype);
+//  std::cout << "AllocDataSpace, AllocTexture, " << desc << ", size " << texture.width * texture.height * dtype.bits / 8 << std::endl;
   return desc;
 }
 
@@ -236,9 +241,26 @@ void OpenCLWorkspace::FreeDataSpace(Device dev, void* ptr) {
   // We have to make sure that the memory object is not in the command queue
   // for some OpenCL platforms.
   OPENCL_CALL(clFinish(this->GetQueue(dev)));
-
   cl::BufferDescriptor* desc = static_cast<cl::BufferDescriptor*>(ptr);
-  OPENCL_CALL(clReleaseMemObject(desc->buffer));
+
+//  cl_uint rc;
+//  OPENCL_CALL(clGetMemObjectInfo(desc->buffer, CL_MEM_REFERENCE_COUNT,
+//                                      sizeof(rc), &rc, nullptr));
+//
+//  cl_mem_object_type mf;
+//  OPENCL_CALL(clGetMemObjectInfo(desc->buffer, CL_MEM_TYPE,
+//                                      sizeof(mf), &mf, nullptr));
+//
+//  size_t ms;
+//  OPENCL_CALL(clGetMemObjectInfo(desc->buffer, CL_MEM_SIZE,
+//                                      sizeof(ms), &ms, nullptr));
+//
+//  OPENCL_CALL(clReleaseMemObject(desc->buffer));
+//  std::cout << "FreeDataSpace, clReleaseMemObject, " << ptr <<
+//               " rc " << static_cast<int>(rc) <<
+//               " mf " << std::hex << std::showbase << static_cast<int>(mf) << std::dec <<
+//               " ms " << static_cast<int>(ms) <<
+//                std::endl;
   delete desc;
 }
 
@@ -251,8 +273,9 @@ cl_mem OpenCLWorkspace::AllocTexture(Device dev, size_t width, size_t height,
   cl_image_format format = {CL_RGBA, cl_type};
   cl_image_desc descriptor = {CL_MEM_OBJECT_IMAGE2D, width, height, 0, 0, 0, 0, 0, 0};
   cl_mem mptr =
-      clCreateImage(this->context, CL_MEM_READ_WRITE, &format, &descriptor, nullptr, &err_code);
+    clCreateImage(this->context, CL_MEM_READ_WRITE, &format, &descriptor, nullptr, &err_code);
   OPENCL_CHECK_ERROR(err_code);
+//    std::cout << "AllocTexture, " << mptr  << std::endl;
   return mptr;
 }
 
@@ -440,6 +463,10 @@ void OpenCLWorkspace::Init(const std::string& type_key, const std::string& devic
   }
   this->events.resize(this->devices.size());
   initialized_ = true;
+}
+
+void OpenCLWorkspace::RecreateCommandQueue() {
+
 }
 
 TVM_REGISTER_GLOBAL("device_api.opencl.AllocTexture").set_body([](TVMArgs args, TVMRetValue* rv) {
