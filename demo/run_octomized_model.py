@@ -4,6 +4,9 @@ import octomizer
 import requests
 import json
 import os
+import onnx
+import numpy as np
+
 from datetime import *
 import argparse
 import matplotlib.pyplot as plt
@@ -14,8 +17,8 @@ import octomizer.package_type
 from octoml.octomizer.v1.workflows_pb2 import WorkflowStatus
 from octomizer.model_variant import AutoschedulerOptions
 from subprocess import Popen, PIPE
-from DLRM_mi.models import get_host_target
-import onnx
+# from DLRM_mi.multi_instance import main as multi_instance_main
+# from tvm._ffi.base import decorate
 
 PROJECT_NAME = "multi_instance_check"
 DESCRIPTION = "Tuning testing project to analize system performance."
@@ -81,7 +84,6 @@ def download_tuning_records(workflow, download_path=None):
 
 def download_model(client, model_uuid, system_name):
   print(dir(client))
-  exit(0)
   p = Popen(['octomizer', '--json', 'list-workflows', model_uuid], stdin=PIPE, stdout=PIPE, stderr=PIPE)
   output, err = p.communicate()
   if len(output) == 0 or p.returncode != 0:
@@ -224,6 +226,23 @@ def draw_legend(output, system_name, model_name):
   plt.savefig('res_{}_{}.png'.format(system_name, model_name))
   plt.clf()
 
+
+def generate_inputs(inputs, batch_size):
+  res = {}
+  for i in inputs.input_fields:
+    shape = []
+    for j in i.input_shape:
+      if j == -1:
+        shape.append(args.batch_size)
+      else:
+        shape.append(j)
+    if i.input_dtype == 'int64':
+      inp_val = np.random.randint(0, 100, size=shape).astype(i.input_dtype)
+    else:
+      inp_val = np.random.rand(*shape).astype(i.input_dtype)
+    res[i.input_name] = inp_val
+  return res
+
 # Hack to make it a method.
 octomizer.workflow.Workflow.download_tuning_records = download_tuning_records
 
@@ -233,7 +252,7 @@ if __name__ == "__main__":
   parser.add_argument("--model-uuid", required=False, help="required model from OctoML.ai", default="default")
   parser.add_argument("--platform", required=True, help="platform which should be used for data extraction", default="default")
   parser.add_argument("--download-log", required=False, help="workload uuid", default="default")
-  parser.add_argument("--model-name", required=True, help="model name for inference [bert, resnet, dlrm]", default="default")
+  parser.add_argument("--model-name", required=False, help="model name for inference [bert, resnet, dlrm]", default="default")
   parser.add_argument("--model-path", required=False, help="model path if log file is used for analysis", default="default")
   parser.add_argument("--batch-size", required=False, help="batch size definition for inference, default value is 1", default=1, type=int)
   parser.add_argument("--trial-time", required=False, help="inference time definition in sec, default value is 10", default=10, type=int)
@@ -256,19 +275,23 @@ if __name__ == "__main__":
       print(elem)
     exit(0)
   curr_user = client.get_current_user()
-  print(curr_user)
-  # for mod in models:
-  #   print(dir(mod))
-  #   print(mod.proto.name)
-  #   print(mod.proto.owned_by)
-  #   exit(0)
-
+  inputs = None
   file_path = os.path.dirname(os.path.realpath(__file__))
   if args.download_log == 'default':
     if args.model_uuid != 'default':
       models = client.list_models()
       curr_user_models = [mod.proto for mod in models if mod.proto.created_by == curr_user.uuid and args.model_uuid == mod.proto.uuid]
-      print(curr_user_models)
+      if len(curr_user_models) != 1:
+        print("ERROR: the amount of found models is not 1. The models list size is ", len(curr_user_models))
+        exit(0)
+      inputs = generate_inputs(curr_user_models[0].inputs, args.batch_size)
+      exit(0)
+      if len(curr_user_models) == 0:
+        print("ERROR: incorrect model uuid: ", args.model_uuid)
+        print("Avasilable values:")
+        for el in curr_user_models:
+          print(args.model_uuid)
+        exit(0)
       model_lib_path = os.path.join(file_path, download_model(client, args.model_uuid, args.platform))
     else:
       print("here")

@@ -29,7 +29,7 @@ from tvm.runtime.vm import VirtualMachine
 import tvm
 from tvm.contrib import graph_executor, dyn_batch_slicer
 
-from models import get_cpu_info, get_so_ext, models, default_model_path
+from .models import get_cpu_info, get_so_ext, models, default_model_path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model-name", help="model name [resnet50, ]", default="dlrm")
@@ -193,7 +193,7 @@ def get_batch_size(g_mod):
 main_g_mod = None
 shared_weight_names = None
 
-def bench_round(affinity_scheme):
+def bench_round(affinity_scheme, args):
     model_path = args.model_path
     model_json_file = model_path[:-len(get_so_ext())] + "json"
     use_vm = False
@@ -207,7 +207,6 @@ def bench_round(affinity_scheme):
         model_param_file_common = os.path.join(head, "consts")
 
     num_inst = len(affinity_scheme)
-
     lib = tvm.runtime.load_module(model_path)
 
 
@@ -226,7 +225,11 @@ def bench_round(affinity_scheme):
 
         global main_g_mod
         global shared_weight_names
-        _, _, input_gen, dyn_batch_config = models[args.model_name]
+        dyn_batch_config = None
+        input_gen = None
+
+        if args.model_name in models.keys():
+            _, _, input_gen, dyn_batch_config = models[args.model_name]
         if not use_vm:
             g_mod = graph_executor.create(json, lib, tvm.cpu())
             if idx == 0:
@@ -262,8 +265,15 @@ def bench_round(affinity_scheme):
             mod = tvm.runtime.vm.Executable.load_exec(code, lib)
             mod.load_late_bound_consts(model_param_file_common)
             g_mod = VirtualMachine(mod, tvm.cpu())
-            inpt = input_gen(args.batch_size)
-            g_mod.invoke("main", **inpt)
+            if input_gen:
+                inpt = input_gen(args.batch_size)
+                g_mod.invoke("main", **inpt)
+            else:
+                if 'inputs' in dir(args):
+                    g_mod.invoke("main", **args.inputs)
+                else:
+                    print("ERROR: input is not defined.")
+                    exit(0)
         # share weights from instance id==0
         weights_are_ready.wait()
         if not use_vm and idx != 0:
@@ -290,9 +300,13 @@ def bench_round(affinity_scheme):
     print(f"CFG:{affinity_scheme}, AVG_LAT:{avg_latency:.2f}, AVG_THR:{avg_throughput:.2f}", flush = True)
 
 
-def main():
+def main_call(args):
+    print((args))
     if args.model_path == "default":
-        args.model_path = default_model_path[args.model_name]
+        if args.model_name in default_model_path.keys():
+            args.model_path = default_model_path[args.model_name]
+        else:
+            print("ERROR : only dlrm, bert and resnet models can have defult path")
 
     # get_macs(args.model_path)
 
@@ -317,10 +331,10 @@ def main():
     #     bench_round(balanced(num, num_cpu))
     for num in range(1, num_cpu  + 1):
         for j in range(1, num_cpu // num + 1):
-            bench_round(unisize(num, j))
+            bench_round(unisize(num, j), args)
 
     # bench_round(unisize(args.num_instances, args.num_threads))
 
 
 if __name__ == "__main__":
-    main()
+    main_call(args)
