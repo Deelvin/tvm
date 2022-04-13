@@ -6,8 +6,8 @@ import json
 import os
 import onnx
 import numpy as np
-
 from datetime import *
+import time as timer
 import argparse
 import matplotlib.pyplot as plt
 import octomizer.client as octoclient
@@ -17,52 +17,24 @@ import octomizer.package_type
 from octoml.octomizer.v1.workflows_pb2 import WorkflowStatus
 from octomizer.model_variant import AutoschedulerOptions
 from subprocess import Popen, PIPE
-# from DLRM_mi.multi_instance import main as multi_instance_main
-# from tvm._ffi.base import decorate
+from DLRM_mi.multi_instance import main_call as multi_instance_main
+from DLRM_mi.models import get_input
 
 PROJECT_NAME = "multi_instance_check"
 DESCRIPTION = "Tuning testing project to analize system performance."
 
-#other types tbd
-scalar_type_to_tvm_type = {
-     1 : "float32",         # 1
-     7 : "int64",       # 7
-}
+SLEEP_TIME = 5 * 60 # 5 minutes
+ITERATIONS_COUNT_LIMIT = 120 * 60 // SLEEP_TIME # 2 hours
 
-def get_input(model, batch_size, model_name):
-  retval = {}
-  shape_dtypes = {}
-  for input in model.graph.input:
-    nm = input.name
-    shape = []
-    # # get type of input tensor
-    tensor_type = input.type.tensor_type
-    # check if it has a shape:
-    if tensor_type.HasField("shape"):
-      for d in tensor_type.shape.dim:
-        if d.HasField("dim_value"): # known dimension
-          shape.append(int(d.dim_value))
-        elif d.HasField("dim_param"): # unknown dimension with symbolic name
-          # workaround for now!
-          shape.append(batch_size)
-    # print(tensor_type)
-    dtype = "float32"
-    if tensor_type.HasField('elem_type'):
-      # print(sym_help.cast_pytorch_to_onnx.keys())
-      if not tensor_type.elem_type in scalar_type_to_tvm_type.keys():
-        print("ERROR: unknown onnx dtype : ", tensor_type.elem_type)
-        exit(0)
-      dtype = scalar_type_to_tvm_type[tensor_type.elem_type]
-      # print(tensor_type.elem_type)
-    retval[nm] = shape
-    shape_dtypes[nm] = dtype
-  # workaround because DLRM does not have dynamic batch
-  if model_name == "dlrm":
-    retval["input.1"][0] = batch_size
-    retval["lS_o"][1] = batch_size
-    retval["lS_i"][1] = batch_size
-
-  return retval, shape_dtypes
+# helper class to run multi_instance code
+class Args:
+  def __init__(self, path="default", name="default", trial_time=10, batch_size=1):
+    self.model_path = path
+    self.model_name = name
+    self.trial_time = trial_time
+    self.batch_size = batch_size
+    self.inputs = None
+    pass
 
 def download_tuning_records(workflow, download_path=None):
     assert workflow.proto.status.state == WorkflowStatus.COMPLETED, f"workflow status must be COMPLETED, found {workflow.proto.status}"
@@ -81,6 +53,24 @@ def download_tuning_records(workflow, download_path=None):
             file.write(raw_log)
     raw_log = "[" + ( ",\n".join(raw_log.split("\n")))[:-2] + "]"
     return json.loads(raw_log)
+
+def upload_workflow_so_and_save(workflow):
+  output_filename = workflow.save_package(out_dir=".", package_type=octomizer.package_type.PackageType.LINUX_SHARED_OBJECT)
+  p = Popen(['tar', '-xvzf', output_filename], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+  output, err = p.communicate()
+  if p.returncode != 0:
+    print("Extraction ERROR!! ", output)
+    print("return code ", p.returncode)
+    exit(-1)
+  output_decoded = output.decode('utf8')
+  folder_to_check = output_decoded.split('\n')[0]
+  model_name = folder_to_check.split('/')[0]
+  lib = os.path.join(folder_to_check, '{}.so'.format(model_name))
+  print(lib)
+  if os.path.isfile(lib):
+    return lib
+  return None
+
 
 def download_model(client, model_uuid, system_name):
   print(dir(client))
@@ -115,20 +105,9 @@ def download_model(client, model_uuid, system_name):
         data_to_extract[spec] = i
   for _, val in data_to_extract.items():
     workflow = client.get_workflow(uuid=val['uuid'])
-    output_filename = workflow.save_package(out_dir=".", package_type=octomizer.package_type.PackageType.LINUX_SHARED_OBJECT)
-    p = Popen(['tar', '-xvzf', output_filename], stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    output, err = p.communicate()
-    if p.returncode != 0:
-      print("Extraction ERROR!! ", output)
-      print("return code ", p.returncode)
-      exit(-1)
-    output_decoded = output.decode('utf8')
-    folder_to_check = output_decoded.split('\n')[0]
-    model_name = folder_to_check.split('/')[0]
-    lib = os.path.join(folder_to_check, '{}.so'.format(model_name))
-    print(lib)
-    if os.path.isfile(lib):
-      return lib
+    res = upload_workflow_so_and_save(workflow)
+    if res:
+      return res
   return None
 
 def tune_model_by_octomizer(client, model_path, batch_size, model_name, system_name):
@@ -147,7 +126,7 @@ def tune_model_by_octomizer(client, model_path, batch_size, model_name, system_n
         description=DESCRIPTION,
     )
   model_package_name = "{}_octomized".format(os.path.basename(model_path))
-  print(model_package_name)
+  # print(model_package_name)
 
   model = onnx_model.ONNXModel(
         client,
@@ -162,12 +141,28 @@ def tune_model_by_octomizer(client, model_path, batch_size, model_name, system_n
         tuning_options=AutoschedulerOptions(
             trials_per_kernel=3, early_stopping_threshold=1
         ),
-        tvm_num_threads=os.cpu_count()//2,
+        # tvm_num_threads=os.cpu_count()//2,
         input_shapes=inpt_shapes,
         input_dtypes=inpt_types
     )
-  print(octomize_workflow.uuid)
-  return None
+  print("workflow uuid: ", octomize_workflow.uuid)
+  print("Got into results waiting loop.")
+  # simple solution with requests per 5 minutes to get workflow results.
+  # limited by 2 hours for now
+  exit_from_the_loop = False
+  workflow = None
+  cnt = 0
+  while exit_from_the_loop == False:
+    timer.sleep(SLEEP_TIME)
+    workflow_tmp = client.get_workflow(uuid=octomize_workflow.uuid)
+    if workflow_tmp.status() == 'COMPLETED':
+      workflow = workflow_tmp
+      break
+    cnt += 1
+    if cnt > ITERATIONS_COUNT_LIMIT:
+      exit_from_the_loop = True
+  print("Exit from loop.")
+  return upload_workflow_so_and_save(workflow)
 
 def parse_output(lines):
   throughput = []
@@ -285,7 +280,6 @@ if __name__ == "__main__":
         print("ERROR: the amount of found models is not 1. The models list size is ", len(curr_user_models))
         exit(0)
       inputs = generate_inputs(curr_user_models[0].inputs, args.batch_size)
-      exit(0)
       if len(curr_user_models) == 0:
         print("ERROR: incorrect model uuid: ", args.model_uuid)
         print("Avasilable values:")
@@ -294,7 +288,6 @@ if __name__ == "__main__":
         exit(0)
       model_lib_path = os.path.join(file_path, download_model(client, args.model_uuid, args.platform))
     else:
-      print("here")
       model_lib_path = tune_model_by_octomizer(client, args.model_path, args.batch_size, args.model_name, args.platform)
     os.chdir(os.path.join(file_path, 'DLRM_mi'))
     if model_lib_path != None:
@@ -313,6 +306,7 @@ if __name__ == "__main__":
       exit(-1)
     os.chdir(os.path.join(file_path, 'DLRM_mi'))
     cmd_compile = ['python', './compile.py', '--model-path={}'.format(model_path), model_name_cmd, '--tuning-log-file=.{}'.format(log_file), batch_size_cmd]
+    print(cmd_compile)
     p = Popen(cmd_compile, stdin=PIPE, stdout=PIPE, stderr=PIPE)
     output, err = p.communicate()
     output_decoded = output.decode('utf8')
@@ -324,10 +318,9 @@ if __name__ == "__main__":
     if len(model_path) == 0:
       print("ERROR: model path was not defined.")
       exit(-1)
-  cmd = ['python', './multi_instance.py', model_name_cmd, model_lib_path, batch_size_cmd, trial_time_cmd]
-  print(cmd)
-  p = Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-  output, err = p.communicate()
+  args_new = Args(path=model_lib_path, name=model_name, batch_size=args.batch_size, trial_time=args.trial_time)
+  # cmd = ['python', './multi_instance.py', model_name_cmd, model_lib_path, batch_size_cmd, trial_time_cmd]
+  res = multi_instance_main(args)
   os.chdir(file_path)
   if len(output) != 0:
     draw_legend(output, args.platform, model_name)

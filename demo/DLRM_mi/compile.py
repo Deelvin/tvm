@@ -21,7 +21,7 @@ import time
 import argparse
 import tvm
 
-from models import get_host_isa, get_host_target, get_so_ext, models, default_model_path
+from models import get_host_isa, get_host_target, get_so_ext, models, default_model_path, default_load
 from tvm import relay, auto_scheduler
 from tvm.relay.analysis import get_total_mac_number
 from tvm.relay.op.contrib.dnnl import partition_for_dnnl
@@ -114,10 +114,12 @@ def main():
     print(f" Tuning   : {args.tuning_log_file}")
     print("=================================================")
     print()
-
-    loader, opt_level, _, _ = models[args.model_name]
-    mod, params = loader(args.model_path, args.batch_size)
-
+    if args.model_name in models.keys():
+        loader, opt_level, _, _ = models[args.model_name]
+        mod, params = loader(args.model_path, args.batch_size)
+    else:
+        mod, params = default_load(args.model_path, args.batch_size, args.model_name)
+        opt_level = 3
     export_name = f"{args.model_name}_b{args.batch_size}_{isa}"
     compile_mod(mod, params, output_name=export_name, opt_level=opt_level)
 

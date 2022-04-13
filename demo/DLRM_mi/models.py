@@ -139,6 +139,47 @@ def get_host_isa():
     else:
         return "x86_64"
 
+#other types tbd
+scalar_type_to_tvm_type = {
+     1 : "float32",         # 1
+     2 : "uint8",         # 2 v11?
+     7 : "int64",       # 7
+}
+
+def get_input(model, batch_size, model_name):
+  retval = {}
+  shape_dtypes = {}
+  for input in model.graph.input:
+    nm = input.name
+    shape = []
+    # get type of input tensor
+    tensor_type = input.type.tensor_type
+    # check if it has a shape:
+    if tensor_type.HasField("shape"):
+      for d in tensor_type.shape.dim:
+        if d.HasField("dim_value"): # known dimension
+          shape.append(int(d.dim_value))
+        elif d.HasField("dim_param"): # unknown dimension with symbolic name
+          # workaround for now!
+          shape.append(batch_size)
+    # print(tensor_type)
+    dtype = "float32"
+    if tensor_type.HasField('elem_type'):
+      # print(sym_help.cast_pytorch_to_onnx.keys())
+      if not tensor_type.elem_type in scalar_type_to_tvm_type.keys():
+        print("ERROR: unknown onnx dtype : ", tensor_type.elem_type)
+        exit(0)
+      dtype = scalar_type_to_tvm_type[tensor_type.elem_type]
+      # print(tensor_type.elem_type)
+    retval[nm] = shape
+    shape_dtypes[nm] = dtype
+  # workaround because DLRM does not have dynamic batch
+  if model_name == "dlrm":
+    retval["input.1"][0] = batch_size
+    retval["lS_o"][1] = batch_size
+    retval["lS_i"][1] = batch_size
+  return retval, shape_dtypes
+
 
 ###########################
 # DLRM 99 - FP32
@@ -253,6 +294,18 @@ def load_resnet(model_path, batch_size):
 
     return mod, params
 
+def default_load(model_path, batch_size, model_name):
+
+    import onnx
+    onnx_model = onnx.load(model_path)
+    shape_dict, _ = get_input(onnx_model, batch_size, model_name)
+    mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
+
+    del onnx_model
+    mod = transform.InferType()(mod)
+    mod = transform.DynamicToStatic()(mod)
+
+    return mod, params
 
 def inputs_resnet(batch_size):
     x_in = np.random.randint(0, 100, size=[batch_size, 3, 224, 224]).astype("float32")

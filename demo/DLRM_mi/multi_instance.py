@@ -31,16 +31,6 @@ from tvm.contrib import graph_executor, dyn_batch_slicer
 
 from .models import get_cpu_info, get_so_ext, models, default_model_path
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--model-name", help="model name [resnet50, ]", default="dlrm")
-parser.add_argument("--model-path", help="path to compiled model", default="__prebuilt/dlrm_avx512.so")
-parser.add_argument("--num-instances", type=int, help="path to compiled model", default=1)
-parser.add_argument("--num-threads", type=int, help="path to compiled model", default=1)
-parser.add_argument("--batch-size", type=int, help="Batch to process with", default=1)
-parser.add_argument("--trial-time", type=int, help="Time of one trial (sec)", default=10)
-args = parser.parse_args()
-
-
 def runer_loop(init_f, process_f, tasks_queue, idx, initialized_barier, res_count, res_time):
     ctx = init_f(idx)
 
@@ -337,4 +327,12 @@ def main_call(args):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-name", help="model name [resnet50, ]", default="dlrm")
+    parser.add_argument("--model-path", help="path to compiled model", default="__prebuilt/dlrm_avx512.so")
+    parser.add_argument("--num-instances", type=int, help="path to compiled model", default=1)
+    parser.add_argument("--num-threads", type=int, help="path to compiled model", default=1)
+    parser.add_argument("--batch-size", type=int, help="Batch to process with", default=1)
+    parser.add_argument("--trial-time", type=int, help="Time of one trial (sec)", default=10)
+    args = parser.parse_args()
     main_call(args)
