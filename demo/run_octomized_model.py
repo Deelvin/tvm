@@ -18,7 +18,7 @@ from octoml.octomizer.v1.workflows_pb2 import WorkflowStatus
 from octomizer.model_variant import AutoschedulerOptions
 from subprocess import Popen, PIPE
 from DLRM_mi.multi_instance import main_call as multi_instance_main
-from DLRM_mi.models import get_input
+from DLRM_mi.models import get_input, Args
 
 PROJECT_NAME = "multi_instance_check"
 DESCRIPTION = "Tuning testing project to analize system performance."
@@ -26,15 +26,6 @@ DESCRIPTION = "Tuning testing project to analize system performance."
 SLEEP_TIME = 5 * 60 # 5 minutes
 ITERATIONS_COUNT_LIMIT = 120 * 60 // SLEEP_TIME # 2 hours
 
-# helper class to run multi_instance code
-class Args:
-  def __init__(self, path="default", name="default", trial_time=10, batch_size=1):
-    self.model_path = path
-    self.model_name = name
-    self.trial_time = trial_time
-    self.batch_size = batch_size
-    self.inputs = None
-    pass
 
 def download_tuning_records(workflow, download_path=None):
     assert workflow.proto.status.state == WorkflowStatus.COMPLETED, f"workflow status must be COMPLETED, found {workflow.proto.status}"
@@ -110,14 +101,14 @@ def download_model(client, model_uuid, system_name):
       return res
   return None
 
-def tune_model_by_octomizer(client, model_path, batch_size, model_name, system_name):
+def tune_model_by_octomizer(client, args):
   if not os.path.exists(model_path):
-    print("ERROR: model {} does not exist.".format(model_path))
+    print("ERROR: model {} does not exist.".format(args.model_path))
     return False
   # parse model inputs
 
   model = onnx.load(model_path)
-  inpt_shapes, inpt_types = get_input(model, batch_size, model_name)
+  inpt_shapes, inpt_types = get_input(model, args.batch_size, args.model_name)
   del model
 
   octo_project = project.Project(
@@ -125,44 +116,56 @@ def tune_model_by_octomizer(client, model_path, batch_size, model_name, system_n
         name=PROJECT_NAME,
         description=DESCRIPTION,
     )
-  model_package_name = "{}_octomized".format(os.path.basename(model_path))
+  model_package_name = "{}_octomized".format(os.path.basename(args.model_path))
   # print(model_package_name)
 
   model = onnx_model.ONNXModel(
         client,
         name=model_package_name,
-        model=model_path,
+        model=args.model_path,
         description=DESCRIPTION,
         project=octo_project,
     )
   model_variant = model.get_uploaded_model_variant()
-  octomize_workflow = model_variant.octomize(
-        system_name,
-        tuning_options=AutoschedulerOptions(
-            trials_per_kernel=3, early_stopping_threshold=1
-        ),
-        # tvm_num_threads=os.cpu_count()//2,
-        input_shapes=inpt_shapes,
-        input_dtypes=inpt_types
-    )
-  print("workflow uuid: ", octomize_workflow.uuid)
-  print("Got into results waiting loop.")
-  # simple solution with requests per 5 minutes to get workflow results.
-  # limited by 2 hours for now
-  exit_from_the_loop = False
-  workflow = None
-  cnt = 0
-  while exit_from_the_loop == False:
-    timer.sleep(SLEEP_TIME)
-    workflow_tmp = client.get_workflow(uuid=octomize_workflow.uuid)
-    if workflow_tmp.status() == 'COMPLETED':
-      workflow = workflow_tmp
-      break
-    cnt += 1
-    if cnt > ITERATIONS_COUNT_LIMIT:
-      exit_from_the_loop = True
-  print("Exit from loop.")
-  return upload_workflow_so_and_save(workflow)
+  if args.num_threads != -1:
+    octomize_workflow = model_variant.octomize(
+          args.platform,
+          tuning_options=AutoschedulerOptions(
+              trials_per_kernel=3, early_stopping_threshold=1
+          ),
+          tvm_num_threads=args.num_threads,
+          input_shapes=inpt_shapes,
+          input_dtypes=inpt_types
+      )
+  else:
+    octomize_workflow = model_variant.octomize(
+          args.platform,
+          tuning_options=AutoschedulerOptions(
+              trials_per_kernel=3, early_stopping_threshold=1
+          ),
+          input_shapes=inpt_shapes,
+          input_dtypes=inpt_types
+      )
+  print("Workflow uuid: ", octomize_workflow.uuid)
+  print("Please wait notification from Octo.ai and run following commandline:")
+  print("python ./run_octomized_model.py --platform={} --workflow-uuid={} --model-name-{} --batch-size={}".format(args.platform, octomize_workflow.uuid, args.model_name, args.batch_size))
+  # print("Got into results waiting loop.")
+  # # simple solution with requests per 5 minutes to get workflow results.
+  # # limited by 2 hours for now
+  # exit_from_the_loop = False
+  # workflow = None
+  # cnt = 0
+  # while exit_from_the_loop == False:
+  #   timer.sleep(SLEEP_TIME)
+  #   workflow_tmp = client.get_workflow(uuid=octomize_workflow.uuid)
+  #   if workflow_tmp.status() == 'COMPLETED':
+  #     workflow = workflow_tmp
+  #     break
+  #   cnt += 1
+  #   if cnt > ITERATIONS_COUNT_LIMIT:
+  #     exit_from_the_loop = True
+  # print("Exit from loop.")
+  # return upload_workflow_so_and_save(workflow)
 
 def parse_output(lines):
   throughput = []
@@ -206,8 +209,9 @@ def parse_output(lines):
   return latency, throughput, lables
 
 def draw_legend(output, system_name, model_name):
-  output_decoded = output.decode('utf8')
-  output_to_check = output_decoded.split('\n')
+  with open(output, "r") as fle:
+    output_to_check = fle.readlines()
+
   latency, throughput, labels = parse_output(output_to_check)
 
   plt.xlabel('latency')
@@ -247,10 +251,14 @@ if __name__ == "__main__":
   parser.add_argument("--model-uuid", required=False, help="required model from OctoML.ai", default="default")
   parser.add_argument("--platform", required=True, help="platform which should be used for data extraction", default="default")
   parser.add_argument("--download-log", required=False, help="workload uuid", default="default")
+  parser.add_argument("--workflow-uuid", required=False, help="workflow uuid to perform measurements.", default="default")
   parser.add_argument("--model-name", required=False, help="model name for inference [bert, resnet, dlrm]", default="default")
   parser.add_argument("--model-path", required=False, help="model path if log file is used for analysis", default="default")
   parser.add_argument("--batch-size", required=False, help="batch size definition for inference, default value is 1", default=1, type=int)
   parser.add_argument("--trial-time", required=False, help="inference time definition in sec, default value is 10", default=10, type=int)
+  parser.add_argument("--num-threads", required=False, help="number threads for tuning.", default=-1, type=int)
+  parser.add_argument("--output-log", required=False, help="name of output file with latency/throughput points.", default="./output_Log.txt")
+
 
   args = parser.parse_args()
   model_name = args.model_name
@@ -269,60 +277,63 @@ if __name__ == "__main__":
     for elem in platforms:
       print(elem)
     exit(0)
-  curr_user = client.get_current_user()
-  inputs = None
-  file_path = os.path.dirname(os.path.realpath(__file__))
-  if args.download_log == 'default':
-    if args.model_uuid != 'default':
-      models = client.list_models()
-      curr_user_models = [mod.proto for mod in models if mod.proto.created_by == curr_user.uuid and args.model_uuid == mod.proto.uuid]
-      if len(curr_user_models) != 1:
-        print("ERROR: the amount of found models is not 1. The models list size is ", len(curr_user_models))
-        exit(0)
-      inputs = generate_inputs(curr_user_models[0].inputs, args.batch_size)
-      if len(curr_user_models) == 0:
-        print("ERROR: incorrect model uuid: ", args.model_uuid)
-        print("Avasilable values:")
-        for el in curr_user_models:
-          print(args.model_uuid)
-        exit(0)
-      model_lib_path = os.path.join(file_path, download_model(client, args.model_uuid, args.platform))
-    else:
-      model_lib_path = tune_model_by_octomizer(client, args.model_path, args.batch_size, args.model_name, args.platform)
-    os.chdir(os.path.join(file_path, 'DLRM_mi'))
-    if model_lib_path != None:
-      # just run model
-      model_lib_path = '--model-path={}'.format(model_lib_path)
-    else:
-      print("ERROR: cannot form command line for inference.")
-      exit(-1)
+  if args.workflow_uuid != "default":
+    workflow = client.get_workflow(uuid=args.workflow_uuid)
+    model_lib_path = upload_workflow_so_and_save(workflow)
+    inputs = generate_inputs(workflow.proto.package_stage_spec.model_inputs, args.batch_size)
   else:
-    try:
-      workflow = client.get_workflow(uuid=args.download_log)
-      log_file = "./{}.json".format(model_name)
-      workflow.download_tuning_records(download_path=log_file)
-    except:
-      print("ERROR: cannot download required workflow with required id.")
-      exit(-1)
-    os.chdir(os.path.join(file_path, 'DLRM_mi'))
-    cmd_compile = ['python', './compile.py', '--model-path={}'.format(model_path), model_name_cmd, '--tuning-log-file=.{}'.format(log_file), batch_size_cmd]
-    print(cmd_compile)
-    p = Popen(cmd_compile, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    output, err = p.communicate()
-    output_decoded = output.decode('utf8')
-    output_to_check = output_decoded.split('\n')
-    model_lib_path = ''
-    for line in output_to_check:
-      if line.find('Generated library:') != -1:
-        model_lib_path = '--model-path={}'.format(line.split()[-1])
-    if len(model_path) == 0:
-      print("ERROR: model path was not defined.")
-      exit(-1)
+    curr_user = client.get_current_user()
+    inputs = None
+    file_path = os.path.dirname(os.path.realpath(__file__))
+    if args.download_log == 'default':
+      if args.model_uuid != 'default':
+        models = client.list_models()
+        curr_user_models = [mod.proto for mod in models if mod.proto.created_by == curr_user.uuid and args.model_uuid == mod.proto.uuid]
+        if len(curr_user_models) != 1:
+          print("ERROR: the amount of found models is not 1. The models list size is ", len(curr_user_models))
+          exit(0)
+        inputs = generate_inputs(curr_user_models[0].inputs, args.batch_size)
+        if len(curr_user_models) == 0:
+          print("ERROR: incorrect model uuid: ", args.model_uuid)
+          print("Avasilable values:")
+          for el in curr_user_models:
+            print(el.model_uuid)
+          exit(0)
+        model_lib_path = os.path.join(file_path, download_model(client, args.model_uuid, args.platform))
+      else:
+        model_lib_path = tune_model_by_octomizer(client, args)
+        exit(0)
+      os.chdir(os.path.join(file_path, 'DLRM_mi'))
+      if model_lib_path != None:
+        # just run model
+        model_lib_path = '--model-path={}'.format(model_lib_path)
+      else:
+        print("ERROR: cannot form command line for inference.")
+        exit(-1)
+    else:
+      try:
+        workflow = client.get_workflow(uuid=args.download_log)
+        log_file = "./{}.json".format(model_name)
+        workflow.download_tuning_records(download_path=log_file)
+      except:
+        print("ERROR: cannot download required workflow with required id.")
+        exit(-1)
+      os.chdir(os.path.join(file_path, 'DLRM_mi'))
+      cmd_compile = ['python', './compile.py', '--model-path={}'.format(model_path), model_name_cmd, '--tuning-log-file=.{}'.format(log_file), batch_size_cmd]
+      p = Popen(cmd_compile, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+      output, err = p.communicate()
+      output_decoded = output.decode('utf8')
+      output_to_check = output_decoded.split('\n')
+      os.chdir(file_path)
+      model_lib_path = ''
+      for line in output_to_check:
+        if line.find('Generated library:') != -1:
+          model_lib_path = '--model-path={}'.format(line.split()[-1])
+      if len(model_path) == 0:
+        print("ERROR: model path was not defined.")
+        exit(-1)
   args_new = Args(path=model_lib_path, name=model_name, batch_size=args.batch_size, trial_time=args.trial_time)
-  # cmd = ['python', './multi_instance.py', model_name_cmd, model_lib_path, batch_size_cmd, trial_time_cmd]
-  res = multi_instance_main(args)
-  os.chdir(file_path)
-  if len(output) != 0:
-    draw_legend(output, args.platform, model_name)
-  else:
-    print("ERROR: empty inference output.")
+  args_new.output_log = args.output_log
+  res = multi_instance_main(args_new)
+  # os.chdir(file_path)
+  draw_legend(args_new.output_log, args.platform, model_name)

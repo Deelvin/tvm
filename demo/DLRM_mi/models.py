@@ -25,6 +25,17 @@ from tvm import relay
 from tvm.relay import transform
 from tvm.relay.build_module import bind_params_by_name
 
+# helper class to run multi_instance code
+class Args:
+  def __init__(self, path="default", name="default", trial_time=10, batch_size=1):
+    self.model_path = path
+    self.model_name = name
+    self.trial_time = trial_time
+    self.batch_size = batch_size
+    self.inputs = None
+    self.output_log = ''
+    pass
+
 
 def get_so_ext():
     return "dylib" if platform.system() == "Darwin" else "so"
