@@ -7,7 +7,6 @@ import os
 import onnx
 import numpy as np
 from datetime import *
-import time as timer
 import argparse
 import matplotlib.pyplot as plt
 import octomizer.client as octoclient
@@ -27,7 +26,7 @@ SLEEP_TIME = 5 * 60 # 5 minutes
 ITERATIONS_COUNT_LIMIT = 120 * 60 // SLEEP_TIME # 2 hours
 
 
-def download_tuning_records(workflow, download_path=None):
+def download_tuning_records(workflow, client=None, download_path=None):
     assert workflow.proto.status.state == WorkflowStatus.COMPLETED, f"workflow status must be COMPLETED, found {workflow.proto.status}"
     workflow_result = workflow.proto.status.result
     assert workflow_result.HasField("autotune_result"), f"workflow must contain an auto-tuning step"
@@ -101,16 +100,38 @@ def download_model(client, model_uuid, system_name):
       return res
   return None
 
+def shapes_and_types_from_json(file_descriptor):
+  with open(file_descriptor, "r") as f:
+    loaded_json = json.load(f)
+  shape_dict = {}
+  inpt_types = {}
+  for i in loaded_json:
+    xx = loaded_json[i]
+    # fields validation
+    for key, _ in xx.items():
+      if not key in ['input_dtype', 'shape']:
+        print("ERROR()")
+        exit(0)
+    shape_dict[i] = xx['shape']
+    inpt_types[i] = xx['input_dtype']
+  # print(shape_dict)
+  # print(inpt_types)
+  return shape_dict, inpt_types
+
 def tune_model_by_octomizer(client, args):
-  if not os.path.exists(model_path):
+  # print("tune_model_by_octomizer ", args.model_path)
+  if not os.path.exists(args.model_path):
     print("ERROR: model {} does not exist.".format(args.model_path))
     return False
   # parse model inputs
 
-  model = onnx.load(model_path)
-  inpt_shapes, inpt_types = get_input(model, args.batch_size, args.model_name)
+  model = onnx.load(args.model_path)
+  if args.inputs_descriptor != 'default':
+    inpt_shapes, inpt_types = shapes_and_types_from_json(args.inputs_descriptor)
+  else:
+    inpt_shapes, inpt_types = get_input(model, args.batch_size, args.model_name)
   del model
-
+  # print("tune_model_by_octomizer ", inpt_shapes, inpt_types)
   octo_project = project.Project(
         client,
         name=PROJECT_NAME,
@@ -126,7 +147,9 @@ def tune_model_by_octomizer(client, args):
         description=DESCRIPTION,
         project=octo_project,
     )
+  # print("model ", model)
   model_variant = model.get_uploaded_model_variant()
+  # print("model_variant ", model_variant)
   if args.num_threads != -1:
     octomize_workflow = model_variant.octomize(
           args.platform,
@@ -148,7 +171,10 @@ def tune_model_by_octomizer(client, args):
       )
   print("Workflow uuid: ", octomize_workflow.uuid)
   print("Please wait notification from Octo.ai and run following commandline:")
-  print("python ./run_octomized_model.py --platform={} --workflow-uuid={} --model-name-{} --batch-size={}".format(args.platform, octomize_workflow.uuid, args.model_name, args.batch_size))
+  extra_data = ''
+  if args.inputs_descriptor != 'default':
+    extra_data += "--inputs-descriptor={}".format(args.inputs_descriptor)
+  print("python ./run_octomized_model.py --platform={} --workflow-uuid={} --model-name-{} --batch-size={} {}".format(args.platform, octomize_workflow.uuid, args.model_name, args.batch_size, extra_data))
   # print("Got into results waiting loop.")
   # # simple solution with requests per 5 minutes to get workflow results.
   # # limited by 2 hours for now
@@ -225,6 +251,12 @@ def draw_legend(output, system_name, model_name):
   plt.savefig('res_{}_{}.png'.format(system_name, model_name))
   plt.clf()
 
+def gen_numpy_array(input_dtype, shape):
+  if input_dtype == 'int64':
+    inp_val = np.random.randint(0, 100, size=shape).astype(input_dtype)
+  else:
+    inp_val = np.random.rand(*shape).astype(input_dtype)
+  return inp_val
 
 def generate_inputs(inputs, batch_size):
   res = {}
@@ -232,14 +264,26 @@ def generate_inputs(inputs, batch_size):
     shape = []
     for j in i.input_shape:
       if j == -1:
-        shape.append(args.batch_size)
+        shape.append(batch_size)
       else:
         shape.append(j)
-    if i.input_dtype == 'int64':
-      inp_val = np.random.randint(0, 100, size=shape).astype(i.input_dtype)
-    else:
-      inp_val = np.random.rand(*shape).astype(i.input_dtype)
-    res[i.input_name] = inp_val
+    res[i.input_name] = gen_numpy_array(i.input_dtype, shape)
+  return res
+
+def parse_json_inputs(file_descriptor):
+  with open(file_descriptor, "r") as f:
+    loaded_json = json.load(f)
+  print(loaded_json)
+  res = {}
+  for i in loaded_json:
+    xx = loaded_json[i]
+    # fields validation
+    for key, _ in xx.items():
+      if not key in ['input_dtype', 'shape']:
+        print("ERROR()")
+        exit(0)
+      # print(val)
+    res[i] = gen_numpy_array(xx['input_dtype'], xx['shape'])
   return res
 
 # Hack to make it a method.
@@ -258,7 +302,7 @@ if __name__ == "__main__":
   parser.add_argument("--trial-time", required=False, help="inference time definition in sec, default value is 10", default=10, type=int)
   parser.add_argument("--num-threads", required=False, help="number threads for tuning.", default=-1, type=int)
   parser.add_argument("--output-log", required=False, help="name of output file with latency/throughput points.", default="./output_Log.txt")
-
+  parser.add_argument("--inputs-descriptor", required=False, help="name of json file with inputs description.", default="default")
 
   args = parser.parse_args()
   model_name = args.model_name
@@ -268,11 +312,15 @@ if __name__ == "__main__":
   trial_time_cmd = '--trial-time={}'.format(args.trial_time)
   if args.token != "default":
     os.environ['OCTOMIZER_API_TOKEN'] = args.token
+  if args.inputs_descriptor != "default":
+    inputs = parse_json_inputs(args.inputs_descriptor)
   client = octoclient.OctomizerClient()
   targets = client.get_hardware_targets()
   platforms = [x.platform for x in targets]
+  # for i in platforms:
+  #   print(i)
   if not args.platform in platforms:
-    print("EERROR: platform is not defined.")
+    print("ERROR: platform is not defined.")
     print("Please select platform parameter from the list:")
     for elem in platforms:
       print(elem)
@@ -314,7 +362,7 @@ if __name__ == "__main__":
       try:
         workflow = client.get_workflow(uuid=args.download_log)
         log_file = "./{}.json".format(model_name)
-        workflow.download_tuning_records(download_path=log_file)
+        workflow.download_tuning_records(client=client, download_path=log_file)
       except:
         print("ERROR: cannot download required workflow with required id.")
         exit(-1)
