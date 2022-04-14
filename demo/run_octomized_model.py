@@ -138,7 +138,7 @@ def tune_model_by_octomizer(client, args):
         description=DESCRIPTION,
     )
   if args.num_threads != -1:
-    model_package_name = "{}_octomized_thr_{}".format(os.path.basename(args.model_path, args.num_threads))
+    model_package_name = "{}_octomized_thr_{}".format(os.path.basename(args.model_path), args.num_threads)
   else:
     model_package_name = "{}_octomized".format(os.path.basename(args.model_path))
   # print(model_package_name)
