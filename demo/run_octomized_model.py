@@ -137,7 +137,10 @@ def tune_model_by_octomizer(client, args):
         name=PROJECT_NAME,
         description=DESCRIPTION,
     )
-  model_package_name = "{}_octomized".format(os.path.basename(args.model_path))
+  if args.num_threads != -1:
+    model_package_name = "{}_octomized_thr_{}".format(os.path.basename(args.model_path, args.num_threads))
+  else:
+    model_package_name = "{}_octomized".format(os.path.basename(args.model_path))
   # print(model_package_name)
 
   model = onnx_model.ONNXModel(
@@ -174,7 +177,7 @@ def tune_model_by_octomizer(client, args):
   extra_data = ''
   if args.inputs_descriptor != 'default':
     extra_data += "--inputs-descriptor={}".format(args.inputs_descriptor)
-  print("python ./run_octomized_model.py --platform={} --workflow-uuid={} --model-name-{} --batch-size={} {}".format(args.platform, octomize_workflow.uuid, args.model_name, args.batch_size, extra_data))
+  print("python ./run_octomized_model.py --platform={} --workflow-uuid={} --model-name={} --batch-size={} {}".format(args.platform, octomize_workflow.uuid, args.model_name, args.batch_size, extra_data))
   # print("Got into results waiting loop.")
   # # simple solution with requests per 5 minutes to get workflow results.
   # # limited by 2 hours for now

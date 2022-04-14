@@ -1,28 +1,45 @@
-Important note: This branch contains some modifications within graph_executor.cc which will be removed in future.
 
-# Octomized model inference
+# Model tuning and inference automation
+  The script run_octomized_model.py applied to work with onnx models to perform following steps:
+  1. Upload model to Octo.ai for tuning.
+  2. Download results and generate performance metrics for diffetent scenarios.
+  3. Generates latency/throughput points cloud to evlaute testing system behaviour.
 
-    To work with Octomized models 
-run_octomized_model.py [-h] [--token TOKEN] [--model-uuid MODEL_UUID] --system-name SYSTEM_NAME [--download-log DOWNLOAD_LOG] --model-name MODEL_NAME [--model-path MODEL_PATH]
-                              [--batch-size BATCH_SIZE] [--trial-time TRIAL_TIME]
-# DEMO setup (optional)
+# Possible testiing scenarious:
+## Generate results for the particular onnx model.
+  The commandlien example
 
-The folder tvm/demo contains a set of scripts which are used for DLRM and BERT models inference performance analysis.
-Environment setup script:
+```python ./run_octomized_model.py  --platform=gcp_milan_n2d-highmem-48 --model-path ./ssd_mobilenet_v1_coco_2018_01_28.onnx --model-name mobilenet --batch-size  1 --inputs-descriptor=./ssd_inputs.json```
+
+where:
+  platform: available platform for tuning. This is mandatory parameter.
+  model-path: path to the onnx model.
+  model-name: model name for internal usage. This name will be printed as title for output metrics graph. Note: 5 names are reserved for particular models from MLPerf test suite: bert, bert_i8, dlrm, resnet and resnet_i8 (resnet50)
+  batch-size: definition of desired batch size.
+  inputs-descriptor: optional parametes which defines onnx model inputs.
+
+  The example of json file:
+
 ```
-python prepare.py --model [DLRM, BERT, all]
+{
+  "input:0" : {
+    "input_dtype" : "float32",
+    "shape" : [1, 3, 300, 300]
+  },
+  "indices:0" : {
+    "input_dtype" : "int64",
+    "shape" : [100]
+  }
+}
 ```
 
-This script does following things:
-* Uploads MLCommons Inference repository
-* Uploads data for BERT model and creates docer container for the BERT model inference.
-* Uploads DLRM repository if DRRM model is selected for the setup.
-  * Uploads 100 GB DLRM model. The model will be stored in tvm/demo/DLRM/model folder.
-  * Performs weights extraction for further inference. The converted weights are stored in tvm/demo/DLRM/converted folder.
-* Updates MLCommons Inference repository to run DLRM and/or BERT models using tvm inference.
-* Generates fake dataset for DLRM inference.
-
-Note: it is not required to setup envirenment variables according to /inference/recommendation/dlrm/pytorch/README.md because
-these variables are set at the beginning of run_local.sh script.
+The script perfroms step 1 and provides following information at the end of execution:
 
 
+```Please wait notification from Octo.ai and run following commandline:```
+```python ./run_octomized_model.py --platform=gcp_milan_n2d-highmem-48 --workflow-uuid=<generated uuid> --model-name=mobilenet --batch-size=1 --inputs-descriptor=./ssd_inputs.json```
+
+So after receiving e-mail notification it is necessary to run provided generated commandline and wait for the results.
+Currently 2 files are generated:
+output_Log.json - file with experiment results (the name of file can be changed if user adds --output-log commandline)
+res_<platfortm>_<model_name>.png
