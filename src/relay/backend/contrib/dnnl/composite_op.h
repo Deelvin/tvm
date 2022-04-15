@@ -407,12 +407,12 @@ KernelRequisites ParseBaseOpComposite(const FunctionNode* fn,
   if (act) {
     auto act_name = act.call_node_->op.as<OpNode>()->name;
     std::vector<std::string> act_attr = {act_name};
-    //act_attr.push_back(std::to_string(inputs.size()));
-    //inputs.push_back(InferType(constant(1.0f)));
-    //act_attr.push_back(std::to_string(inputs.size()));
-    //inputs.push_back(InferType(constant(0.0f)));
-    //act_attr.push_back(std::to_string(inputs.size()));
-    //inputs.push_back(InferType(constant(0.0f)));
+    act_attr.push_back(std::to_string(inputs.size()));
+    inputs.push_back(InferType(constant(1.0f)));
+    act_attr.push_back(std::to_string(inputs.size()));
+    inputs.push_back(InferType(constant(0.0f)));
+    act_attr.push_back(std::to_string(inputs.size()));
+    inputs.push_back(InferType(constant(0.0f)));
 
     attrs["activation"] = dmlc_attr(act_attr);
   }
