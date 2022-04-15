@@ -39,9 +39,10 @@ from tvm import relay
 from tvm.relay import transform
 from tvm.relay.expr import GlobalVar
 from tvm.relay.expr_functor import ExprMutator, ExprVisitor
+from tvm.relay.expr import const
 
 from ... import _ffi_api
-from ...dataflow_pattern import wildcard, is_op, is_constant
+from ...dataflow_pattern import wildcard, is_op, is_constant, is_expr
 from .register import register_pattern_table
 
 
@@ -76,6 +77,10 @@ def _register_external_op_helper(op_name, supported=True):
 
     @tvm.ir.register_op_attr(op_name, "target.dnnl")
     def _func_wrapper(expr):
+        args = expr.args
+        if any([x.checked_type.dtype == "int64" for x in args]):
+            logger.info("DNNL does not support int64.")
+            return False
         return supported
 
     return _func_wrapper
@@ -280,6 +285,82 @@ def make_qnn_dense_pattern(with_sum=False):
     return pat_name, pat
 
 
+def make_pattern_qnn_dense_reshape_dequantize(with_gelu=False):
+    pat = wildcard()
+    weight = wildcard()
+    pat = is_op("qnn.dense")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("reshape")(pat)
+    pat = is_op("qnn.dequantize")(pat, is_constant(), is_constant())
+    pat = is_op("add")(pat, is_constant())
+    if with_gelu is True:
+        div = is_op("divide")(pat, is_constant())
+        erf = is_op("erf")(div)
+        mul = is_op("multiply")(pat, is_expr(const(0.5, dtype="float32")))
+        pat = is_op("add")(erf, is_expr(const(1.0, dtype="float32")))
+        pat = is_op("multiply")(mul, pat)
+    pat = is_op("qnn.quantize")(pat, is_constant(), is_constant())
+    pat_name = "dnnl.qnn.dense_dequantize"
+    return pat_name, pat
+
+
+def make_pattern_qnn_dense_add_req():
+    pat = wildcard()
+    weight = wildcard()
+    bias = wildcard()
+    pat = is_op("qnn.dense")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("reshape")(pat)
+    pat = is_op("qnn.add")(pat, bias, is_constant(), is_constant(), is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("reshape")(pat) | pat
+    pat = is_op("qnn.requantize")(pat, is_constant(), is_constant(), is_constant(), is_constant())
+    pat_name = "dnnl.qnn.dense_add_req"
+    return pat_name, pat
+
+
+def make_pattern_qnn_matmul_req():
+    pat = wildcard()
+    weight = is_op("transpose")(wildcard())
+    pat = is_op("qnn.batch_matmul")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("qnn.requantize")(pat, is_constant(), is_constant(), is_constant(), is_constant())
+    pat_name = "dnnl.qnn.matmul_req"
+    return pat_name, pat
+
+
+def make_pattern_qnn_matmul_reshape_dequantize(with_div):
+    pat = wildcard()
+    weight = is_op("transpose")(wildcard())
+    pat = is_op("qnn.batch_matmul")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("reshape")(pat)
+    pat = is_op("qnn.dequantize")(pat, is_constant(), is_constant())
+    if with_div is True:
+        pat = is_op("divide")(pat, is_constant())
+
+    pat_name = "dnnl.qnn.matmul_dequantize_div" if with_div else "dnnl.qnn.matmul_dequantize"
+
+    return pat_name, pat
+
+
+def make_pattern_normalization():
+    pat  = wildcard()
+    mean = is_op("mean")(pat)
+    subt = is_op("subtract")(pat, mean)
+    pow  = is_op("power")(subt, is_expr(const(2, dtype="float32")))
+    pat  = is_op("mean")(pow)
+    pat  = is_op("add")(pat, is_constant())
+    pat  = is_op("sqrt")(pat)
+    pat  = is_op("divide")(subt, pat)
+    pat  = is_op("multiply")(pat, is_constant())
+    pat  = is_op("add")(pat, is_constant())
+    pat_name = "dnnl.layer.normalize"
+    return pat_name, pat
+
+
+def make_pattern_softmax_qnn_quantize():
+    pat = is_op("nn.softmax")(wildcard())
+    pat = is_op("qnn.quantize")(pat, is_constant(), is_constant())
+    pat_name = "dnnl.softmax_qnn.quantize"
+    return pat_name, pat
+
+
 @register_pattern_table("dnnl")
 def pattern_table():
     """Create dnnl patterns.
@@ -310,6 +391,16 @@ def pattern_table():
         # Old dnnl version doesn't support per channel o_scale
         if dnnl_version >= (2, 2) or not with_sum:
             dnnl_patterns.append(make_qnn_dense_pattern(with_sum))
+
+    dnnl_patterns.append(make_pattern_qnn_dense_reshape_dequantize(True))
+    dnnl_patterns.append(make_pattern_qnn_dense_add_req())
+    dnnl_patterns.append(make_pattern_qnn_matmul_req())
+    for with_div in [True, False]:
+        dnnl_patterns.append(make_pattern_qnn_matmul_reshape_dequantize(with_div))
+    if dnnl_version >= (2, 5):
+        dnnl_patterns.append(make_pattern_normalization())
+    if dnnl_version >= (2, 6):
+        dnnl_patterns.append(make_pattern_softmax_qnn_quantize())
 
     return dnnl_patterns
 
