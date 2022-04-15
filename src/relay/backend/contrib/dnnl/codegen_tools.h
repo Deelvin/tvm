@@ -299,6 +299,20 @@ class OpSeq : public ExprVisitor {
     return res;
   }
 
+  /** return op descriptor for provided name, or empty layer if not exists.
+   *  Start searching from the end.
+   */
+  const Layer& getLastOpLayer(const std::string& name) const {
+    static Layer empty;
+
+    auto found = std::find_if(layers_.rbegin(), layers_.rend(), [&name](auto& l) {
+      return l.call_node_->op.template as<OpNode>()->name == name;
+    });
+
+    const auto& res = (found == layers_.rend()) ? empty : *found;
+    return res;
+  }
+
   /** return list of call node names if post dfs order */
   std::vector<std::string> getOpNames() const {
     std::vector<std::string> res;
