@@ -227,6 +227,17 @@ def CanonicalizeOps():
     """
     return _ffi_api.CanonicalizeOps()
 
+def LiftOps():
+    """Move operators in the graph. For example, lift up qnn.requantize
+    operator through the reshape and/or transpose.
+
+    Returns
+    -------
+    ret: tvm.transform.Pass
+        The registered pass performing the canonicalization.
+    """
+    return _ffi_api.LiftOps()
+
 
 def DeadCodeElimination(inline_once=False, ignore_impurity=False):
     """Remove expressions that do not have any users (dead code).

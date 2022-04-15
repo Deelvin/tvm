@@ -350,6 +350,14 @@ TVM_DLL Pass FoldScaleAxis();
 TVM_DLL Pass CanonicalizeOps();
 
 /*!
+ * \brief Move operators in the graph. For example,
+ * lift qnn.requantize through the reshape and/or transpose operators.
+ *
+ * \return The pass.
+ */
+TVM_DLL Pass LiftOps();
+
+/*!
  * \brief Alternate the layouts of operators or replace primitive operators
  * with other expressions.
  *
