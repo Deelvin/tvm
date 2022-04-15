@@ -756,7 +756,7 @@ struct GraphExplorer {
 
 class NodeHelper {
  public:
-  NodeHelper(const size_t& nid, GraphExplorer &graph_explorer)
+  NodeHelper(const size_t& nid, const GraphExplorer &graph_explorer)
       : nid_(nid), node_(graph_explorer.nodes_[nid]), graph_explorer_(graph_explorer) {}
 
   template <typename T>
@@ -847,8 +847,8 @@ class NodeHelper {
 
   std::string GetOpName() const { return node_.GetOpName(); }
 
-  TensorRequisite makeTemp(const dnnl::memory::desc& desc) {
-    return {desc, nullptr, false, {}, graph_explorer_.generateUniqueEID(), true};
+  TensorRequisite makeTemp(const dnnl::memory::desc& desc, uint32_t eid) {
+    return {desc, nullptr, false, {}, eid, true};
   }
 
   TensorRequisite makeScratchpad(const dnnl::memory::desc& desc) {
@@ -858,7 +858,7 @@ class NodeHelper {
  private:
   const size_t nid_;
   const json::JSONGraphNode& node_;
-  GraphExplorer &graph_explorer_;
+  const GraphExplorer& graph_explorer_;
 };
 
 }  // namespace contrib
