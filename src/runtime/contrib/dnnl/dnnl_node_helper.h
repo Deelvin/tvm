@@ -126,6 +126,8 @@ dnnl::algorithm convert2dnnl_activation(std::string name) {
     return dnnl::algorithm::eltwise_clip;
   else if (name == "gelu")
     return dnnl::algorithm::eltwise_gelu;
+  else if (name == "gelu_erf")
+    return dnnl::algorithm::eltwise_gelu_erf;
   else if (name == "tanh")
     return dnnl::algorithm::eltwise_tanh;
   else if (name == "sqrt")
