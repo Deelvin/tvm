@@ -1172,21 +1172,6 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     submit(softmax, {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_DST, dst_tr}});
   }
 
-  // Read from DNNL memory (+offset) and write to the handle.
-  inline void read_from_dnnl_memory(void* handle, const dnnl::memory& mem, size_t size,
-                                    size_t offset = 0) {
-    uint8_t* src = static_cast<uint8_t*>(mem.get_data_handle());
-    std::copy(src + offset, src + offset + size, static_cast<uint8_t*>(handle));
-  }
-
-  // Read from the handle and write to DNNL memory (+offset).
-  inline void write_to_dnnl_memory(void* handle, const dnnl::memory& mem, size_t size,
-                                   size_t offset = 0) {
-    uint8_t* dst = static_cast<uint8_t*>(mem.get_data_handle());
-    std::copy(reinterpret_cast<uint8_t*>(handle), reinterpret_cast<uint8_t*>(handle) + size,
-              dst + offset);
-  }
-
   // Generate DNNL memory description and infer the data layout by the given shape.
   inline dnnl::memory::desc GenDNNLMemDescByShape(const dnnl::memory::dims& shape, dt dtype) {
     dnnl::memory::desc data_md;
