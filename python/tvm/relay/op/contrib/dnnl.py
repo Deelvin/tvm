@@ -370,21 +370,7 @@ def pattern_table():
     dnnl_patterns : List[dnnl_pattern]
         Created patterns.
     """
-    elt_list = ["nn.relu", "tanh", "sigmoid", None]
     dnnl_patterns = []
-    for with_bias in [True, False]:
-        for elt in elt_list:
-            if not with_bias and not elt:
-                return dnnl_patterns
-            for conv_name in [
-                "nn.conv1d",
-                "nn.conv2d",
-                "nn.conv3d",
-                "nn.conv2d_transpose",
-                "nn.conv3d_transpose",
-            ]:
-                dnnl_patterns.append(make_dnnl_pattern(conv_name, with_bias, elt))
-            dnnl_patterns.append(make_dnnl_pattern("nn.dense", with_bias, elt))
 
     for with_sum in [True, False]:
         dnnl_patterns.append(make_qnn_conv2d_pattern(with_sum))
@@ -401,6 +387,21 @@ def pattern_table():
         dnnl_patterns.append(make_pattern_normalization())
     if dnnl_version >= (2, 6):
         dnnl_patterns.append(make_pattern_softmax_qnn_quantize())
+
+    elt_list = ["nn.relu", "tanh", "sigmoid", None]
+    for with_bias in [True, False]:
+        for elt in elt_list:
+            if not with_bias and not elt:
+                return dnnl_patterns
+            for conv_name in [
+                "nn.conv1d",
+                "nn.conv2d",
+                "nn.conv3d",
+                "nn.conv2d_transpose",
+                "nn.conv3d_transpose",
+            ]:
+                dnnl_patterns.append(make_dnnl_pattern(conv_name, with_bias, elt))
+            dnnl_patterns.append(make_dnnl_pattern("nn.dense", with_bias, elt))
 
     return dnnl_patterns
 
