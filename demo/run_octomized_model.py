@@ -347,25 +347,6 @@ if __name__ == "__main__":
   client = octoclient.OctomizerClient()
   client._PAGE_SIZE = 100
   projects = client.list_projects()
-  # for i in projects:
-  #   # print(i)
-  #   # # print("-----------------------")
-  #   xx = client.get_project(i.uuid)
-  #   # print(xx)
-  #   print(i.proto.name, i.uuid)
-  #   models = xx.list_models()
-  #   for m in models:
-  #   #   # if m.name == 'ssd_resnet34_mAP_20.2.onnx_octomized':
-  #   #   #   print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-  #   #   # if i.proto.name == 'multi_instance_check' and m.proto.name == 'ssd_mobilenet_v1_coco_2018_01_28.onnx_octomized':
-  #   #     print(i.proto.name)
-  #       print("  ", m.proto.name, m.uuid)
-  #     # client.delete_model(m.uuid)
-  #       # print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-  #   # print("-----------------------")
-  # exit(0)
-  # project_uuid = 'a1a574f3-8ef2-41d9-a122-e11f2ad1d67a'
-  # model_uuid = '7cb27d10-29f1-4060-b20d-c754be21959c'
   targets = client.get_hardware_targets()
   platforms = [x.platform for x in targets]
   # for i in platforms:

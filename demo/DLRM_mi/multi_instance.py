@@ -182,10 +182,10 @@ def get_batch_size(g_mod):
 
 main_g_mod = None
 shared_weight_names = None
-output_statistics = []
+# output_statistics = []
 
 def bench_round(affinity_scheme, args):
-    global output_statistics
+    # global output_statistics
     model_path = args.model_path
     model_json_file = model_path[:-len(get_so_ext())] + "json"
     use_vm = False
@@ -289,9 +289,9 @@ def bench_round(affinity_scheme, args):
 
     avg_latency, avg_throughput = runer_queued(init_f, process_f, duration_sec=args.trial_time, num_instance=num_inst)
     out_str = f"CFG:{affinity_scheme}, AVG_LAT:{avg_latency:.2f}, AVG_THR:{avg_throughput:.2f}"
-    output_statistics.append(out_str)
+    # output_statistics.append(out_str)
     print(out_str, flush = True)
-
+    return out_str
 
 def main_call(args):
     if args.model_path == "default":
@@ -321,14 +321,17 @@ def main_call(args):
     # FULL
     # for num in range(1, num_cpu // 2 + 1):
     #     bench_round(balanced(num, num_cpu))
-
+    fle = None
+    if isinstance(args, Args):
+        fle = open(args.output_log, "w")
     for num in range(1, num_cpu  + 1):
         for j in range(1, num_cpu // num + 1):
-            bench_round(unisize(num, j), args)
-    if isinstance(args, Args):
-        with open(args.output_log, "w") as fle:
-            for s in output_statistics:
-                fle.write("{}\n".format(s))
+            out_str = bench_round(unisize(num, j), args)
+            if fle != None:
+                fle.write("{}\n".format(out_str))
+                fle.flush()
+    if fle != None:
+        fle.close()
 
     # bench_round(unisize(args.num_instances, args.num_threads))
 
