@@ -13,9 +13,14 @@
 
 where:
   platform: available platform for the tuning. This is a mandatory parameter.
+
   model-path: path to the onnx model.
-  model-name: model name for internal usage. This name will be printed as title for output metrics graph. Note: 5 names are reserved for particular models from MLPerf test suite: bert, bert_i8, dlrm, resnet and resnet_i8 (resnet50)
+
+  model-name: model name for internal usage. This name will be printed as title for output metrics graph. Note: 5 names are reserved for particular models from 
+MLPerf test suite: bert, bert_i8, dlrm, resnet and resnet_i8 (resnet50)
+
   batch-size: definition of desired batch size.
+
   inputs-descriptor: optional parametes which defines onnx model inputs.
 
   The example of json file:
@@ -49,9 +54,15 @@ res_<platfortm>_<model_name>.png
 `python ./run_octomized_model.py  --platform=<platform name> --project-uuid=<Project uuid>  --model-uuid=<Model uuid> --model-name dlrm --batch-size  100 --num-threads=60`
 
 Where:
+
 platform : available platform for the tuning. This is a mandatory parameter.
+
 project-uuid : Existing project UUID
+
 model-uuid : Existing model uuid
+
 model-name : model name
+
 batch-size : desired batch size
+
 num-threads : threads number for tuning.
