@@ -61,7 +61,6 @@ def upload_workflow_so_and_save(workflow):
     return lib
   return None
 
-
 def download_model(client, model_uuid, system_name):
   print(dir(client))
   p = Popen(['octomizer', '--json', 'list-workflows', model_uuid], stdin=PIPE, stdout=PIPE, stderr=PIPE)
@@ -114,63 +113,90 @@ def shapes_and_types_from_json(file_descriptor):
         exit(0)
     shape_dict[i] = xx['shape']
     inpt_types[i] = xx['input_dtype']
-  # print(shape_dict)
-  # print(inpt_types)
   return shape_dict, inpt_types
 
+def shapes_and_types_from_inputs_proto(inputs, batch_size, model_name):
+  shape_dict = {}
+  for i, val in inputs[0].items():
+    shape = []
+    for j in val:
+      if j == -1:
+        shape.append(batch_size)
+      else:
+        shape.append(j)
+    shape_dict[i] = shape
+
+  if model_name == "dlrm": # workaround for DLRM
+    shape_dict["input.1"][0] = batch_size
+    shape_dict["lS_o"][1] = batch_size
+    shape_dict["lS_i"][1] = batch_size
+  return shape_dict, inputs[1]
+
 def tune_model_by_octomizer(client, args):
-  # print("tune_model_by_octomizer ", args.model_path)
-  if not os.path.exists(args.model_path):
-    print("ERROR: model {} does not exist.".format(args.model_path))
-    return False
-  # parse model inputs
-
-  model = onnx.load(args.model_path)
-  if args.inputs_descriptor != 'default':
-    inpt_shapes, inpt_types = shapes_and_types_from_json(args.inputs_descriptor)
-  else:
-    inpt_shapes, inpt_types = get_input(model, args.batch_size, args.model_name)
-  del model
   # print("tune_model_by_octomizer ", inpt_shapes, inpt_types)
-  octo_project = project.Project(
-        client,
-        name=PROJECT_NAME,
-        description=DESCRIPTION,
-    )
-  if args.num_threads != -1:
-    model_package_name = "{}_octomized_thr_{}".format(os.path.basename(args.model_path), args.num_threads)
-  else:
-    model_package_name = "{}_octomized".format(os.path.basename(args.model_path))
-  # print(model_package_name)
+  if args.inputs_descriptor != 'default':
+    inpt_shapes, inpt_types = shapes_and_types_from_json(args.inputs_descriptor, args.batch_size)
+  if args.project_uuid == 'default':
+    if not os.path.exists(args.model_path):
+      print("ERROR: model {} does not exist.".format(args.model_path))
+      return False
+    # parse model inputs
 
-  model = onnx_model.ONNXModel(
-        client,
-        name=model_package_name,
-        model=args.model_path,
-        description=DESCRIPTION,
-        project=octo_project,
-    )
-  # print("model ", model)
+    model = onnx.load(args.model_path)
+    if args.inputs_descriptor == 'default':
+      inpt_shapes, inpt_types = get_input(model, args.batch_size, args.model_name)
+    octo_project = project.Project(
+          client,
+          name=PROJECT_NAME,
+          description=DESCRIPTION,
+      )
+    del model
+  else:
+    octo_project = client.get_project(args.project_uuid)
+
+  # print(octo_project)
+  if args.model_uuid == 'default':
+    if args.num_threads != -1:
+      model_package_name = "{}_octomized_thr_{}".format(os.path.basename(args.model_path), args.num_threads)
+    else:
+      model_package_name = "{}_octomized".format(os.path.basename(args.model_path))
+
+    model = onnx_model.ONNXModel(
+          client,
+          name=model_package_name,
+          model=args.model_path,
+          description=DESCRIPTION,
+          project=octo_project,
+      )
+  else:
+    model = client.get_model(args.model_uuid)
+    inpt_shapes, inpt_types = shapes_and_types_from_inputs_proto(model.inputs, args.batch_size, args.model_name)
   model_variant = model.get_uploaded_model_variant()
-  # print("model_variant ", model_variant)
+
+  trials_per_kernel = 1000
+  early_stopping_threshold = 250
+  enable_profiler = True
+
   if args.num_threads != -1:
     octomize_workflow = model_variant.octomize(
           args.platform,
           tuning_options=AutoschedulerOptions(
-              trials_per_kernel=3, early_stopping_threshold=1
+              trials_per_kernel=trials_per_kernel, early_stopping_threshold=early_stopping_threshold
           ),
           tvm_num_threads=args.num_threads,
           input_shapes=inpt_shapes,
-          input_dtypes=inpt_types
+          input_dtypes=inpt_types,
+          enable_profiler=enable_profiler
       )
   else:
     octomize_workflow = model_variant.octomize(
           args.platform,
           tuning_options=AutoschedulerOptions(
-              trials_per_kernel=3, early_stopping_threshold=1
+              trials_per_kernel=trials_per_kernel, early_stopping_threshold=early_stopping_threshold
           ),
           input_shapes=inpt_shapes,
-          input_dtypes=inpt_types
+          input_dtypes=inpt_types,
+          enable_profiler=enable_profiler
       )
   print("Workflow uuid: ", octomize_workflow.uuid)
   print("Please wait notification from Octo.ai and run following commandline:")
@@ -295,10 +321,11 @@ octomizer.workflow.Workflow.download_tuning_records = download_tuning_records
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("--token", required=False, help="Octomizer API token", default="default")
-  parser.add_argument("--model-uuid", required=False, help="required model from OctoML.ai", default="default")
   parser.add_argument("--platform", required=True, help="platform which should be used for data extraction", default="default")
   parser.add_argument("--download-log", required=False, help="workload uuid", default="default")
   parser.add_argument("--workflow-uuid", required=False, help="workflow uuid to perform measurements.", default="default")
+  parser.add_argument("--project-uuid", required=False, help="project uuid to perform measurements.", default="default")
+  parser.add_argument("--model-uuid", required=False, help="required model from OctoML.ai", default="default")
   parser.add_argument("--model-name", required=False, help="model name for inference [bert, resnet, dlrm]", default="default")
   parser.add_argument("--model-path", required=False, help="model path if log file is used for analysis", default="default")
   parser.add_argument("--batch-size", required=False, help="batch size definition for inference, default value is 1", default=1, type=int)
@@ -318,6 +345,27 @@ if __name__ == "__main__":
   if args.inputs_descriptor != "default":
     inputs = parse_json_inputs(args.inputs_descriptor)
   client = octoclient.OctomizerClient()
+  client._PAGE_SIZE = 100
+  projects = client.list_projects()
+  # for i in projects:
+  #   # print(i)
+  #   # # print("-----------------------")
+  #   xx = client.get_project(i.uuid)
+  #   # print(xx)
+  #   print(i.proto.name, i.uuid)
+  #   models = xx.list_models()
+  #   for m in models:
+  #   #   # if m.name == 'ssd_resnet34_mAP_20.2.onnx_octomized':
+  #   #   #   print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+  #   #   # if i.proto.name == 'multi_instance_check' and m.proto.name == 'ssd_mobilenet_v1_coco_2018_01_28.onnx_octomized':
+  #   #     print(i.proto.name)
+  #       print("  ", m.proto.name, m.uuid)
+  #     # client.delete_model(m.uuid)
+  #       # print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+  #   # print("-----------------------")
+  # exit(0)
+  # project_uuid = 'a1a574f3-8ef2-41d9-a122-e11f2ad1d67a'
+  # model_uuid = '7cb27d10-29f1-4060-b20d-c754be21959c'
   targets = client.get_hardware_targets()
   platforms = [x.platform for x in targets]
   # for i in platforms:
@@ -330,6 +378,8 @@ if __name__ == "__main__":
     exit(0)
   if args.workflow_uuid != "default":
     workflow = client.get_workflow(uuid=args.workflow_uuid)
+    # print(workflow)
+    # exit(0)
     model_lib_path = upload_workflow_so_and_save(workflow)
     inputs = generate_inputs(workflow.proto.package_stage_spec.model_inputs, args.batch_size)
   else:
@@ -337,30 +387,24 @@ if __name__ == "__main__":
     inputs = None
     file_path = os.path.dirname(os.path.realpath(__file__))
     if args.download_log == 'default':
-      if args.model_uuid != 'default':
-        models = client.list_models()
-        curr_user_models = [mod.proto for mod in models if mod.proto.created_by == curr_user.uuid and args.model_uuid == mod.proto.uuid]
-        if len(curr_user_models) != 1:
-          print("ERROR: the amount of found models is not 1. The models list size is ", len(curr_user_models))
-          exit(0)
-        inputs = generate_inputs(curr_user_models[0].inputs, args.batch_size)
-        if len(curr_user_models) == 0:
-          print("ERROR: incorrect model uuid: ", args.model_uuid)
-          print("Avasilable values:")
-          for el in curr_user_models:
-            print(el.model_uuid)
-          exit(0)
-        model_lib_path = os.path.join(file_path, download_model(client, args.model_uuid, args.platform))
-      else:
-        model_lib_path = tune_model_by_octomizer(client, args)
-        exit(0)
-      os.chdir(os.path.join(file_path, 'DLRM_mi'))
-      if model_lib_path != None:
-        # just run model
-        model_lib_path = '--model-path={}'.format(model_lib_path)
-      else:
-        print("ERROR: cannot form command line for inference.")
-        exit(-1)
+      # if args.model_uuid != 'default':
+      #   models = client.list_models()
+      #   curr_user_models = [mod.proto for mod in models if mod.proto.created_by == curr_user.uuid and args.model_uuid == mod.proto.uuid]
+      #   if len(curr_user_models) != 1:
+      #     print("ERROR: the amount of found models is not 1. The models list size is ", len(curr_user_models))
+      #     exit(0)
+      #   inputs = generate_inputs(curr_user_models[0].inputs, args.batch_size)
+      #   if len(curr_user_models) == 0:
+      #     print("ERROR: incorrect model uuid: ", args.model_uuid)
+      #     print("Avasilable values:")
+      #     for el in curr_user_models:
+      #       print(el.model_uuid)
+      #     exit(0)
+      #   model_lib_path = os.path.join(file_path, download_model(client, args.model_uuid, args.platform))
+      # else:
+      model_lib_path = tune_model_by_octomizer(client, args)
+      #the sync is turned off
+      exit(0)
     else:
       try:
         workflow = client.get_workflow(uuid=args.download_log)
