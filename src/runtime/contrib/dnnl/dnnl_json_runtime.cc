@@ -338,9 +338,9 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
           Deconvolution(nid);
         } else if (std::regex_match(op_name, conv_pat)) {
           Convolution(nid);
-        } else if("dnnl.qnn.dense_dequantize" == op_name) {
+        } else if("dnnl.qnn.dense_dequantize_bias_gelu" == op_name) {
           DenseDequantize(nid);
-        } else if ("dnnl.qnn.dense_add_req" == op_name) {
+        } else if ("dnnl.qnn.dense_bias_requantize" == op_name) {
           DenseAddRequantize(nid);
         } else if (std::regex_match(op_name, dense_pat)) {
           Dense(nid);
@@ -360,11 +360,11 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
           Binary(nid, dnnl::algorithm::binary_mul);
         } else if ("dnnl.qnn.matmul_dequantize" == op_name ||
                    "dnnl.qnn.matmul_dequantize_div" == op_name ||
-                   "dnnl.qnn.matmul_req" == op_name) {
+                   "dnnl.qnn.matmul_requantize" == op_name) {
           QnnMatmul(nid);
         } else if ("dnnl.layer.normalize" == op_name) {
           LayerNorm(nid);
-        } else if ("dnnl.softmax_qnn.quantize" == op_name) {
+        } else if ("dnnl.softmax_quantize" == op_name) {
           QnnSoftmax(nid);
         } else {
           LOG(FATAL) << "Unsupported op: " << op_name;

@@ -685,17 +685,17 @@ KernelRequisites DNNLCompositeFunctionsParser(const FunctionNode* fn) {
     return parseQnnConv2dComposite(fn);
   } else if (name == "dnnl.qnn.dense_sum" || name == "dnnl.qnn.dense") {
     return parseQnnDenseComposite(fn);
-  } else if (name == "dnnl.qnn.dense_dequantize") {
+  } else if (name == "dnnl.qnn.dense_dequantize_bias_gelu") {
     return parseQnnDenseDeqComposite(fn, true);
-  } else if (name == "dnnl.qnn.dense_add_req") {
+  } else if (name == "dnnl.qnn.dense_bias_requantize") {
     return parseQnnDenseQnnAddComposite(fn);
-  } else if (name == "dnnl.qnn.matmul_req" ||
+  } else if (name == "dnnl.qnn.matmul_requantize" ||
              name == "dnnl.qnn.matmul_dequantize" ||
              name == "dnnl.qnn.matmul_dequantize_div") {
     return parseQnnMatmulDqRqComposite(fn);
   } else if (name == "dnnl.layer.normalize") {
     return parseNormalization(fn);
-  } else if (name == "dnnl.softmax_qnn.quantize") {
+  } else if (name == "dnnl.softmax_quantize") {
     return parseSoftmaxQuantize(fn);
   } else {
     LOG(FATAL) << "Unknown composite function " << name;

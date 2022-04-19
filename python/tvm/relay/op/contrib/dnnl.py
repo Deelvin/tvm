@@ -291,7 +291,7 @@ def make_qnn_dense_pattern(with_sum=False):
     return pat_name, pat
 
 
-def make_pattern_qnn_dense_reshape_dequantize(with_gelu=False):
+def make_pattern_qnn_dense_dequantize_bias_gelu(with_gelu=False):
     pat = wildcard()
     weight = wildcard()
     pat = is_op("qnn.dense")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
@@ -305,11 +305,11 @@ def make_pattern_qnn_dense_reshape_dequantize(with_gelu=False):
         pat = is_op("add")(erf, is_expr(const(1.0, dtype="float32")))
         pat = is_op("multiply")(mul, pat)
     pat = is_op("qnn.quantize")(pat, is_constant(), is_constant())
-    pat_name = "dnnl.qnn.dense_dequantize"
+    pat_name = "dnnl.qnn.dense_dequantize_bias_gelu"
     return pat_name, pat
 
 
-def make_pattern_qnn_dense_add_req():
+def make_pattern_qnn_dense_bias_requantize():
     pat = wildcard()
     weight = wildcard()
     bias = wildcard()
@@ -318,20 +318,20 @@ def make_pattern_qnn_dense_add_req():
     pat = is_op("qnn.add")(pat, bias, is_constant(), is_constant(), is_constant(), is_constant(), is_constant(), is_constant())
     pat = is_op("reshape")(pat) | pat
     pat = is_op("qnn.requantize")(pat, is_constant(), is_constant(), is_constant(), is_constant())
-    pat_name = "dnnl.qnn.dense_add_req"
+    pat_name = "dnnl.qnn.dense_bias_requantize"
     return pat_name, pat
 
 
-def make_pattern_qnn_matmul_req():
+def make_pattern_qnn_matmul_requantize():
     pat = wildcard()
     weight = is_op("transpose")(wildcard())
     pat = is_op("qnn.batch_matmul")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
     pat = is_op("qnn.requantize")(pat, is_constant(), is_constant(), is_constant(), is_constant())
-    pat_name = "dnnl.qnn.matmul_req"
+    pat_name = "dnnl.qnn.matmul_requantize"
     return pat_name, pat
 
 
-def make_pattern_qnn_matmul_reshape_dequantize(with_div):
+def make_pattern_qnn_transpose_matmul_dequantize(with_div):
     pat = wildcard()
     weight = is_op("transpose")(wildcard())
     pat = is_op("qnn.batch_matmul")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
@@ -360,10 +360,10 @@ def make_pattern_normalization():
     return pat_name, pat
 
 
-def make_pattern_softmax_qnn_quantize():
+def make_pattern_softmax_quantize():
     pat = is_op("nn.softmax")(wildcard())
     pat = is_op("qnn.quantize")(pat, is_constant(), is_constant())
-    pat_name = "dnnl.softmax_qnn.quantize"
+    pat_name = "dnnl.softmax_quantize"
     return pat_name, pat
 
 
@@ -384,15 +384,15 @@ def pattern_table():
         if dnnl_version >= (2, 2) or not with_sum:
             dnnl_patterns.append(make_qnn_dense_pattern(with_sum))
 
-    dnnl_patterns.append(make_pattern_qnn_dense_reshape_dequantize(True))
-    dnnl_patterns.append(make_pattern_qnn_dense_add_req())
-    dnnl_patterns.append(make_pattern_qnn_matmul_req())
+    dnnl_patterns.append(make_pattern_qnn_dense_dequantize_bias_gelu(True))
+    dnnl_patterns.append(make_pattern_qnn_dense_bias_requantize())
+    dnnl_patterns.append(make_pattern_qnn_matmul_requantize())
     for with_div in [True, False]:
-        dnnl_patterns.append(make_pattern_qnn_matmul_reshape_dequantize(with_div))
+        dnnl_patterns.append(make_pattern_qnn_transpose_matmul_dequantize(with_div))
     if dnnl_version >= (2, 5):
         dnnl_patterns.append(make_pattern_normalization())
     if dnnl_version >= (2, 6):
-        dnnl_patterns.append(make_pattern_softmax_qnn_quantize())
+        dnnl_patterns.append(make_pattern_softmax_quantize())
 
     elt_list = ["nn.relu", "tanh", "sigmoid", None]
     for with_bias in [True, False]:
