@@ -16,3 +16,4 @@ xgboost
 cloudpickle
 opencv-python-headless
 transformers
+matplotlib
