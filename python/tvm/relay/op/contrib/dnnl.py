@@ -81,6 +81,12 @@ def _register_external_op_helper(op_name, supported=True):
         if any([x.checked_type.dtype == "int64" for x in args]):
             logger.info("DNNL does not support int64.")
             return False
+        # Binary ops with asymmetrical shapes of arguments (need broadcasting
+        # for one of the arguments) use reference implementration of primitive
+        # and have poor performance. So, let's skip such ops.
+        if op_name == "add" or op_name == "multiply":
+            if list(args[0].checked_type.shape) != list(args[1].checked_type.shape):
+                return False
         return supported
 
     return _func_wrapper
