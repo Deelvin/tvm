@@ -254,6 +254,8 @@ class TensorRequisite {
 
   /** return shape of tensor */
   dnnl::memory::dims dims() const { return t_desc_.dims(); }
+  /** return data type of tensor */
+  dnnl::memory::data_type data_type() const { return t_desc_.data_type(); }
   /** return tensor desc */
   dnnl::memory::desc desc() const { return t_desc_; }
 

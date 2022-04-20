@@ -438,27 +438,28 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto kernel_permutation = utils::permutation(kernel_layout);
     auto data_reshape = utils::reshape(data_tr.dims(), data_layout);
     auto kernel_reshape = utils::reshape(kernel_tr.dims(), kernel_layout);
-
-    data_tr = data_tr.permute(data_permutation).reshape(data_reshape);
-    kernel_tr = kernel_tr.permute(kernel_permutation).reshape(kernel_reshape);
-    sum_tr = sum_tr.permute(data_permutation).reshape(data_reshape);
-    output_tr = output_tr.permute(data_permutation);
+    auto output_reshape = utils::reshape(output_tr.dims(), data_layout);
 
     // TODO(@apeskov): temp WA. while codegen is not able to guarantee 1D format of bias data
     bias_tr = bias_tr.squeeze();
-
-    // Group weight format
-    /*if (groups > 1) {
-      LOG(FATAL) << "Not checked 1";
-      auto k_dims = kernel_tr.dims();  // OIHW -> GOIHW
-      k_dims[0] /= groups;
-      k_dims.insert(k_dims.begin(), groups);
-      kernel_tr = kernel_tr.reshape(k_dims);
-    }*/
+    sum_tr = sum_tr.permute(data_permutation).reshape(data_reshape);
 
     // Attributes setting
     dnnl::primitive_attr attr;
-    ParsingOpName(node.GetOpName(), attr);
+
+    // Setup activation
+    if (activation[0] != "none") {
+      auto a_type = utils::convert2dnnl_activation(activation[0]);
+      auto a_scale = node.getInput(std::stoi(activation[1])).getConstScalarData<float>();
+      auto a_alfa = node.getInput(std::stoi(activation[2])).getConstScalarData<float>();
+      auto a_beta = node.getInput(std::stoi(activation[3])).getConstScalarData<float>();
+
+      auto ops = attr.get_post_ops();
+      ops.append_eltwise(a_scale, a_type, a_alfa, a_beta);
+      attr.set_post_ops(ops);
+    } else {
+      ParsingOpName(node.GetOpName(), attr);
+    }
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     if (dst_zp_tr) {
@@ -472,18 +473,6 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
       auto data = o_scl_tr.getConstDataLikeVec<float>();
       attr.set_output_scales(data.size() == 1 ? 0 : (1 << 1), data);
     }
-
-    /*if (activation[0] != "none") {
-      LOG(FATAL) << "Not checked 2";
-      auto a_type = utils::convert2dnnl_activation(activation[0]);
-      auto a_scale = node.getInput(std::stoi(activation[1])).getConstScalarData<float>();
-      auto a_alfa = node.getInput(std::stoi(activation[2])).getConstScalarData<float>();
-      auto a_beta = node.getInput(std::stoi(activation[3])).getConstScalarData<float>();
-
-      auto ops = attr.get_post_ops();
-      ops.append_eltwise(a_scale, a_type, a_alfa, a_beta);
-      attr.set_post_ops(ops);
-    }*/
 
     if (sum_scl_tr) {
       auto scl = sum_scl_tr.getConstScalarData<float>();
@@ -500,17 +489,27 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     // Conv description
     auto conv_d = dnnl::convolution_forward::desc(
         dnnl::prop_kind::forward_inference, dnnl::algorithm::convolution_direct,
-        data_tr.layout(layout_dict[data_layout]).desc(),
-        kernel_tr.layout(layout_dict[kernel_layout]).desc(),
-        bias_tr.layoutAny().desc(), output_tr.layoutAny().desc(),
+        dnnl::memory::desc(data_reshape, data_tr.data_type(), tag::any),
+        dnnl::memory::desc(kernel_reshape, kernel_tr.data_type(), tag::any),
+        bias_tr.layoutAny().desc(),
+        dnnl::memory::desc(output_reshape, output_tr.data_type(), tag::any),
         strides_dims, dilates_dims, padding_l_dims, padding_r_dims);
     auto conv_pd = dnnl::convolution_forward::primitive_desc(conv_d, attr, engine_);
     auto conv = dnnl::convolution_forward(conv_pd);
 
     // Specify proper layouts
-    data_tr = data_tr.requestLayout(conv_pd.src_desc());
-    kernel_tr = kernel_tr.requestLayout(conv_pd.weights_desc());
-    output_tr = output_tr.requestLayout(conv_pd.dst_desc());
+    if (conv_pd.src_desc() != dnnl::memory::desc(data_reshape, data_tr.data_type(), layout_dict[data_layout])) {
+      data_tr = data_tr.permute(data_permutation).reshape(data_reshape);
+      data_tr = data_tr.requestLayout(conv_pd.src_desc());
+    }
+    if (conv_pd.weights_desc() != dnnl::memory::desc(kernel_reshape, kernel_tr.data_type(), layout_dict[kernel_layout])) {
+      kernel_tr = kernel_tr.permute(kernel_permutation).reshape(kernel_reshape);
+      kernel_tr = kernel_tr.requestLayout(conv_pd.weights_desc());
+    }
+    if (conv_pd.dst_desc() != dnnl::memory::desc(output_reshape, output_tr.data_type(), layout_dict[data_layout])) {
+      output_tr = output_tr.permute(data_permutation);
+      output_tr = output_tr.requestLayout(conv_pd.dst_desc());
+    }
     bias_tr = bias_tr.requestLayout(conv_pd.bias_desc());
 
     auto scratchpad_tr = node.makeScratchpad(conv_pd.scratchpad_desc());
