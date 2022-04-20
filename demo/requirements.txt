@@ -12,7 +12,7 @@ tokenization
 boto3
 decorator
 onnx
-xgboost
+xgboost==1.5.2
 cloudpickle
 opencv-python-headless
 transformers
