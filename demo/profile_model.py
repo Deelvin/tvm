@@ -7,7 +7,8 @@ from tvm.runtime import profiler_vm
 import octomizer.client as octoclient
 from run_octomized_model import generate_inputs, upload_workflow_so_and_save, parse_json_inputs
 
-ITERATIONS_NUMBER = 20
+WARM_BOUND = 3
+ITERATIONS_NUMBER = 20 + WARM_BOUND
 
 def profile(model_path, inputs):
   head, _ = os.path.split(model_path)
@@ -18,13 +19,15 @@ def profile(model_path, inputs):
   mod = tvm.runtime.vm.Executable.load_exec(code, lib)
   mod.load_late_bound_consts(model_param_file_common)
   g_mod = profiler_vm.VirtualMachineProfiler(mod, tvm.cpu())
-  for _ in range(ITERATIONS_NUMBER):
+
+  for i in range(ITERATIONS_NUMBER):
     report = g_mod.profile(
         **inputs,
         func_name="main",
         # collectors=[tvm.runtime.profiling.PAPIMetricCollector({tvm.cpu(): ["PAPI_FP_OPS"]})],
     )
-    print(report)
+    if i >= WARM_BOUND:
+      print(report)
 
 def get_workflow_and_inputs_from_workflow_uuid(uuid, batch_size):
   client = octoclient.OctomizerClient()
