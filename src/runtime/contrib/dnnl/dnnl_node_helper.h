@@ -92,6 +92,8 @@ inline static dnnl::memory::format_tag plainLayout(uint32_t rank) {
       return dnnl::memory::format_tag::abcde;
     case 6:
       return dnnl::memory::format_tag::abcdef;
+    case 7:
+      return dnnl::memory::format_tag::abcdefg;
     default:
       LOG(FATAL) << "Unsupported data tensor rank: " << rank;
       break;
@@ -150,6 +152,7 @@ static const std::map<std::string, std::string> layout_map = {
   {"OIHW", "OIHW"},
   {"IOHW", "OIHW"},
   {"GOIHW", "GOIHW"},
+  {"GIOHW", "GOIHW"},
   {"NCDHW", "NCDHW"},
   {"NDHWC", "NCDHW"},
   {"OIDHW", "OIDHW"},
@@ -161,7 +164,9 @@ static const std::map<std::string, std::string> layout_map = {
   {"ODHWI16o", "OoIDHW"},
   {"HWOIG16g", "GgOIHW"},
   {"GOIHW16g", "GgOIHW"},
-  {"IOHW16i16o", "IiOoHW"}
+  {"IOHW16i16o", "OoIiHW"},
+  {"NCDHW16c", "NCcDHW"},
+  {"IODHW16i16o", "OoIiDHW"}
 };
 
 inline static const std::string get_ref_layout(const std::string& src) {
