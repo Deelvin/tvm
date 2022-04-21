@@ -683,20 +683,17 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     // Attributes setting
     dnnl::primitive_attr attr;
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-    ParsingOpName(op_name, attr);
 
     ICHECK(!dst_zp_tr) << "DNNL doesn't support input zero point for optimized primitives."
                           "Should be merged into bias";
 
     if (o_scl_tr) {
-      LOG(FATAL) << "Unsupported op: o_scl_tr";
       ICHECK(o_scl_tr.isConstant());
       auto data = o_scl_tr.getConstDataLikeVec<float>();
       attr.set_output_scales(data.size() == 1 ? 0 : (1 << 1), data);
     }
 
     if (activation[0] != "none") {
-      LOG(FATAL) << "Unsupported op: activation";
       auto a_type = utils::convert2dnnl_activation(activation[0]);
       auto a_scale = node.getInput(std::stoi(activation[1])).getConstScalarData<float>();
       auto a_alfa = node.getInput(std::stoi(activation[2])).getConstScalarData<float>();
@@ -705,6 +702,8 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
       auto ops = attr.get_post_ops();
       ops.append_eltwise(a_scale, a_type, a_alfa, a_beta);
       attr.set_post_ops(ops);
+    } else {
+      ParsingOpName(op_name, attr);
     }
 
     if (sum_scl_tr) {
