@@ -35,9 +35,10 @@ namespace relay {
 
 class RequantizeSimplifier : public ExprRewriter {
  public:
-  RequantizeSimplifier() : rq_op_(Op::Get("qnn.requantize")),
-                           transpose_op_(Op::Get("transpose")),
-                           reshape_op_(Op::Get("reshape")) {}
+  RequantizeSimplifier()
+      : rq_op_(Op::Get("qnn.requantize")),
+        transpose_op_(Op::Get("transpose")),
+        reshape_op_(Op::Get("reshape")) {}
 
   /*Expr Rewrite_(const CallNode* n, const Expr& post) override {
     if (n->op == rq_op_) {
@@ -59,14 +60,12 @@ class RequantizeSimplifier : public ExprRewriter {
 
   Expr Rewrite_(const CallNode* n, const Expr& post) override {
     // Return if operation is not qnn.requantize.
-    if (n->op != rq_op_)
-      return post;
+    if (n->op != rq_op_) return post;
 
     std::stack<const CallNode*> passed;
     const Expr& pred = post.as<CallNode>()->args[0];
-    const Expr& term = FindTermExpr(pred, passed);
-    if (term == pred)
-      return post;
+    const Expr& term = FindTermExpr(pred, &passed);
+    if (term == pred) return post;
 
     // Create new qnn.requantize
     tvm::Array<relay::Expr> rq_args_new = n->args;
@@ -76,8 +75,7 @@ class RequantizeSimplifier : public ExprRewriter {
     auto expr_pred = rq_new;
     while (!passed.empty()) {
       const CallNode* passed_node = passed.top();
-      expr_pred = Call(passed_node->op, {expr_pred},
-                       passed_node->attrs, passed_node->type_args);
+      expr_pred = Call(passed_node->op, {expr_pred}, passed_node->attrs, passed_node->type_args);
       passed.pop();
     }
     return expr_pred;
@@ -87,11 +85,11 @@ class RequantizeSimplifier : public ExprRewriter {
   // Iterate through the predecessor and find first not supported
   // expression and return this node (term node).
   // Supported ops - reshape and transpose.
-  const Expr& FindTermExpr(const Expr& e, std::stack<const CallNode*>& passed) {
+  const Expr& FindTermExpr(const Expr& e, std::stack<const CallNode*>* passed) {
     const auto cn = e.as<CallNode>();
     if (cn && (cn->op == transpose_op_ || cn->op == reshape_op_)) {
       const Expr& pred = cn->args[0];
-      passed.push(cn);
+      passed->push(cn);
       return FindTermExpr(pred, passed);
     } else {
       return e;
@@ -112,9 +110,7 @@ namespace transform {
 
 Pass LiftOps() {
   runtime::TypedPackedFunc<Function(Function, IRModule, PassContext)> pass_func =
-      [=](Function f, IRModule m, PassContext pc) {
-        return Downcast<Function>(LiftOps(f));
-      };
+      [=](Function f, IRModule m, PassContext pc) { return Downcast<Function>(LiftOps(f)); };
   return CreateFunctionPass(pass_func, 0, "LiftOps", {"InferType"});
 }
 

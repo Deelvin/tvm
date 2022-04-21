@@ -227,6 +227,7 @@ def CanonicalizeOps():
     """
     return _ffi_api.CanonicalizeOps()
 
+
 def LiftOps():
     """Move operators in the graph. For example, lift up qnn.requantize
     operator through the reshape and/or transpose.

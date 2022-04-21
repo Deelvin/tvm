@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -142,33 +143,31 @@ dnnl::algorithm convert2dnnl_activation(std::string name) {
   return dnnl::algorithm::undef;
 }
 
-static const std::map<std::string, std::string> layout_map = {
-  {"NWC", "NCW"},
-  {"NCW", "NCW"},
-  {"OIW", "OIW"},
-  {"OWI", "OIW"},
-  {"NHWC", "NCHW"},
-  {"NCHW", "NCHW"},
-  {"OIHW", "OIHW"},
-  {"IOHW", "OIHW"},
-  {"GOIHW", "GOIHW"},
-  {"GIOHW", "GOIHW"},
-  {"NCDHW", "NCDHW"},
-  {"NDHWC", "NCDHW"},
-  {"OIDHW", "OIDHW"},
+static const std::map<std::string, std::string> layout_map = {{"NWC", "NCW"},
+                                                              {"NCW", "NCW"},
+                                                              {"OIW", "OIW"},
+                                                              {"OWI", "OIW"},
+                                                              {"NHWC", "NCHW"},
+                                                              {"NCHW", "NCHW"},
+                                                              {"OIHW", "OIHW"},
+                                                              {"IOHW", "OIHW"},
+                                                              {"GOIHW", "GOIHW"},
+                                                              {"GIOHW", "GOIHW"},
+                                                              {"NCDHW", "NCDHW"},
+                                                              {"NDHWC", "NCDHW"},
+                                                              {"OIDHW", "OIDHW"},
 
-  // Blocking layout:
-  {"NCHW16c", "NCcHW"},
-  {"OWI16o", "OoIW"},
-  {"OHWI16o", "OoIHW"},
-  {"OHWI64o", "OoIHW"},
-  {"ODHWI16o", "OoIDHW"},
-  {"HWOIG16g", "GgOIHW"},
-  {"GOIHW16g", "GgOIHW"},
-  {"IOHW16i16o", "OoIiHW"},
-  {"NCDHW16c", "NCcDHW"},
-  {"IODHW16i16o", "OoIiDHW"}
-};
+                                                              // Blocking layout:
+                                                              {"NCHW16c", "NCcHW"},
+                                                              {"OWI16o", "OoIW"},
+                                                              {"OHWI16o", "OoIHW"},
+                                                              {"OHWI64o", "OoIHW"},
+                                                              {"ODHWI16o", "OoIDHW"},
+                                                              {"HWOIG16g", "GgOIHW"},
+                                                              {"GOIHW16g", "GgOIHW"},
+                                                              {"IOHW16i16o", "OoIiHW"},
+                                                              {"NCDHW16c", "NCcDHW"},
+                                                              {"IODHW16i16o", "OoIiDHW"}};
 
 inline static const std::string get_ref_layout(const std::string& src) {
   auto iter = layout_map.find(src);
@@ -186,8 +185,7 @@ inline static std::vector<int> permutation(const std::string& src) {
   std::vector<int> perm;
   for (auto c : src) {
     // Skip digit characters.
-    if (std::isdigit(c))
-      continue;
+    if (std::isdigit(c)) continue;
     auto found = ref.find(c);
     ICHECK_NE(found, std::string::npos) << "\"" << src << "\" is not a permutation of "
                                         << "\"" << ref << "\"";
@@ -196,11 +194,10 @@ inline static std::vector<int> permutation(const std::string& src) {
   return perm;
 }
 
-inline static dnnl::memory::dims reshape(const dnnl::memory::dims dims,
-                                         const std::string& src) {
+inline static dnnl::memory::dims reshape(const dnnl::memory::dims dims, const std::string& src) {
   std::string layout;
   std::copy_if(src.begin(), src.end(), std::back_inserter(layout),
-               [](char c){ return std::isalpha(c); });
+               [](char c) { return std::isalpha(c); });
 
   const std::string axis = "NCGOIDHW";
 
@@ -766,7 +763,7 @@ struct GraphExplorer {
 
 class NodeHelper {
  public:
-  NodeHelper(const size_t& nid, const GraphExplorer &graph_explorer)
+  NodeHelper(const size_t& nid, const GraphExplorer& graph_explorer)
       : nid_(nid), node_(graph_explorer.nodes_[nid]), graph_explorer_(graph_explorer) {}
 
   template <typename T>

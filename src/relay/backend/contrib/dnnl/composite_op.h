@@ -20,6 +20,7 @@
 #ifndef TVM_RELAY_BACKEND_CONTRIB_DNNL_COMPOSITE_OP_H_
 #define TVM_RELAY_BACKEND_CONTRIB_DNNL_COMPOSITE_OP_H_
 
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -415,14 +416,14 @@ KernelRequisites ParseBaseOpComposite(const FunctionNode* fn,
 }
 
 std::vector<std::string> ParsingOpList(const std::string& pattern_name,
-                                      std::string interval = "_") {
+                                       std::string interval = "_") {
   static std::map<std::string, std::string> op_map{
-    {"bias", "add"},
-    {"relu", "nn.relu"},
-    {"tanh", "tanh"},
-    {"sigmoid", "sigmoid"},
-    {"nn.deconv2d", "nn.conv2d_transpose"},
-    {"nn.deconv3d", "nn.conv3d_transpose"},
+      {"bias", "add"},
+      {"relu", "nn.relu"},
+      {"tanh", "tanh"},
+      {"sigmoid", "sigmoid"},
+      {"nn.deconv2d", "nn.conv2d_transpose"},
+      {"nn.deconv3d", "nn.conv3d_transpose"},
   };
 
   ICHECK_NE(pattern_name, "");
@@ -447,19 +448,15 @@ std::vector<std::string> ParsingOpList(const std::string& pattern_name,
   return op_list;
 }
 
-KernelRequisites parseQnnDenseDeqComposite(const FunctionNode* fn,
-                                           bool act) {
+KernelRequisites parseQnnDenseDeqComposite(const FunctionNode* fn, bool act) {
   OpSeq ops;
   ops(fn->body);
 
-  std::vector<std::string> qnn_dense_deq_pat{"qnn.dense", "reshape",
-                                             "qnn.dequantize"},
-                           qnn_dense_deq_add_pat{"qnn.dense", "reshape",
-                                                 "qnn.dequantize", "add"},
-                           qnn_dense_gelu_pat{"qnn.dense", "reshape",
-                                              "qnn.dequantize", "add",
-                                              "multiply", "divide", "erf",
-                                              "add", "multiply", "qnn.quantize"};
+  std::vector<std::string> qnn_dense_deq_pat{"qnn.dense", "reshape", "qnn.dequantize"},
+      qnn_dense_deq_add_pat{"qnn.dense", "reshape", "qnn.dequantize", "add"},
+      qnn_dense_gelu_pat{
+          "qnn.dense", "reshape", "qnn.dequantize", "add",         "multiply", "divide",
+          "erf",       "add",     "multiply",       "qnn.quantize"};
   auto layer_names = ops.getOpNames();
   ICHECK(layer_names == qnn_dense_deq_pat || layer_names == qnn_dense_deq_add_pat ||
          layer_names == qnn_dense_gelu_pat)
@@ -493,7 +490,6 @@ KernelRequisites parseQnnDenseDeqComposite(const FunctionNode* fn,
     attrs["bias_idx"] = dmlc_attr(inputs.size());
     auto bias = bs.extern_args_[0] / deq.extern_args_[0];
     inputs.push_back(EvalExpr(bias));
-    //inputs.push_back(bs.extern_args_[0]);
   }
 
   if (act) {
@@ -523,13 +519,14 @@ KernelRequisites parseQnnDenseQnnAddComposite(const FunctionNode* fn) {
   OpSeq ops;
   ops(fn->body);
 
-  std::vector<std::string> qnn_dense_add_req_pat1{"qnn.dense", "reshape", "qnn.add", "qnn.requantize"},
-                           qnn_dense_add_req_pat2{"qnn.dense", "reshape", "qnn.add", "reshape", "qnn.requantize"};
+  std::vector<std::string> qnn_dense_add_req_pat1{"qnn.dense", "reshape", "qnn.add",
+                                                  "qnn.requantize"},
+      qnn_dense_add_req_pat2{"qnn.dense", "reshape", "qnn.add", "reshape", "qnn.requantize"};
 
   auto layer_names = ops.getOpNames();
   ICHECK(layer_names == qnn_dense_add_req_pat1 || layer_names == qnn_dense_add_req_pat2)
       << "Unsupported patter for DNNL code generator. Looks like some discrepancy "
-         "between DNNL partitioner pass and code generator.";;
+         "between DNNL partitioner pass and code generator.";
 
   using namespace tensor_arithmetic;
 
@@ -541,8 +538,8 @@ KernelRequisites parseQnnDenseQnnAddComposite(const FunctionNode* fn) {
   auto wgh = dense.extern_args_[1];
   auto bias = add.extern_args_[0];
 
-  auto attrs = extractAttrs(dense.call_node_);  // extract original attrs
-  std::vector<Expr> inputs = {data, wgh, bias};       // args with fixed positions
+  auto attrs = extractAttrs(dense.call_node_);   // extract original attrs
+  std::vector<Expr> inputs = {data, wgh, bias};  // args with fixed positions
 
   // out_scale = rq.in_scale / rq.out_scale
   Expr o_scl = rq.extern_args_[0] / rq.extern_args_[2];
@@ -556,33 +553,30 @@ KernelRequisites parseQnnMatmulDqRqComposite(const FunctionNode* fn) {
   OpSeq ops;
   ops(fn->body);
 
-  std::vector<std::string> qnn_matmul_req_pat{"transpose", "qnn.batch_matmul",
-                                              "qnn.requantize"},
-                           qnn_matmul_deq_pat{"transpose", "qnn.batch_matmul",
-                                              "reshape", "qnn.dequantize"},
-                           qnn_matmul_deq_div_pat{"transpose", "qnn.batch_matmul",
-                                                  "reshape", "qnn.dequantize",
-                                                  "divide"};
+  std::vector<std::string> qnn_matmul_req_pat{"transpose", "qnn.batch_matmul", "qnn.requantize"},
+      qnn_matmul_deq_pat{"transpose", "qnn.batch_matmul", "reshape", "qnn.dequantize"},
+      qnn_matmul_deq_div_pat{"transpose", "qnn.batch_matmul", "reshape", "qnn.dequantize",
+                             "divide"};
 
   auto layer_names = ops.getOpNames();
   ICHECK(layer_names == qnn_matmul_req_pat || layer_names == qnn_matmul_deq_pat ||
          layer_names == qnn_matmul_deq_div_pat)
       << "Unsupported pattern for DNNL code generator. Looks like some discrepancy "
          "between DNNL partitioner pass and code generator.";
-  
+
   using namespace tensor_arithmetic;
 
   auto transpose = ops.getOpLayer("transpose");
   auto matmul = ops.getOpLayer("qnn.batch_matmul");
   auto deq = ops.getOpLayer("qnn.dequantize");
-  auto rq  = ops.getOpLayer("qnn.requantize");
+  auto rq = ops.getOpLayer("qnn.requantize");
   auto div = ops.getOpLayer("divide");
 
   // unsupported case: requantize and dequantize can not coexist.
   ICHECK((deq && !rq) || (!deq && rq));
 
   auto data = matmul.extern_args_[0];
-  auto wgh  = transpose.extern_args_[0];
+  auto wgh = transpose.extern_args_[0];
 
   auto attrs = extractAttrs(matmul.call_node_);  // extract original attrs
   std::vector<Expr> inputs = {data, wgh};        // args with fixed positions
@@ -594,11 +588,9 @@ KernelRequisites parseQnnMatmulDqRqComposite(const FunctionNode* fn) {
   } else {
     // Just for check.
     ICHECK(is_const(deq.extern_args_[0]) && is_scalar(deq.extern_args_[0]));
-    if (div)
-      ICHECK(is_const(div.extern_args_[0]) && is_scalar(div.extern_args_[0]));
+    if (div) ICHECK(is_const(div.extern_args_[0]) && is_scalar(div.extern_args_[0]));
 
-    o_scale = (div) ? deq.extern_args_[0] / div.extern_args_[0]
-                    : deq.extern_args_[0];
+    o_scale = (div) ? deq.extern_args_[0] / div.extern_args_[0] : deq.extern_args_[0];
   }
   attrs["o_scale_idx"] = dmlc_attr(inputs.size());
   inputs.push_back(collapse_to_scalar(EvalExpr(o_scale)));
@@ -610,8 +602,8 @@ KernelRequisites parseNormalization(const FunctionNode* fn) {
   OpSeq ops;
   ops(fn->body);
 
-  std::vector<std::string> norm_pat
-  {"mean", "subtract", "power", "mean", "add", "sqrt", "divide", "multiply", "add"};
+  std::vector<std::string> norm_pat{"mean", "subtract", "power",    "mean", "add",
+                                    "sqrt", "divide",   "multiply", "add"};
 
   auto layer_names = ops.getOpNames();
   ICHECK(layer_names == norm_pat)
@@ -625,7 +617,7 @@ KernelRequisites parseNormalization(const FunctionNode* fn) {
 
   auto data = mean.extern_args_[0];
 
-  std::vector<Expr> inputs = {data};        // args with fixed positions
+  std::vector<Expr> inputs = {data};  // args with fixed positions
   auto attrs = extractAttrs(mean.call_node_);
 
   attrs["epsilon_idx"] = dmlc_attr(inputs.size());
@@ -639,7 +631,6 @@ KernelRequisites parseNormalization(const FunctionNode* fn) {
 
   return {inputs, attrs};
 }
-
 
 KernelRequisites parseSoftmaxQuantize(const FunctionNode* fn) {
   OpSeq ops;
@@ -656,7 +647,7 @@ KernelRequisites parseSoftmaxQuantize(const FunctionNode* fn) {
   auto quantize = ops.getOpLayer("qnn.quantize");
 
   auto data = softmax.extern_args_[0];
-  std::vector<Expr> inputs = {data};        // args with fixed positions
+  std::vector<Expr> inputs = {data};  // args with fixed positions
   auto attrs = extractAttrs(softmax.call_node_);
 
   attrs["q_scale_idx"] = dmlc_attr(inputs.size());
@@ -689,8 +680,7 @@ KernelRequisites DNNLCompositeFunctionsParser(const FunctionNode* fn) {
     return parseQnnDenseDeqComposite(fn, true);
   } else if (name == "dnnl.qnn.dense_bias_requantize") {
     return parseQnnDenseQnnAddComposite(fn);
-  } else if (name == "dnnl.qnn.matmul_requantize" ||
-             name == "dnnl.qnn.matmul_dequantize" ||
+  } else if (name == "dnnl.qnn.matmul_requantize" || name == "dnnl.qnn.matmul_dequantize" ||
              name == "dnnl.qnn.matmul_dequantize_div") {
     return parseQnnMatmulDqRqComposite(fn);
   } else if (name == "dnnl.layer.normalize") {

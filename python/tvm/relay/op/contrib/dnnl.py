@@ -84,7 +84,7 @@ def _register_external_op_helper(op_name, supported=True):
         # Binary ops with asymmetrical shapes of arguments (need broadcasting
         # for one of the arguments) use reference implementration of primitive
         # and have poor performance. So, let's skip such ops.
-        if op_name == "add" or op_name == "multiply":
+        if op_name in ("add", "multiply"):
             if list(args[0].checked_type.shape) != list(args[1].checked_type.shape):
                 return False
         return supported
@@ -292,9 +292,23 @@ def make_qnn_dense_pattern(with_sum=False):
 
 
 def make_pattern_qnn_dense_dequantize_bias_gelu(with_gelu=False):
+    """Make qnn.dense based pattern supported by DNNL
+
+    Parameters
+    ----------
+    with_gelu : bool
+        Indicate to append Gelu pattern at the end of pattern
+
+    Returns
+    -------
+    pattern : Tuple(pattern_name, CallPattern)
+        Created pattern name, along with its CallPattern.
+    """
     pat = wildcard()
     weight = wildcard()
-    pat = is_op("qnn.dense")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("qnn.dense")(
+        pat, weight, is_constant(), is_constant(), is_constant(), is_constant()
+    )
     pat = is_op("reshape")(pat)
     pat = is_op("qnn.dequantize")(pat, is_constant(), is_constant())
     pat = is_op("add")(pat, is_constant())
@@ -310,12 +324,30 @@ def make_pattern_qnn_dense_dequantize_bias_gelu(with_gelu=False):
 
 
 def make_pattern_qnn_dense_bias_requantize():
+    """Make qnn.dense based pattern supported by DNNL
+
+    Returns
+    -------
+    pattern : Tuple(pattern_name, CallPattern)
+        Created pattern name, along with its CallPattern.
+    """
     pat = wildcard()
     weight = wildcard()
     bias = wildcard()
-    pat = is_op("qnn.dense")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("qnn.dense")(
+        pat, weight, is_constant(), is_constant(), is_constant(), is_constant()
+    )
     pat = is_op("reshape")(pat)
-    pat = is_op("qnn.add")(pat, bias, is_constant(), is_constant(), is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("qnn.add")(
+        pat,
+        bias,
+        is_constant(),
+        is_constant(),
+        is_constant(),
+        is_constant(),
+        is_constant(),
+        is_constant(),
+    )
     pat = is_op("reshape")(pat) | pat
     pat = is_op("qnn.requantize")(pat, is_constant(), is_constant(), is_constant(), is_constant())
     pat_name = "dnnl.qnn.dense_bias_requantize"
@@ -323,18 +355,41 @@ def make_pattern_qnn_dense_bias_requantize():
 
 
 def make_pattern_qnn_matmul_requantize():
+    """Make qnn.batch_matmul based pattern supported by DNNL
+
+    Returns
+    -------
+    pattern : Tuple(pattern_name, CallPattern)
+        Created pattern name, along with its CallPattern.
+    """
     pat = wildcard()
     weight = is_op("transpose")(wildcard())
-    pat = is_op("qnn.batch_matmul")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("qnn.batch_matmul")(
+        pat, weight, is_constant(), is_constant(), is_constant(), is_constant()
+    )
     pat = is_op("qnn.requantize")(pat, is_constant(), is_constant(), is_constant(), is_constant())
     pat_name = "dnnl.qnn.matmul_requantize"
     return pat_name, pat
 
 
 def make_pattern_qnn_transpose_matmul_dequantize(with_div):
+    """Make qnn.batch_matmul based pattern supported by DNNL
+
+    Parameters
+    ----------
+    with_div : bool
+        Indicate to append nn.div at the end of pattern
+
+    Returns
+    -------
+    pattern : Tuple(pattern_name, CallPattern)
+        Created pattern name, along with its CallPattern.
+    """
     pat = wildcard()
     weight = is_op("transpose")(wildcard())
-    pat = is_op("qnn.batch_matmul")(pat, weight, is_constant(), is_constant(), is_constant(), is_constant())
+    pat = is_op("qnn.batch_matmul")(
+        pat, weight, is_constant(), is_constant(), is_constant(), is_constant()
+    )
     pat = is_op("reshape")(pat)
     pat = is_op("qnn.dequantize")(pat, is_constant(), is_constant())
     if with_div is True:
@@ -346,16 +401,23 @@ def make_pattern_qnn_transpose_matmul_dequantize(with_div):
 
 
 def make_pattern_normalization():
-    pat  = wildcard()
+    """Make layer normalization based pattern supported by DNNL
+
+    Returns
+    -------
+    pattern : Tuple(pattern_name, CallPattern)
+        Created pattern name, along with its CallPattern.
+    """
+    pat = wildcard()
     mean = is_op("mean")(pat)
     subt = is_op("subtract")(pat, mean)
-    pow  = is_op("power")(subt, is_expr(const(2, dtype="float32")))
-    pat  = is_op("mean")(pow)
-    pat  = is_op("add")(pat, is_constant())
-    pat  = is_op("sqrt")(pat)
-    pat  = is_op("divide")(subt, pat)
-    pat  = is_op("multiply")(pat, is_constant())
-    pat  = is_op("add")(pat, is_constant())
+    power = is_op("power")(subt, is_expr(const(2, dtype="float32")))
+    pat = is_op("mean")(power)
+    pat = is_op("add")(pat, is_constant())
+    pat = is_op("sqrt")(pat)
+    pat = is_op("divide")(subt, pat)
+    pat = is_op("multiply")(pat, is_constant())
+    pat = is_op("add")(pat, is_constant())
     pat_name = "dnnl.layer.normalize"
     return pat_name, pat
 

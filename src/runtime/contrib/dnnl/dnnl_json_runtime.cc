@@ -115,8 +115,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
   void Run() override { LOG(ERROR) << "Unimplemented. Should never be called."; }
 
  private:
-
-   /** Receive tensor memory buffer handler based from provided arg */
+  /** Receive tensor memory buffer handler based from provided arg */
   static void* extractDataHandle(const TVMArgValue& val) {
     ICHECK(val.type_code() == kTVMNDArrayHandle || val.type_code() == kTVMDLTensorHandle)
         << "Expect NDArray or DLTensor";
@@ -280,7 +279,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
       {"ODHWI64o", tag::Odhwi64o},
   };
 
-  bool ParsingOpName(const std::string op_name, dnnl::primitive_attr& attr) {
+  bool ParsingOpName(const std::string op_name, dnnl::primitive_attr attr) {
     // Define RegExp.
     std::regex bias_add_pat(".*_bias.*");
     std::regex relu_pat(".*_relu.*");
@@ -304,12 +303,10 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     return std::regex_match(op_name, bias_add_pat) ? true : false;
   }
 
-  dnnl::memory::dims Transform2Dims(const std::vector<int>& vals,
-                                    bool dilates = false) {
+  dnnl::memory::dims Transform2Dims(const std::vector<int>& vals, bool dilates = false) {
     dnnl::memory::dims dims(vals.begin(), vals.end());
     if (dilates) {
-      std::transform(dims.begin(), dims.end(), dims.begin(),
-                     [](int v) { return v - 1; });
+      std::transform(dims.begin(), dims.end(), dims.begin(), [](int v) { return v - 1; });
     }
     return dims;
   }
@@ -338,7 +335,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
           Deconvolution(nid);
         } else if (std::regex_match(op_name, conv_pat)) {
           Convolution(nid);
-        } else if("dnnl.qnn.dense_dequantize_bias_gelu" == op_name) {
+        } else if ("dnnl.qnn.dense_dequantize_bias_gelu" == op_name) {
           DenseDequantize(nid);
         } else if ("dnnl.qnn.dense_bias_requantize" == op_name) {
           DenseAddRequantize(nid);
@@ -386,7 +383,6 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto strides = node.getAttr<std::vector<int>>("strides");
     auto padding = node.getAttr<std::vector<int>>("padding");
     auto dilation = node.getAttr<std::vector<int>>("dilation");
-    //auto groups = node.getAttr<dnnl::memory::dim>("groups");
 
     decltype(padding) padding_l(padding.begin(), padding.begin() + padding.size() / 2);
     decltype(padding) padding_r(padding.end() - padding.size() / 2, padding.end());
@@ -408,7 +404,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto o_scl_tr = node.getInput(o_scl_idx);
     auto dst_zp_tr = node.getInput(dst_zp_idx);
 
-        // Check layout.
+    // Check layout.
     if (layout_dict.find(data_layout) == layout_dict.end()) {
       LOG(FATAL) << "Unsupported data layout for conv: " << data_layout;
     }
@@ -478,21 +474,24 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
         dnnl::memory::desc(data_reshape, data_tr.data_type(), tag::any),
         dnnl::memory::desc(kernel_reshape, kernel_tr.data_type(), tag::any),
         bias_tr.layoutAny().desc(),
-        dnnl::memory::desc(output_reshape, output_tr.data_type(), tag::any),
-        strides_dims, dilates_dims, padding_l_dims, padding_r_dims);
+        dnnl::memory::desc(output_reshape, output_tr.data_type(), tag::any), strides_dims,
+        dilates_dims, padding_l_dims, padding_r_dims);
     auto conv_pd = dnnl::convolution_forward::primitive_desc(conv_d, attr, engine_);
     auto conv = dnnl::convolution_forward(conv_pd);
 
     // Specify proper layouts
-    if (conv_pd.src_desc() != dnnl::memory::desc(data_reshape, data_tr.data_type(), layout_dict[data_layout])) {
+    if (conv_pd.src_desc() !=
+        dnnl::memory::desc(data_reshape, data_tr.data_type(), layout_dict[data_layout])) {
       data_tr = data_tr.permute(data_permutation).reshape(data_reshape);
       data_tr = data_tr.requestLayout(conv_pd.src_desc());
     }
-    if (conv_pd.weights_desc() != dnnl::memory::desc(kernel_reshape, kernel_tr.data_type(), layout_dict[kernel_layout])) {
+    if (conv_pd.weights_desc() !=
+        dnnl::memory::desc(kernel_reshape, kernel_tr.data_type(), layout_dict[kernel_layout])) {
       kernel_tr = kernel_tr.permute(kernel_permutation).reshape(kernel_reshape);
       kernel_tr = kernel_tr.requestLayout(conv_pd.weights_desc());
     }
-    if (conv_pd.dst_desc() != dnnl::memory::desc(output_reshape, output_tr.data_type(), layout_dict[data_layout])) {
+    if (conv_pd.dst_desc() !=
+        dnnl::memory::desc(output_reshape, output_tr.data_type(), layout_dict[data_layout])) {
       output_tr = output_tr.permute(data_permutation);
       output_tr = output_tr.requestLayout(conv_pd.dst_desc());
     }
@@ -605,21 +604,24 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
         dnnl::memory::desc(data_reshape, data_tr.data_type(), tag::any),
         dnnl::memory::desc(kernel_reshape, kernel_tr.data_type(), tag::any),
         bias_tr.layoutAny().desc(),
-        dnnl::memory::desc(output_reshape, output_tr.data_type(), tag::any),
-        strides_dims, dilates_dims, padding_l_dims, padding_r_dims);
+        dnnl::memory::desc(output_reshape, output_tr.data_type(), tag::any), strides_dims,
+        dilates_dims, padding_l_dims, padding_r_dims);
     auto deconv_pd = dnnl::deconvolution_forward::primitive_desc(deconv_d, attr, engine_);
     auto deconv = dnnl::deconvolution_forward(deconv_pd);
 
     // Specify proper layouts
-    if (deconv_pd.src_desc() != dnnl::memory::desc(data_reshape, data_tr.data_type(), layout_dict[data_layout])) {
+    if (deconv_pd.src_desc() !=
+        dnnl::memory::desc(data_reshape, data_tr.data_type(), layout_dict[data_layout])) {
       data_tr = data_tr.permute(data_permutation).reshape(data_reshape);
       data_tr = data_tr.requestLayout(deconv_pd.src_desc());
     }
-    if (deconv_pd.weights_desc() != dnnl::memory::desc(kernel_reshape, kernel_tr.data_type(), layout_dict[kernel_layout])) {
+    if (deconv_pd.weights_desc() !=
+        dnnl::memory::desc(kernel_reshape, kernel_tr.data_type(), layout_dict[kernel_layout])) {
       kernel_tr = kernel_tr.permute(kernel_permutation).reshape(kernel_reshape);
       kernel_tr = kernel_tr.requestLayout(deconv_pd.weights_desc());
     }
-    if (deconv_pd.dst_desc() != dnnl::memory::desc(output_reshape, output_tr.data_type(), layout_dict[data_layout])) {
+    if (deconv_pd.dst_desc() !=
+        dnnl::memory::desc(output_reshape, output_tr.data_type(), layout_dict[data_layout])) {
       output_tr = output_tr.permute(data_permutation);
       output_tr = output_tr.requestLayout(deconv_pd.dst_desc());
     }
@@ -715,11 +717,11 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto scratch_pad_d = node.makeScratchpad(dense_pd.scratchpad_desc());
 
     // Inplace request for conv+sum pattern. Match input with dst tensor
-    auto submit_attr = sum_tr 
-                     ? SubmitAttr{SubmitAttr::ZeroCopyRequest, sum_tr, DNNL_ARG_DST}
-                     : SubmitAttr{};
+    auto submit_attr =
+        sum_tr ? SubmitAttr{SubmitAttr::ZeroCopyRequest, sum_tr, DNNL_ARG_DST} : SubmitAttr{};
 
-    submit(dense, {{DNNL_ARG_SRC, src_tr},
+    submit(dense,
+           {{DNNL_ARG_SRC, src_tr},
             {DNNL_ARG_WEIGHTS, wgh_tr},
             {DNNL_ARG_BIAS, bias_tr},
             {DNNL_ARG_SCRATCHPAD, scratch_pad_d},
@@ -823,14 +825,13 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     dnnl::memory::dims padding_r_dims = Transform2Dims(padding_r);
 
     // Pooling description.
-    auto pool_desc = dnnl::pooling_forward::desc(dnnl::prop_kind::forward_inference, algo,
-                                                 data_tr.layout(layout_dict[layout]).desc(),
-                                                 output_tr.layoutAny().desc(), strides_dims,
-                                                 kernel_dims, padding_l_dims, padding_r_dims);
+    auto pool_desc = dnnl::pooling_forward::desc(
+        dnnl::prop_kind::forward_inference, algo, data_tr.layout(layout_dict[layout]).desc(),
+        output_tr.layoutAny().desc(), strides_dims, kernel_dims, padding_l_dims, padding_r_dims);
 
     auto pool_pd = dnnl::pooling_forward::primitive_desc(pool_desc, engine_, true);
     auto pool = dnnl::pooling_forward(pool_pd);
-    
+
     // Specify proper layouts
     data_tr = data_tr.requestLayout(pool_pd.src_desc());
     output_tr = output_tr.requestLayout(pool_pd.dst_desc());
@@ -857,8 +858,8 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
       alpha = node.getAttr<float>("alpha");
     }
 
-    auto eltwise_d = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference,
-                                                 algo, dst_tr.desc(), alpha, beta);
+    auto eltwise_d = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, algo,
+                                                 dst_tr.desc(), alpha, beta);
     auto eltwise_pd = dnnl::eltwise_forward::primitive_desc(eltwise_d, engine_);
     auto eltwise = dnnl::eltwise_forward(eltwise_pd);
 
@@ -879,7 +880,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     // Support of softmax_v2 appears since version 2.6 in oneDNN
 #if ((DNNL_VERSION_MAJOR == 2) && (DNNL_VERSION_MINOR >= 6)) || (DNNL_VERSION_MAJOR > 2)
     dnnl::primitive_attr attr;
-    auto q_scale      = node.getInputByAttrName("q_scale_idx");
+    auto q_scale = node.getInputByAttrName("q_scale_idx");
     auto q_zero_point = node.getInputByAttrName("q_zp_idx");
     if (q_scale && q_zero_point) {
       auto q_scale_const = q_scale.getConstScalarData<float>();
@@ -896,8 +897,8 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto softmax = dnnl::softmax_v2_forward(softmax_pd);
 #else
     // Softmax description.
-    auto softmax_d = dnnl::softmax_forward::desc(dnnl::prop_kind::forward_inference,
-                                                 src_tr.desc(), axis);
+    auto softmax_d =
+        dnnl::softmax_forward::desc(dnnl::prop_kind::forward_inference, src_tr.desc(), axis);
     auto softmax_pd = dnnl::softmax_forward::primitive_desc(softmax_d, engine_);
     auto softmax = dnnl::softmax_forward(softmax_pd);
 #endif
@@ -905,7 +906,6 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     src_tr = src_tr.requestLayout(softmax_pd.src_desc());
     dst_tr = dst_tr.requestLayout(softmax_pd.dst_desc());
 
-    // TODO: support in-place calculation.
     submit(softmax, {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_DST, dst_tr}});
   }
 
@@ -920,8 +920,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     rhs_tr = rhs_tr.broadcast(out_tr.dims());
 
     // Any layouts cannot be used for binary prim
-    auto binary_d = dnnl::binary::desc(algo, lhs_tr.desc(), rhs_tr.desc(),
-                                       out_tr.desc());
+    auto binary_d = dnnl::binary::desc(algo, lhs_tr.desc(), rhs_tr.desc(), out_tr.desc());
     auto binary_pd = dnnl::binary::primitive_desc(binary_d, engine_);
     auto binary = dnnl::binary(binary_pd);
 
@@ -930,8 +929,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     rhs_tr = rhs_tr.requestLayout(binary_pd.src1_desc());
     out_tr = out_tr.requestLayout(binary_pd.dst_desc());
 
-    submit(binary, {{DNNL_ARG_SRC_0, lhs_tr}, {DNNL_ARG_SRC_1, rhs_tr},
-                    {DNNL_ARG_DST, out_tr}});
+    submit(binary, {{DNNL_ARG_SRC_0, lhs_tr}, {DNNL_ARG_SRC_1, rhs_tr}, {DNNL_ARG_DST, out_tr}});
   }
 
   void DenseDequantize(const size_t& nid) {
@@ -948,17 +946,17 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto activation = node.getAttr<std::vector<std::string>>("activation", {"none"});
     auto src_zero_point = node.getInputByAttrName("src_zp_idx");
     auto dst_zero_point = node.getInputByAttrName("dst_zp_idx");
-    auto deq_scale      = node.getInputByAttrName("deq_scale_idx");
-    auto bias_tr        = node.getInputByAttrName("bias_idx");
-    auto q_scale        = node.getInputByAttrName("q_scale_idx");
-    auto q_zero_point   = node.getInputByAttrName("q_zp_idx");
+    auto deq_scale = node.getInputByAttrName("deq_scale_idx");
+    auto bias_tr = node.getInputByAttrName("bias_idx");
+    auto q_scale = node.getInputByAttrName("q_scale_idx");
+    auto q_zero_point = node.getInputByAttrName("q_zp_idx");
 
     auto src_zp_const = src_zero_point.getConstScalarData<int32_t>();
     auto dst_zp_const = dst_zero_point.getConstScalarData<int32_t>();
     auto deq_scl_const = deq_scale.getConstScalarData<float>();
 
     dnnl::primitive_attr attr;
-    attr.set_output_scales(0, { deq_scl_const});
+    attr.set_output_scales(0, {deq_scl_const});
     attr.set_zero_points(DNNL_ARG_SRC, 0, {src_zp_const});
     attr.set_zero_points(DNNL_ARG_DST, 0, {dst_zp_const});
 
@@ -978,18 +976,19 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
       auto q_zp_const = q_zero_point.getConstScalarData<int32_t>();
       auto ops = attr.get_post_ops();
       float alpha = 1.0f / q_scale_const;
-      ops.append_eltwise(1.0f, dnnl::algorithm::eltwise_linear, alpha, (float)q_zp_const);
+      ops.append_eltwise(1.0f, dnnl::algorithm::eltwise_linear, alpha,
+                         static_cast<float>(q_zp_const));
       attr.set_post_ops(ops);
     }
 
     // Dense description.
     auto dense_d = (bias_tr) ? dnnl::inner_product_forward::desc(
-                                    dnnl::prop_kind::forward_inference, src_tr.layoutAny().desc(),
-                                    wgh_tr.layoutAny().desc(), bias_tr.layoutAny().desc(),
-                                    dst_tr_2d.layoutAny().desc())
+                                   dnnl::prop_kind::forward_inference, src_tr.layoutAny().desc(),
+                                   wgh_tr.layoutAny().desc(), bias_tr.layoutAny().desc(),
+                                   dst_tr_2d.layoutAny().desc())
                              : dnnl::inner_product_forward::desc(
-                                    dnnl::prop_kind::forward_inference, src_tr.layoutAny().desc(),
-                                    wgh_tr.layoutAny().desc(), dst_tr_2d.layoutAny().desc());
+                                   dnnl::prop_kind::forward_inference, src_tr.layoutAny().desc(),
+                                   wgh_tr.layoutAny().desc(), dst_tr_2d.layoutAny().desc());
     auto dense_pd = dnnl::inner_product_forward::primitive_desc(dense_d, attr, engine_);
     auto dense = dnnl::inner_product_forward(dense_pd);
 
@@ -998,10 +997,9 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     wgh_tr = wgh_tr.requestLayout(dense_pd.weights_desc());
     dst_tr = dst_tr_2d.requestLayout(dense_pd.dst_desc());
 
-    std::unordered_map<int, TensorRequisite> tr_args =
-        {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_WEIGHTS, wgh_tr}, {DNNL_ARG_DST, dst_tr}};
-    if (bias_tr)
-      tr_args[DNNL_ARG_BIAS] = bias_tr.requestLayout(dense_pd.bias_desc());
+    std::unordered_map<int, TensorRequisite> tr_args = {
+        {DNNL_ARG_SRC, src_tr}, {DNNL_ARG_WEIGHTS, wgh_tr}, {DNNL_ARG_DST, dst_tr}};
+    if (bias_tr) tr_args[DNNL_ARG_BIAS] = bias_tr.requestLayout(dense_pd.bias_desc());
 
     submit(dense, tr_args);
   }
@@ -1033,8 +1031,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
 
     // Dense description.
     auto dense_d = dnnl::inner_product_forward::desc(
-        dnnl::prop_kind::forward_inference,
-        src_tr.layoutAny().desc(), wgh_tr.layoutAny().desc(),
+        dnnl::prop_kind::forward_inference, src_tr.layoutAny().desc(), wgh_tr.layoutAny().desc(),
         bias_tr.layoutAny().desc(), dst_tr_2d.layoutAny().desc());
     auto dense_pd = dnnl::inner_product_forward::primitive_desc(dense_d, attr, engine_);
     auto dense = dnnl::inner_product_forward(dense_pd);
@@ -1072,11 +1069,11 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto o_scl_const = o_scale.getConstScalarData<float>();
 
     dnnl::primitive_attr attr;
-    attr.set_output_scales(0, { o_scl_const});
+    attr.set_output_scales(0, {o_scl_const});
 
     // Matmul description.
-    auto matmul_d = dnnl::matmul::desc(src_tr.layoutAny().desc(),
-        wgh_tr.layoutAny().desc(), dst_tr.layoutAny().desc());
+    auto matmul_d = dnnl::matmul::desc(src_tr.layoutAny().desc(), wgh_tr.layoutAny().desc(),
+                                       dst_tr.layoutAny().desc());
     auto matmul_pd = dnnl::matmul::primitive_desc(matmul_d, attr, engine_);
     auto matmul = dnnl::matmul(matmul_pd);
 
@@ -1085,9 +1082,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     wgh_tr = wgh_tr.requestLayout(matmul_pd.weights_desc());
     dst_tr = dst_tr.requestLayout(matmul_pd.dst_desc());
 
-    submit(matmul, {{DNNL_ARG_SRC, src_tr},
-                    {DNNL_ARG_WEIGHTS, wgh_tr},
-                    {DNNL_ARG_DST, dst_tr}});
+    submit(matmul, {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_WEIGHTS, wgh_tr}, {DNNL_ARG_DST, dst_tr}});
   }
 
   void LayerNorm(const size_t& nid) {
@@ -1106,18 +1101,16 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     ICHECK_EQ(node.getAttr<int>("axis"), -1);
 
     auto layer_norm_desc = dnnl::layer_normalization_forward::desc(
-            dnnl::prop_kind::forward_inference, data_tr.desc(), epsilon,
-            dnnl::normalization_flags::use_scale | dnnl::normalization_flags::use_shift);
+        dnnl::prop_kind::forward_inference, data_tr.desc(), epsilon,
+        dnnl::normalization_flags::use_scale | dnnl::normalization_flags::use_shift);
     auto l_norm_pd = dnnl::layer_normalization_forward::primitive_desc(layer_norm_desc, engine_);
     auto l_norm = dnnl::layer_normalization_forward(l_norm_pd);
 
     data_tr = data_tr.requestLayout(l_norm_pd.src_desc());
     dst_tr = dst_tr.requestLayout(l_norm_pd.dst_desc());
 
-    auto mean_tr = node.makeTemp(l_norm_pd.mean_desc(),
-                                 g_explorer_.generateUniqueEID());
-    auto variance_tr = node.makeTemp(l_norm_pd.variance_desc(),
-                                     g_explorer_.generateUniqueEID());
+    auto mean_tr = node.makeTemp(l_norm_pd.mean_desc(), g_explorer_.generateUniqueEID());
+    auto variance_tr = node.makeTemp(l_norm_pd.variance_desc(), g_explorer_.generateUniqueEID());
 
     submit(l_norm, {{DNNL_ARG_SRC, data_tr},
                     {DNNL_ARG_DST, dst_tr},
@@ -1138,7 +1131,7 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     // Support of softmax_v2 appears since version 2.6 in oneDNN
 #if ((DNNL_VERSION_MAJOR == 2) && (DNNL_VERSION_MINOR >= 6)) || (DNNL_VERSION_MAJOR > 2)
     dnnl::primitive_attr attr;
-    auto q_scale      = node.getInputByAttrName("q_scale_idx");
+    auto q_scale = node.getInputByAttrName("q_scale_idx");
     auto q_zero_point = node.getInputByAttrName("q_zp_idx");
     if (q_scale && q_zero_point) {
       auto q_scale_const = q_scale.getConstScalarData<float>();
@@ -1155,8 +1148,8 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto softmax = dnnl::softmax_v2_forward(softmax_pd);
 #else
     // Softmax description.
-    auto softmax_d = dnnl::softmax_forward::desc(dnnl::prop_kind::forward_inference,
-                                                 src_tr.desc(), axis);
+    auto softmax_d =
+        dnnl::softmax_forward::desc(dnnl::prop_kind::forward_inference, src_tr.desc(), axis);
     auto softmax_pd = dnnl::softmax_forward::primitive_desc(softmax_d, engine_);
     auto softmax = dnnl::softmax_forward(softmax_pd);
 #endif
@@ -1164,7 +1157,6 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     src_tr = src_tr.requestLayout(softmax_pd.src_desc());
     dst_tr = dst_tr.requestLayout(softmax_pd.dst_desc());
 
-    // TODO: support in-place calculation.
     submit(softmax, {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_DST, dst_tr}});
   }
 
