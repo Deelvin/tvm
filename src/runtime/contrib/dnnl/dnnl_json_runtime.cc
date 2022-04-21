@@ -374,20 +374,6 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     tensor_registry_.finalize();
   }
 
-  void my_print(const std::vector<int>& dims) {
-    std::cout << "size=" << dims.size() << " [ ";
-    for (auto d : dims)
-      std::cout << d << " ";
-    std::cout << "]" << std::endl;
-  }
-
-  void my_dims_print(const dnnl::memory::dims& dims) {
-    std::cout << "size=" << dims.size() << " [ ";
-    for (auto d : dims)
-      std::cout << d << " ";
-    std::cout << "]" << std::endl;
-  }
-
   void Convolution(const size_t& nid) {
     auto node = NodeHelper{nid, g_explorer_};
 

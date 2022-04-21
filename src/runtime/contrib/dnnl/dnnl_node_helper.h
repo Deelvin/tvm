@@ -161,6 +161,7 @@ static const std::map<std::string, std::string> layout_map = {
   {"NCHW16c", "NCcHW"},
   {"OWI16o", "OoIW"},
   {"OHWI16o", "OoIHW"},
+  {"OHWI64o", "OoIHW"},
   {"ODHWI16o", "OoIDHW"},
   {"HWOIG16g", "GgOIHW"},
   {"GOIHW16g", "GgOIHW"},
