@@ -404,7 +404,7 @@ if __name__ == "__main__":
       model_lib_path = ''
       for line in output_to_check:
         if line.find('Generated library:') != -1:
-          model_lib_path = '--model-path={}'.format(line.split()[-1])
+          model_lib_path = '{}/DLRM_mi/{}'.format(file_path, line.split()[-1])
       if len(model_path) == 0:
         print("ERROR: model path was not defined.")
         exit(-1)
