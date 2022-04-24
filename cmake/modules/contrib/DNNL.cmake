@@ -27,7 +27,7 @@ macro(find_dnnl)
       get_filename_component(DNNL_HDR_DIR ${DNNL_LIB_DIR} DIRECTORY)
       string(APPEND DNNL_HDR_DIR "/include")
 
-      find_file(DNNL_CONFIG_HDR dnnl_config.h PATHS ${DNNL_HDR_DIR} NO_CACHEEEE)
+      string(CONCAT DNNL_CONFIG_HDR ${DNNL_HDR_DIR} "/oneapi/dnnl/dnnl_config.h")
       if (DNNL_CONFIG_HDR)
         file(READ ${DNNL_CONFIG_HDR} DNNL_CONFIG)
         string(REGEX MATCH "DNNL_CPU_RUNTIME DNNL_RUNTIME_(OMP|SEQ|TBB)" DNNL_CPU_RUNTIME "${DNNL_CONFIG}")
