@@ -451,8 +451,7 @@ def pattern_table():
     dnnl_patterns.append(make_pattern_qnn_matmul_requantize())
     for with_div in [True, False]:
         dnnl_patterns.append(make_pattern_qnn_transpose_matmul_dequantize(with_div))
-    if dnnl_version >= (2, 5):
-        dnnl_patterns.append(make_pattern_normalization())
+    dnnl_patterns.append(make_pattern_normalization())
     if dnnl_version >= (2, 6):
         dnnl_patterns.append(make_pattern_softmax_quantize())
 

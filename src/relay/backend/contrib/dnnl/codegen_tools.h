@@ -104,6 +104,21 @@ Expr EvalExpr(Expr expr) {
   return {};
 }
 
+static std::vector<float> GetFloatVectorFromConstant(const Expr& expr) {
+  const auto* n = expr.as<ConstantNode>();
+  std::vector<float> vals;
+  ICHECK(n) << "Expr must be a constant expr - " << AsText(expr, false);
+  int64_t num_elems = 1;
+  auto shape = n->data.Shape();
+  for (size_t i = 0; i < shape.size(); i++) {
+    num_elems *= shape[i];
+  }
+  for (int64_t i = 0; i < num_elems; i++) {
+    vals.push_back(static_cast<float*>(n->data->data)[i]);
+  }
+  return vals;
+}
+
 /*!
  * @brief Evaluate shape of resulting tensor for provided expression
  * @param exp expression to evaluate result shape

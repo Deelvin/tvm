@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../../transforms/pattern_utils.h"
 #include "codegen_tools.h"
 
 namespace tvm {
@@ -628,6 +629,19 @@ KernelRequisites parseNormalization(const FunctionNode* fn) {
 
   attrs["shift_idx"] = dmlc_attr(inputs.size());
   inputs.push_back(add_2.extern_args_[0]);
+
+  ICHECK(is_const(mul.extern_args_[0]));
+  ICHECK(is_const(add_2.extern_args_[0]));
+  std::vector<float> scale = GetFloatVectorFromConstant(mul.extern_args_[0]);
+  std::vector<float> shift = GetFloatVectorFromConstant(add_2.extern_args_[0]);
+  std::vector<float> scale_shift;
+  for (auto value : scale) scale_shift.push_back(value);
+  for (auto value : shift) scale_shift.push_back(value);
+
+  auto dtype = dtype_of(mul.extern_args_[0]);
+  std::vector<int64_t> shape = {static_cast<int64_t>(scale_shift.size())};
+  attrs["scale_shift_idx"] = dmlc_attr(inputs.size());
+  inputs.push_back(EvalExpr(MakeConstantTensor(dtype, shape, scale_shift)));
 
   return {inputs, attrs};
 }

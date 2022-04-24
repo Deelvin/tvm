@@ -1094,15 +1094,23 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto e_tr = node.getInputByAttrName("epsilon_idx");
     auto epsilon = e_tr.getConstScalarData<float>();
 
-    auto scale_tr = node.getInputByAttrName("scale_idx");
-    auto shift_tr = node.getInputByAttrName("shift_idx");
-
     // Just for check
     ICHECK_EQ(node.getAttr<int>("axis"), -1);
 
+    // Support of use_scale and use_shift flags appears since version 2.3 in oneDNN
+#if ((DNNL_VERSION_MAJOR == 2) && (DNNL_VERSION_MINOR >= 3)) || (DNNL_VERSION_MAJOR > 2)
+    auto scale_tr = node.getInputByAttrName("scale_idx");
+    auto shift_tr = node.getInputByAttrName("shift_idx");
     auto layer_norm_desc = dnnl::layer_normalization_forward::desc(
         dnnl::prop_kind::forward_inference, data_tr.desc(), epsilon,
         dnnl::normalization_flags::use_scale | dnnl::normalization_flags::use_shift);
+#else
+    auto scale_shift_tr = node.getInputByAttrName("scale_shift_idx");
+    auto layer_norm_desc = dnnl::layer_normalization_forward::desc(
+        dnnl::prop_kind::forward_inference, data_tr.desc(), epsilon,
+        dnnl::normalization_flags::use_scale_shift);
+#endif
+
     auto l_norm_pd = dnnl::layer_normalization_forward::primitive_desc(layer_norm_desc, engine_);
     auto l_norm = dnnl::layer_normalization_forward(l_norm_pd);
 
@@ -1112,12 +1120,17 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto mean_tr = node.makeTemp(l_norm_pd.mean_desc(), g_explorer_.generateUniqueEID());
     auto variance_tr = node.makeTemp(l_norm_pd.variance_desc(), g_explorer_.generateUniqueEID());
 
-    submit(l_norm, {{DNNL_ARG_SRC, data_tr},
-                    {DNNL_ARG_DST, dst_tr},
-                    {DNNL_ARG_SCALE, scale_tr},
-                    {DNNL_ARG_SHIFT, shift_tr},
-                    {DNNL_ARG_MEAN, mean_tr},
-                    {DNNL_ARG_VARIANCE, variance_tr}});
+    submit(l_norm, {
+      {DNNL_ARG_SRC, data_tr}, {DNNL_ARG_DST, dst_tr},
+#if ((DNNL_VERSION_MAJOR == 2) && (DNNL_VERSION_MINOR >= 3)) || (DNNL_VERSION_MAJOR > 2)
+          {DNNL_ARG_SCALE, scale_tr}, {DNNL_ARG_SHIFT, shift_tr},
+#else
+                    {DNNL_ARG_SCALE_SHIFT, scale_shift_tr},
+#endif
+          {DNNL_ARG_MEAN, mean_tr}, {
+        DNNL_ARG_VARIANCE, variance_tr
+      }
+    });
   }
 
   void QnnSoftmax(const size_t& nid) {
