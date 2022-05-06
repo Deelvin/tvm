@@ -564,6 +564,7 @@ using FBatchCompute = std::function<Array<PrimExpr>(const Array<Var>& i)>;
  * \param shape The shape of the tensor.
  * \param dtype the data type of the tensor.
  * \param name The name of the Tensor.
+ * \param memory_scope The memory scope of the tensor
  */
 TVM_DLL Tensor placeholder(Array<PrimExpr> shape, DataType dtype = DataType::Float(32),
                            std::string name = "placeholder");

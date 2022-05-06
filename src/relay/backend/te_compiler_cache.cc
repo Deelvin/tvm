@@ -66,10 +66,11 @@ LoweredOutput::LoweredOutput(tvm::Array<te::Tensor> outputs, OpImplementation im
   data_ = std::move(n);
 }
 
-CCacheKey::CCacheKey(Function source_func, Target target) {
+CCacheKey::CCacheKey(Function source_func, Target target, VirtualDevice vd) {
   auto n = make_object<CCacheKeyNode>();
   n->source_func = std::move(source_func);
   n->target = std::move(target);
+  n->virtual_device = std::move(vd);
   data_ = std::move(n);
 }
 
@@ -361,7 +362,8 @@ class ScheduleBuilder : public ExprVisitor {
           }
         }
       }
-      // Use TOPI schedule if user specificed, or the function has no auto_scheduler schedule.
+
+      // Use TOPI schedule if user specified, or the function has no auto_scheduler schedule.
       if (!schedule.defined() && !prim_func.defined()) {
         if (anchor_op_.defined()) {
           auto anchor_impl = lower_te_compute.op_implementations_.find(anchor_op_.operator->());

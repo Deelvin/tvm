@@ -75,7 +75,7 @@ def build_run_compare(
             tvm_mod_nchwc, target_host=target_host, target=target, params=params1
         )
 
-    # verificatoin that storage_scope has expected textures scopes
+    # verification that storage_scope has expected textures scopes
     graph_json = json.loads(graph)
     if "storage_scope" in graph_json["attrs"]:
         assert (
