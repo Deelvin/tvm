@@ -484,7 +484,7 @@ KernelRequisites parseQnnDenseDeqComposite(const FunctionNode* fn, bool act) {
   attrs["dst_zp_idx"] = dmlc_attr(inputs.size());
   inputs.push_back(deq.extern_args_[1]);
 
-  attrs["deq_scale_idx"] = dmlc_attr(inputs.size());
+  attrs["o_scl_idx"] = dmlc_attr(inputs.size());
   inputs.push_back(deq.extern_args_[0]);
 
   if (bs) {
@@ -537,15 +537,17 @@ KernelRequisites parseQnnDenseQnnAddComposite(const FunctionNode* fn) {
 
   auto data = dense.extern_args_[0];
   auto wgh = dense.extern_args_[1];
-  auto bias = add.extern_args_[0];
 
-  auto attrs = extractAttrs(dense.call_node_);   // extract original attrs
-  std::vector<Expr> inputs = {data, wgh, bias};  // args with fixed positions
+  auto attrs = extractAttrs(dense.call_node_);  // extract original attrs
+  std::vector<Expr> inputs = {data, wgh};       // args with fixed positions
 
   // out_scale = rq.in_scale / rq.out_scale
   Expr o_scl = rq.extern_args_[0] / rq.extern_args_[2];
   attrs["o_scl_idx"] = dmlc_attr(inputs.size());
   inputs.push_back(collapse_to_scalar(EvalExpr(o_scl)));
+
+  attrs["bias_idx"] = dmlc_attr(inputs.size());
+  inputs.push_back(EvalExpr(add.extern_args_[0]));
 
   return {inputs, attrs};
 }

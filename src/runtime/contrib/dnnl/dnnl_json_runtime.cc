@@ -335,10 +335,6 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
           Deconvolution(nid);
         } else if (std::regex_match(op_name, conv_pat)) {
           Convolution(nid);
-        } else if ("dnnl.qnn.dense_dequantize_bias_gelu" == op_name) {
-          DenseDequantize(nid);
-        } else if ("dnnl.qnn.dense_bias_requantize" == op_name) {
-          DenseAddRequantize(nid);
         } else if (std::regex_match(op_name, dense_pat)) {
           Dense(nid);
         } else if ("nn.batch_norm" == op_name) {
@@ -651,6 +647,13 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto wgh_tr = node.getInput(1);
     auto dst_tr = node.getOutput(0);
 
+    // Convert (N+1)D -> (N)D tensor
+    if (dst_tr.dims().size() > src_tr.dims().size()) {
+      ICHECK_EQ(dst_tr.dims().size() - src_tr.dims().size(), 1);
+      ICHECK(dst_tr.dims()[0] == 1);
+      dst_tr = dst_tr.squeeze({0});
+    }
+
     auto activation = node.getAttr<std::vector<std::string>>("activation", {"none"});
     auto bias_idx = node.getAttr<int>("bias_idx", {"-1"});
     auto sum_idx = node.getAttr<int>("sum_idx", {"-1"});
@@ -665,6 +668,10 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     auto o_scl_tr = node.getInput(o_scl_idx);
     auto dst_zp_tr = node.getInput(dst_zp_idx);
 
+    auto deq_scale_tr = node.getInputByAttrName("deq_scale_idx");
+    auto q_scale_tr = node.getInputByAttrName("q_scale_idx");
+    auto q_zero_point_tr = node.getInputByAttrName("q_zp_idx");
+
     // TODO(@apeskov): temp WA. while codegen is not able to guarantee 1D format of bias data
     bias_tr = bias_tr.squeeze();
 
@@ -672,8 +679,10 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     dnnl::primitive_attr attr;
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    ICHECK(!dst_zp_tr) << "DNNL doesn't support input zero point for optimized primitives."
-                          "Should be merged into bias";
+    if (dst_zp_tr && dst_zp_tr.getConstScalarData<int32_t>() != 0) {
+      LOG(ERROR) << "DNNL doesn't support input zero point for optimized primitives."
+                    "Should be merged into bias";
+    }
 
     if (o_scl_tr) {
       ICHECK(o_scl_tr.isConstant());
@@ -695,10 +704,19 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     }
 
     if (sum_scl_tr) {
-      LOG(FATAL) << "Unsupported op: sum_scl_tr";
       auto scl = sum_scl_tr.getConstScalarData<float>();
       auto ops = attr.get_post_ops();
       ops.append_sum(scl);
+      attr.set_post_ops(ops);
+    }
+
+    if (q_scale_tr && q_zero_point_tr) {
+      auto q_scale_const = q_scale_tr.getConstScalarData<float>();
+      auto q_zp_const = q_zero_point_tr.getConstScalarData<int32_t>();
+      auto ops = attr.get_post_ops();
+      float alpha = 1.0f / q_scale_const;
+      ops.append_eltwise(1.0f, dnnl::algorithm::eltwise_linear, alpha,
+                         static_cast<float>(q_zp_const));
       attr.set_post_ops(ops);
     }
 
@@ -930,122 +948,6 @@ class DNNLJSONRuntime : public JSONRuntimeBase {
     out_tr = out_tr.requestLayout(binary_pd.dst_desc());
 
     submit(binary, {{DNNL_ARG_SRC_0, lhs_tr}, {DNNL_ARG_SRC_1, rhs_tr}, {DNNL_ARG_DST, out_tr}});
-  }
-
-  void DenseDequantize(const size_t& nid) {
-    auto node = NodeHelper{nid, g_explorer_};
-
-    auto src_tr = node.getInput(0);
-    auto wgh_tr = node.getInput(1);
-
-    auto dst_tr = node.getOutput(0);
-    // Convert 3D -> 2D tensor
-    ICHECK(dst_tr.dims()[0] == 1);
-    auto dst_tr_2d = dst_tr.squeeze({0});
-
-    auto activation = node.getAttr<std::vector<std::string>>("activation", {"none"});
-    auto src_zero_point = node.getInputByAttrName("src_zp_idx");
-    auto dst_zero_point = node.getInputByAttrName("dst_zp_idx");
-    auto deq_scale = node.getInputByAttrName("deq_scale_idx");
-    auto bias_tr = node.getInputByAttrName("bias_idx");
-    auto q_scale = node.getInputByAttrName("q_scale_idx");
-    auto q_zero_point = node.getInputByAttrName("q_zp_idx");
-
-    auto src_zp_const = src_zero_point.getConstScalarData<int32_t>();
-    auto dst_zp_const = dst_zero_point.getConstScalarData<int32_t>();
-    auto deq_scl_const = deq_scale.getConstScalarData<float>();
-
-    dnnl::primitive_attr attr;
-    attr.set_output_scales(0, {deq_scl_const});
-    attr.set_zero_points(DNNL_ARG_SRC, 0, {src_zp_const});
-    attr.set_zero_points(DNNL_ARG_DST, 0, {dst_zp_const});
-
-    if (activation[0] != "none") {
-      auto a_type = utils::convert2dnnl_activation(activation[0]);
-      auto a_scale = node.getInput(std::stoi(activation[1])).getConstScalarData<float>();
-      auto a_alfa = node.getInput(std::stoi(activation[2])).getConstScalarData<float>();
-      auto a_beta = node.getInput(std::stoi(activation[3])).getConstScalarData<float>();
-
-      auto ops = attr.get_post_ops();
-      ops.append_eltwise(a_scale, a_type, a_alfa, a_beta);
-      attr.set_post_ops(ops);
-    }
-
-    if (q_scale && q_zero_point) {
-      auto q_scale_const = q_scale.getConstScalarData<float>();
-      auto q_zp_const = q_zero_point.getConstScalarData<int32_t>();
-      auto ops = attr.get_post_ops();
-      float alpha = 1.0f / q_scale_const;
-      ops.append_eltwise(1.0f, dnnl::algorithm::eltwise_linear, alpha,
-                         static_cast<float>(q_zp_const));
-      attr.set_post_ops(ops);
-    }
-
-    // Dense description.
-    auto dense_d = (bias_tr) ? dnnl::inner_product_forward::desc(
-                                   dnnl::prop_kind::forward_inference, src_tr.layoutAny().desc(),
-                                   wgh_tr.layoutAny().desc(), bias_tr.layoutAny().desc(),
-                                   dst_tr_2d.layoutAny().desc())
-                             : dnnl::inner_product_forward::desc(
-                                   dnnl::prop_kind::forward_inference, src_tr.layoutAny().desc(),
-                                   wgh_tr.layoutAny().desc(), dst_tr_2d.layoutAny().desc());
-    auto dense_pd = dnnl::inner_product_forward::primitive_desc(dense_d, attr, engine_);
-    auto dense = dnnl::inner_product_forward(dense_pd);
-
-    // Select proper layout
-    src_tr = src_tr.requestLayout(dense_pd.src_desc());
-    wgh_tr = wgh_tr.requestLayout(dense_pd.weights_desc());
-    dst_tr = dst_tr_2d.requestLayout(dense_pd.dst_desc());
-
-    std::unordered_map<int, TensorRequisite> tr_args = {
-        {DNNL_ARG_SRC, src_tr}, {DNNL_ARG_WEIGHTS, wgh_tr}, {DNNL_ARG_DST, dst_tr}};
-    if (bias_tr) tr_args[DNNL_ARG_BIAS] = bias_tr.requestLayout(dense_pd.bias_desc());
-
-    submit(dense, tr_args);
-  }
-
-  void DenseAddRequantize(const size_t& nid) {
-    auto node = NodeHelper{nid, g_explorer_};
-
-    auto src_tr = node.getInput(0);
-    auto wgh_tr = node.getInput(1);
-    auto bias_tr = node.getInput(2);
-
-    ICHECK_EQ(src_tr.dims().size(), 2) << "input shape should have 2 dimentions.";
-    ICHECK_EQ(wgh_tr.dims().size(), 2) << "weights shape should have 2 dimentions.";
-
-    auto dst_tr = node.getOutput(0);
-
-    // Convert -> 2D tensor
-    dnnl::memory::dims new_out_dims = {src_tr.dims()[0], wgh_tr.dims()[0]};
-    auto dst_tr_2d = dst_tr.reshape(new_out_dims);
-
-    ICHECK_EQ(dst_tr_2d.dims().size(), 2) << "output shape should have 2 dimentions.";
-
-    auto o_scl = node.getInputByAttrName("o_scl_idx");
-    ICHECK(o_scl.isConstant());
-    auto data = o_scl.getConstDataLikeVec<float>();
-
-    dnnl::primitive_attr attr;
-    attr.set_output_scales(data.size() == 1 ? 0 : (1 << 1), data);
-
-    // Dense description.
-    auto dense_d = dnnl::inner_product_forward::desc(
-        dnnl::prop_kind::forward_inference, src_tr.layoutAny().desc(), wgh_tr.layoutAny().desc(),
-        bias_tr.layoutAny().desc(), dst_tr_2d.layoutAny().desc());
-    auto dense_pd = dnnl::inner_product_forward::primitive_desc(dense_d, attr, engine_);
-    auto dense = dnnl::inner_product_forward(dense_pd);
-
-    // Select proper layout
-    src_tr = src_tr.requestLayout(dense_pd.src_desc());
-    wgh_tr = wgh_tr.requestLayout(dense_pd.weights_desc());
-    bias_tr = bias_tr.requestLayout(dense_pd.bias_desc());
-    dst_tr = dst_tr_2d.requestLayout(dense_pd.dst_desc());
-
-    submit(dense, {{DNNL_ARG_SRC, src_tr},
-                   {DNNL_ARG_WEIGHTS, wgh_tr},
-                   {DNNL_ARG_BIAS, bias_tr},
-                   {DNNL_ARG_DST, dst_tr}});
   }
 
   void QnnMatmul(const size_t& nid) {

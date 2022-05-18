@@ -333,7 +333,7 @@ def make_pattern_qnn_dense_bias_requantize():
     """
     pat = wildcard()
     weight = wildcard()
-    bias = wildcard()
+    bias = is_constant()
     pat = is_op("qnn.dense")(
         pat, weight, is_constant(), is_constant(), is_constant(), is_constant()
     )
