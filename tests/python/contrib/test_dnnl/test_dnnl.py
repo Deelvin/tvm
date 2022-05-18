@@ -26,6 +26,8 @@ from tvm.relay.testing.temp_op_attr import TempOpAttr
 from tvm.relay.op.contrib import dnnl
 import tvm.testing
 
+from .common import check_result, Builder, filler_uni
+
 
 has_dnnl_codegen = pytest.mark.skipif(
     not tvm.get_global_func("relay.ext.dnnl", True), reason="DNNL codegen not available"
@@ -845,6 +847,208 @@ def test_dense_pattern(run_module, dtype="float32"):
     dense_bias = tvm.IRModule.from_expr(dense_bias)
     config = dense_bias, dic, param_lst
     run_and_verify_func(config, run_module=run_module, dtype=dtype)
+
+
+def test_qnn_dense_gelu_pattern():
+    def generate_model(with_gelu=True):
+        d_shape = (2, 8)
+        w_shape = (3, 8)
+        b_shape = w_shape[0]
+        r_shape = (1, d_shape[0], w_shape[0])
+
+        # Init input parameters
+        dtype = "int8"
+        bld = Builder()
+        data = bld.arg(shape=d_shape, dtype=dtype, is_const=False, filler=filler_uni(-10, 9))
+        weights = bld.arg(shape=w_shape, dtype=dtype, is_const=True, filler=filler_uni(-20, 19))
+        bias = bld.arg(shape=b_shape, dtype="float32", is_const=True)
+
+        # Init quantization parameters
+        i_zp = relay.const(0)
+        k_zp = relay.const(0)
+        i_scale = relay.const(0.09)
+        w_scale = relay.const(0.09)
+        d_scale = relay.const(0.05)
+        o_scale = relay.const(0.07)
+
+        # Create sequence of ops
+        op0 = relay.qnn.op.dense(data, weights, i_zp, k_zp, i_scale, w_scale, units=None)
+        op1 = relay.op.reshape(op0, r_shape)
+        op2 = relay.qnn.op.dequantize(op1, d_scale, i_zp, axis=1)
+        op = relay.op.add(op2, bias)
+        if with_gelu is True:
+            op3 = relay.op.divide(op, relay.const(1.41421))
+            op4 = relay.op.erf(op3)
+            op5 = relay.op.multiply(op, relay.const(0.5))
+            op6 = relay.op.add(op4, relay.const(1.0))
+            op = relay.op.multiply(op5, op6)
+        op_last = relay.qnn.op.quantize(op, o_scale, i_zp, axis=0)
+
+        return bld.finalize(op_last)
+
+    ref_mod, params = generate_model(with_gelu=True)
+    mod = partition_for_dnnl(ref_mod)
+
+    # atol=1 means int values should match with +-1 quantum value tolerance
+    check_result(mod, ref_mod, params, tol=1e-10, atol=1)
+
+
+def test_qnn_dense_add_requantize_pattern():
+    def generate_model():
+        d_shape = (2, 8)
+        w_shape = (3, 8)
+        b_shape = w_shape[0]
+        r_shape = (1, d_shape[0], w_shape[0])
+
+        # Init input parameters
+        dtype = "int8"
+        bld = Builder()
+        data = bld.arg(shape=d_shape, dtype=dtype, is_const=False, filler=filler_uni(-10, 9))
+        weights = bld.arg(shape=w_shape, dtype=dtype, is_const=True, filler=filler_uni(-20, 19))
+        bias = bld.arg(shape=b_shape, dtype="int32", is_const=True, filler=filler_uni(-30, 29))
+
+        # Init quantization parameters
+        zp = relay.const(0)
+        i_scale = relay.const(0.09)
+        w_scale = relay.const(0.09)
+        ri_scale = relay.const(0.05)
+        ro_scale = relay.const(0.2)
+
+        # Create sequence of ops
+        op0 = relay.qnn.op.dense(data, weights, zp, zp, i_scale, w_scale, units=None)
+        op1 = relay.op.reshape(op0, r_shape)
+        op2 = relay.qnn.op.add(op1, bias, ri_scale, zp, ri_scale, zp, ri_scale, zp)
+        op_last = relay.qnn.op.requantize(op2, ri_scale, zp, ro_scale, zp, axis=1)
+
+        return bld.finalize(op_last)
+
+    ref_mod, params = generate_model()
+    mod = partition_for_dnnl(ref_mod)
+
+    # atol=1 means int values should match with +-1 quantum value tolerance
+    check_result(mod, ref_mod, params, tol=1e-10, atol=1)
+
+
+def test_softmax_quantize_pattern():
+    def generate_model():
+        # Init input parameters
+        bld = Builder()
+        data = bld.arg(shape=(1, 2, 4, 4), dtype="float32", is_const=False)
+
+        # Init quantization parameters
+        zp = relay.const(0)
+        scale = relay.const(0.005)
+
+        # Create sequence of ops
+        op0 = relay.op.nn.softmax(data, axis=3)
+        op_last = relay.qnn.op.quantize(op0, scale, zp, axis=0)
+
+        return bld.finalize(op_last)
+
+    ref_mod, params = generate_model()
+    mod = partition_for_dnnl(ref_mod)
+
+    # Softmax + qnn.quantize fusion is possible since v2.6 of oneDNN.
+    # desired_compiler == None skip verification of full dnnl offload.
+    desired_compiler = None if dnnl.get_dnnl_version() < (2, 6) else "dnnl"
+
+    # atol=1 means int values should match with +-1 quantum value tolerance
+    check_result(mod, ref_mod, params, tol=1e-10, atol=1, desired_compiler=desired_compiler)
+
+
+def test_qnn_matmul_requantize_pattern():
+    def generate_model():
+        d_shape = (2, 4, 8)
+        w_shape = (2, 8, 4)
+
+        # Init input parameters
+        dtype = "int8"
+        bld = Builder()
+        data = bld.arg(shape=d_shape, dtype=dtype, is_const=False, filler=filler_uni(-20, 19))
+        weights = bld.arg(shape=w_shape, dtype=dtype, is_const=False, filler=filler_uni(-20, 19))
+
+        # Init quantization parameters
+        zp = relay.const(0)
+        i_scale = relay.const(0.09)
+        w_scale = relay.const(0.08)
+        ri_scale = relay.const(0.05)
+        ro_scale = relay.const(0.2)
+
+        # Create sequence of ops
+        op0 = relay.op.transpose(weights, [0, 2, 1])
+        op1 = relay.qnn.op.batch_matmul(data, op0, zp, zp, i_scale, w_scale)
+        op_last = relay.qnn.op.requantize(op1, ri_scale, zp, ro_scale, zp)
+
+        return bld.finalize(op_last)
+
+    ref_mod, params = generate_model()
+    mod = partition_for_dnnl(ref_mod)
+
+    # atol=1 means int values should match with +-1 quantum value tolerance
+    check_result(mod, ref_mod, params, tol=1e-10, atol=1)
+
+
+def test_qnn_matmul_dequantize_pattern():
+    def generate_model(with_div):
+        d_shape = (2, 4, 8)
+        w_shape = (2, 8, 4)
+        r_shape = (1, d_shape[0], d_shape[1], w_shape[2])
+
+        # Init input parameters
+        dtype = "int8"
+        bld = Builder()
+        data = bld.arg(shape=d_shape, dtype=dtype, is_const=False, filler=filler_uni(-20, 19))
+        weights = bld.arg(shape=w_shape, dtype=dtype, is_const=False, filler=filler_uni(-20, 19))
+
+        # Init quantization parameters
+        zp = relay.const(0)
+        i_scale = relay.const(0.09)
+        w_scale = relay.const(0.08)
+        d_scale = relay.const(0.05)
+
+        # Create sequence of ops
+        op0 = relay.op.transpose(weights, [0, 2, 1])
+        op1 = relay.qnn.op.batch_matmul(data, op0, zp, zp, i_scale, w_scale)
+        op2 = relay.op.reshape(op1, r_shape)
+        op = relay.qnn.op.dequantize(op2, d_scale, zp, axis=0)
+        if with_div is True:
+            op = relay.op.divide(op, relay.const(8.0))
+
+        return bld.finalize(op)
+
+    for with_div in [True, False]:
+        ref_mod, params = generate_model(with_div)
+        mod = partition_for_dnnl(ref_mod)
+        check_result(mod, ref_mod, params, tol=1e-5)
+
+
+def test_layer_norm_pattern():
+    def generate_model():
+        d_shape = (1, 4, 8)
+
+        # Init input parameters
+        bld = Builder()
+        data = bld.arg(shape=d_shape, dtype="float32", is_const=False)
+        scale = bld.arg(shape=(d_shape[2]), dtype="float32", is_const=True)
+        shift = bld.arg(shape=(d_shape[2]), dtype="float32", is_const=True)
+
+        # Create sequence of ops
+        op0 = relay.op.mean(data, axis=[-1], keepdims=True)
+        op1 = relay.op.subtract(data, op0)
+        op2 = relay.op.power(op1, relay.const(2.0))
+        op3 = relay.op.mean(op2, axis=[-1], keepdims=True)
+        op4 = relay.op.add(op3, relay.const(1e-12))
+        op5 = relay.op.sqrt(op4)
+        op6 = relay.op.divide(op1, op5)
+        op7 = relay.op.multiply(op6, scale)
+        op_last = relay.op.add(op7, shift)
+
+        return bld.finalize(op_last)
+
+    ref_mod, params = generate_model()
+    mod = partition_for_dnnl(ref_mod)
+
+    check_result(mod, ref_mod, params, tol=1e-5)
 
 
 def test_pool2d(run_module, dtype="float32"):
