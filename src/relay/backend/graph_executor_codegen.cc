@@ -262,6 +262,7 @@ class GraphExecutorCodegen : public backend::MemoizedExprTranslator<std::vector<
     GetJSON(&writer);
     LoweredOutput ret;
     ret.graph_json = os.str();
+    std::cout << os.str() << std::endl;
     ret.params = std::unordered_map<std::string, std::pair<int, const tvm::runtime::NDArray>>();
     for (auto param : params_) {
       ret.params.emplace(std::make_pair(
