@@ -517,7 +517,7 @@ class Range : public ObjectRef {
   TVM_DEFINE_OBJECT_REF_METHODS(Range, ObjectRef, RangeNode);
 };
 
-// implementataions
+// implementations
 inline const Type& RelayExprNode::checked_type() const {
   ICHECK(checked_type_.defined()) << "internal error: the type checker has "
                                   << "not populated the checked_type "

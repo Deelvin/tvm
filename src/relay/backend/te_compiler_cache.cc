@@ -138,6 +138,7 @@ class LowerToTECompute : public backend::MemoizedExprTranslator<Array<te::Tensor
     }
     readable_name_stream_ << "fused";
 
+    virtual_device_ = VirtualDevice();
     Array<te::Tensor> outputs = this->VisitExpr(relay_func->body);
 
     candidate_name_ = readable_name_stream_.str();
@@ -203,9 +204,18 @@ class LowerToTECompute : public backend::MemoizedExprTranslator<Array<te::Tensor
   }
 
   Array<te::Tensor> VisitExpr_(const CallNode* call_node) final {
+    if (Downcast<Op>(call_node->op) == Op::Get("on_device")) {
+      auto attrs = call_node->attrs.as<OnDeviceAttrs>();
+      ICHECK(attrs) << "Cannot find on_device attribute in OnDevice call";
+      virtual_device_ = attrs->virtual_device;
+      ICHECK(virtual_device_ != VirtualDevice::FullyUnconstrained()) << "Unable to have unconstrained virtual_device in OnDevice call";
+      return VisitExpr(call_node->args[0]);
+    }
     static auto flower_call = tvm::runtime::Registry::Get("relay.backend.lower_call");
     ICHECK(flower_call) << "relay.backend.lower_call is not registered.";
 
+    auto virtual_device = virtual_device_;
+    virtual_device_ = VirtualDevice();
     Array<te::Tensor> inputs;
     int count_tuple = 0;
     for (Expr arg : call_node->args) {
@@ -231,6 +241,18 @@ class LowerToTECompute : public backend::MemoizedExprTranslator<Array<te::Tensor
 
     LoweredOutput lowered_out = (*flower_call)(GetRef<Call>(call_node), inputs, target_);
     Array<te::Tensor> outputs = lowered_out->outputs;
+    // here we ready to substitute tensors by memory scope aware ones
+    if (!virtual_device->memory_scope.empty()) {
+      ICHECK(outputs.size() == 1) << "expect only memory scope for single output ops";
+            auto node = make_object<te::TensorNode>();
+      node->op = outputs[0]->op;
+      node->value_index = outputs[0]->value_index;
+      node->dtype = outputs[0]->dtype;
+      node->shape = outputs[0]->shape;
+      node->memory_scope = virtual_device->memory_scope;
+      outputs.clear();
+      outputs.push_back(te::Tensor(node));
+    }
     op_implementations_[op.operator->()] = lowered_out->implementation;
 
     if (outputs.size() != 1) {
@@ -294,6 +316,8 @@ class LowerToTECompute : public backend::MemoizedExprTranslator<Array<te::Tensor
   // Cache device copy op for equivalence checking to reduce registry lookup
   // overhead for each invocation of call node when retrieving schedules.
   const Op& device_copy_op_;
+
+  VirtualDevice virtual_device_;
 };
 
 int LowerToTECompute::const_index = 0;
@@ -357,7 +381,7 @@ class ScheduleBuilder : public ExprVisitor {
         }
       }
 
-      // Use TOPI schedule if user specificed, or the function has no auto_scheduler schedule.
+      // Use TOPI schedule if user specified, or the function has no auto_scheduler schedule.
       if (!schedule.defined() && !prim_func.defined()) {
         if (anchor_op_.defined()) {
           auto anchor_impl = lower_te_compute.op_implementations_.find(anchor_op_.operator->());
@@ -384,6 +408,11 @@ class ScheduleBuilder : public ExprVisitor {
   }
 
   void VisitExpr_(const CallNode* call_node) final {
+    if (Downcast<Op>(call_node->op) == Op::Get("on_device")) {
+      VisitExpr(call_node->args[0]);
+      return;
+    }
+
     static auto fpattern = Op::GetAttrMap<TOpPattern>("TOpPattern");
 
     ICHECK(call_node->op.as<OpNode>()) << "Primitive function only allows call into primitive ops";

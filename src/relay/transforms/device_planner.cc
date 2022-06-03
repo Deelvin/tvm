@@ -72,7 +72,7 @@
  *    the tuple rather than project from a copy of the tuple. We'll do this by rewriting.
  *  - We are prepared to insert device_copies on the arguments and result of calls to PrimFuncs,
  *    on the assumption a) we already ran PlanDevices before lowering so we are not allowing
- *    any new cross-device copies, but b) after lowering we may have new memory scope constraits
+ *    any new cross-device copies, but b) after lowering we may have new memory scope constraints
  *    to deal with.
  *
  * Phase 1

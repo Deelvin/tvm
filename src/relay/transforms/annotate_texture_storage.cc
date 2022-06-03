@@ -59,18 +59,11 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
     StorageInfo storage_info;
     storage_info.VisitExpr(expr);
     storage_info.LegalizeProducerStorage();
-    // For now we force write to global for the outputs of the function over which
-    // memory planning will be performed. This should incur only a trivial change
-    // in performance.
-    storage_info.ForceGlobalOutputStorage(expr);
     Map<Expr, Array<String>> storage_map;
     for (auto& kv : storage_info.storage_scope_) {
-      if (storage_info.constants_expr_.find(GetRef<Expr>(kv.first)) !=
-          storage_info.constants_expr_.end()) {
-        std::vector<String> storage_scopes;
-        std::copy(kv.second.begin(), kv.second.end(), std::back_inserter(storage_scopes));
-        storage_map.Set(GetRef<Expr>(kv.first), Array<String>{storage_scopes});
-      }
+      std::vector<String> storage_scopes;
+      std::copy(kv.second.begin(), kv.second.end(), std::back_inserter(storage_scopes));
+      storage_map.Set(GetRef<Expr>(kv.first), Array<String>{storage_scopes});
     }
 
     // initial algo assumes mapping of outputs of the expr that is not enough, need to update
@@ -100,7 +93,6 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
   void VisitExpr_(const VarNode* vn) final { ApplyConsumerScopeToInputs(vn); }
 
   void VisitExpr_(const ConstantNode* cn) final {
-    constants_expr_.insert(GetRef<Expr>(cn));
     ApplyConsumerScopeToInputs(cn);
   }
 
@@ -131,6 +123,7 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
                 storage_scope_[call].push_back("global.texture");
               }
             }
+            storage_scope_[fn->body.operator->()] = storage_scope_[call];
             for (size_t i = 0; i < fn->params.size(); i++) {
               args_to_vars_[call->args[i]] = fn->params[i];
             }
@@ -140,7 +133,7 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
             if (storage_scope_.count(call)) {
               ICHECK(!HasMixedStorageOutputs(call))
                   << "Mixed output storage scopes are not currently supported";
-              consumer_storage_scopes_[arg.operator->()].push_back(storage_scope_[call][0]);
+              consumer_storage_scopes_[arg.operator->()].push_back("global.texture");
             } else {
               consumer_storage_scopes_[arg.operator->()].push_back("global");
             }
@@ -153,6 +146,22 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
 
     for (auto& arg : call->args) {
       Visit(arg);
+    }
+    // We have all callers filled into storage_scope_ if they support textures
+    // We need to verify if this call expects texture and if it does not, remove from
+    // storage_scope_ since initially storage_scope_ is filled only based on knowledge
+    // that function able to work with textures, but not necessary that this texture is
+    // expected by function callee
+    for (auto& arg : call->args) {
+      if (consumer_storage_scopes_.count(arg.operator->()) &&
+          GetConsumerScope(consumer_storage_scopes_[arg.operator->()]) != "global.texture") {
+        storage_scope_.erase(arg.operator->());
+        if (const auto* cn = arg.as<CallNode>() ) {
+          if (const auto* fn = cn->op.as<FunctionNode>()) {
+            storage_scope_.erase(fn->body.operator->());
+          }
+        }
+      }
     }
   }
 
@@ -239,27 +248,6 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
     }
   }
 
-  void ForceGlobalOutputStorage(const Expr& expr) {
-    // Mark function outputs as global scope
-    if (const auto* func = expr.as<FunctionNode>()) {
-      if (auto* tuple = func->body.as<TupleNode>()) {
-        for (auto& field : tuple->fields) {
-          if (storage_scope_.count(field.operator->())) {
-            for (size_t i = 0; i < storage_scope_[field.operator->()].size(); i++) {
-              storage_scope_[field.operator->()][i] = "global";
-            }
-          }
-        }
-      } else {
-        if (storage_scope_.count(func->body.operator->())) {
-          for (size_t i = 0; i < storage_scope_[func->body.operator->()].size(); i++) {
-            storage_scope_[func->body.operator->()][i] = "global";
-          }
-        }
-      }
-    }
-  }
-
   bool DeviceSupportsTextureStorage(const Expr& expr) {
     auto vd = GetVirtualDevice(expr);
     if (vd != VirtualDevice::FullyUnconstrained()) {
@@ -334,9 +322,7 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
   /*! \brief output storage scopes used by consumers of expr key  */
   std::unordered_map<const ExprNode*, std::vector<std::string>> consumer_storage_scopes_;
   /*! \brief mapping of arguments to call to function variables*/
-  std::unordered_map<Expr, Var, ObjectPtrHash, ObjectPtrEqual> args_to_vars_;
-  /*! \brief set of constant expressions to filter out expressions*/
-  std::set<Expr> constants_expr_;
+  std::unordered_map<Expr, Expr, ObjectPtrHash, ObjectPtrEqual> args_to_vars_;
 };
 
 }  // namespace
@@ -382,6 +368,27 @@ class VDRewriter : public transform::DeviceAwareExprMutator {
       return c;
     }
     return GetRef<Constant>(vn);
+  }
+
+  Expr DeviceAwareVisitExpr_(const CallNode* call_node) final {
+    auto new_call = transform::DeviceAwareExprMutator::DeviceAwareVisitExpr_(call_node);
+    auto virtual_device = GetVirtualDevice(GetRef<Expr>(call_node));
+    std::string memory_scope = "global";
+    if (storage_scope_.find(GetRef<Expr>(call_node)) != storage_scope_.end() &&
+        storage_scope_[GetRef<Expr>(call_node)][0] != "global") {
+      memory_scope = storage_scope_[GetRef<Expr>(call_node)][0];
+    } else if (virtual_device->memory_scope != "") {
+      memory_scope = virtual_device->memory_scope;
+    } else if (!call_node->op.as<FunctionNode>()) {
+      memory_scope = "";
+    }
+    if (!memory_scope.empty()) {
+      new_call = OnDevice(new_call,
+                  VirtualDevice(virtual_device->device_type(), virtual_device->virtual_device_id,
+                                virtual_device->target, memory_scope),
+                                true);
+    }
+    return new_call;
   }
 
  private:

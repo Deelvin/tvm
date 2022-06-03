@@ -458,15 +458,18 @@ def test_2conv2d():
     }
 
     static_memory_scope = [
-        "",
-        "",
+        "global",
+        "global",
         "global.texture-weight",
         "global.texture-weight",
-        "",
+        "global.texture-nhwc",
         "global.texture-weight",
         "global.texture-weight",
-        "",
-        "",
+        "global",
+        "global",
     ]
 
     build_run_compare(mod, params1, {"data": input_shape}, dtype, target, static_memory_scope)
+
+if __name__ == "__main__":
+    test_2conv2d()
