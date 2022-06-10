@@ -70,7 +70,9 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
     // VirtualDevice for function variables to get proper codegen. Adding vars to storage_map
     for (const auto& a : storage_info.args_to_vars_) {
       if (storage_map.count(a.first)) {
-        storage_map.Set(a.second, storage_map[a.first]);
+        for (const auto& v : a.second) {
+          storage_map.Set(v, storage_map[a.first]);
+        }
       }
     }
     return storage_map;
@@ -125,7 +127,7 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
             }
             storage_scope_[fn->body.operator->()] = storage_scope_[call];
             for (size_t i = 0; i < fn->params.size(); i++) {
-              args_to_vars_[call->args[i]] = fn->params[i];
+              args_to_vars_[call->args[i]].push_back(fn->params[i]);
             }
           }
           // Add consumer storage scope information for call arguments
@@ -147,7 +149,7 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
     for (auto& arg : call->args) {
       Visit(arg);
     }
-    // We have all callers filled into storage_scope_ if they support textures
+    // We have all callees filled into storage_scope_ if they support textures
     // We need to verify if this call expects texture and if it does not, remove from
     // storage_scope_ since initially storage_scope_ is filled only based on knowledge
     // that function able to work with textures, but not necessary that this texture is
@@ -322,7 +324,7 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
   /*! \brief output storage scopes used by consumers of expr key  */
   std::unordered_map<const ExprNode*, std::vector<std::string>> consumer_storage_scopes_;
   /*! \brief mapping of arguments to call to function variables*/
-  std::unordered_map<Expr, Expr, ObjectPtrHash, ObjectPtrEqual> args_to_vars_;
+  std::unordered_map<Expr, std::vector<Expr>, ObjectPtrHash, ObjectPtrEqual> args_to_vars_;
 };
 
 }  // namespace

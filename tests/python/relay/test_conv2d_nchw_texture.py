@@ -471,5 +471,265 @@ def test_2conv2d():
 
     build_run_compare(mod, params1, {"data": input_shape}, dtype, target, static_memory_scope)
 
+@tvm.testing.requires_opencl
+def test_residual_block():
+    target = "opencl --device=adreno"
+    dtype = "float16"
+
+    input_shape = (1, 32, 40, 40)
+    filter_shape1 = (32, 32, 2, 2)
+    filter_shape2 = (32, 32, 1, 1)
+    filter_shape3 = (32, 32, 2, 2)
+    bias_shape1 = (1, 32, 1, 1)
+    # bias_shape2 = (1, 32, 1, 1)
+    A = relay.var("data", shape=input_shape, dtype=dtype)
+    W1 = relay.var("weight1", shape=filter_shape1, dtype=dtype)
+    B1 = relay.var("bias1", shape=bias_shape1, dtype=dtype)
+    W2 = relay.var("weight2", shape=filter_shape2, dtype=dtype)
+    # B2 = relay.var("bias2", shape=bias_shape2, dtype=dtype)
+    W3 = relay.var("weight3", shape=filter_shape3, dtype=dtype)
+
+    conv1 = relay.nn.conv2d(
+        A,
+        W1,
+        data_layout="NCHW",
+        kernel_layout="OIHW",
+        padding=[0, 0, 0, 0],
+        strides=[2, 2],
+        out_dtype=dtype,
+        channels=32,
+        kernel_size=(2, 2),
+    )
+    D = relay.op.add(conv1, B1)
+    D = relay.op.nn.relu(D)
+
+    conv2 = relay.nn.conv2d(
+        D,
+        W2,
+        data_layout="NCHW",
+        kernel_layout="OIHW",
+        padding=[0, 0, 0, 0],
+        strides=[1, 1],
+        out_dtype=dtype,
+        channels=32,
+        kernel_size=(1, 1),
+    )
+    D = relay.op.add(conv2, D)
+    D = relay.op.nn.relu(D)
+    
+    conv3 = relay.nn.conv2d(
+        D,
+        W3,
+        data_layout="NCHW",
+        kernel_layout="OIHW",
+        padding=[0, 0, 0, 0],
+        strides=[2, 2],
+        out_dtype=dtype,
+        channels=32,
+        kernel_size=(2, 2),
+    )
+    D = relay.op.nn.relu(conv3)
+
+    mod = relay.Function([A, W1, B1, W2, W3], D)
+    np.random.seed(0)
+    initializer = relay.testing.init.Xavier()
+    filter_data1 = np.zeros(filter_shape1).astype(dtype)
+    bias_data1 = np.zeros(bias_shape1).astype(dtype)
+    initializer("weight", filter_data1)
+    initializer("bias", bias_data1)
+    filter_data2 = np.zeros(filter_shape2).astype(dtype)
+    # bias_data2 = np.zeros(bias_shape2).astype(dtype)
+    initializer("weight", filter_data2)
+    # initializer("bias", bias_data2)
+    filter_data3 = np.zeros(filter_shape3).astype(dtype)
+    initializer("weight", filter_data3)
+    params1 = {
+        "weight1": tvm.nd.array(filter_data1),
+        "bias1": tvm.nd.array(bias_data1),
+        "weight2": tvm.nd.array(filter_data2),
+        # "bias2": tvm.nd.array(bias_data2),
+        "weight3": tvm.nd.array(filter_data3),
+    }
+
+    static_memory_scope = [
+        "global", 
+        "global", 
+        "global.texture-weight", 
+        "global.texture-weight", 
+        "global.texture", 
+        "global.texture-weight", 
+        "global.texture", 
+        "global.texture-weight", 
+        "global", 
+        "global"
+    ]
+
+    build_run_compare(mod, params1, {"data": input_shape}, dtype, target, static_memory_scope)
+
+
+@tvm.testing.requires_opencl
+def test_plan_device_issue1():
+    target = "opencl --device=adreno"
+    dtype = "float16"
+
+    input_shape = (1, 32, 40, 40)
+    filter_shape1 = (32, 32, 2, 2)
+    filter_shape2 = (32, 32, 1, 1)
+    A = relay.var("data", shape=input_shape, dtype=dtype)
+    W1 = relay.var("weight1", shape=filter_shape1, dtype=dtype)
+    W2 = relay.var("weight2", shape=filter_shape2, dtype=dtype)
+
+    conv1 = relay.nn.conv2d(
+        A,
+        W1,
+        data_layout="NCHW",
+        kernel_layout="OIHW",
+        padding=[0, 0, 0, 0],
+        strides=[2, 2],
+        out_dtype=dtype,
+        channels=32,
+        kernel_size=(2, 2),
+    )
+    conv2 = relay.nn.conv2d(
+        conv1,
+        W2,
+        data_layout="NCHW",
+        kernel_layout="OIHW",
+        padding=[0, 0, 0, 0],
+        strides=[1, 1],
+        out_dtype=dtype,
+        channels=32,
+        kernel_size=(1, 1),
+    )
+
+    mod = relay.Function([A, W1, W2], conv2)
+    np.random.seed(0)
+    initializer = relay.testing.init.Xavier()
+    filter_data1 = np.zeros(filter_shape1).astype(dtype)
+    initializer("weight", filter_data1)
+    filter_data2 = np.zeros(filter_shape2).astype(dtype)
+    initializer("weight", filter_data2)
+    params1 = {
+        "weight1": tvm.nd.array(filter_data1),
+        "weight2": tvm.nd.array(filter_data2),
+    }
+
+    # static_memory_scope = [
+    #     "global",
+    #     "global",
+    #     "global.texture-weight",
+    #     "global.texture-weight",
+    #     "global.texture-nhwc",
+    #     "global.texture-weight",
+    #     "global.texture-weight",
+    #     "global",
+    #     "global",
+    # ]
+
+    static_memory_scope = []
+
+    build_run_compare(mod, params1, {"data": input_shape}, dtype, target, static_memory_scope)
+
+@tvm.testing.requires_opencl
+def test_branch_textures():
+    target = "opencl --device=adreno"
+    dtype = "float16"
+
+    input_shape = (1, 32, 40, 40)
+    filter_shape1 = (96, 32, 2, 2)
+    filter_shape2 = (32, 96, 2, 2)
+    filter_shape3 = (5, 96, 2, 2)
+    bias_shape1 = (1, 96, 1, 1)
+    bias_shape2 = (1, 32, 1, 1)
+    A = relay.var("data", shape=input_shape, dtype=dtype)
+    W1 = relay.var("weight1", shape=filter_shape1, dtype=dtype)
+    B1 = relay.var("bias1", shape=bias_shape1, dtype=dtype)
+    W2 = relay.var("weight2", shape=filter_shape2, dtype=dtype)
+    W3 = relay.var("weight3", shape=filter_shape3, dtype=dtype)
+    B2 = relay.var("bias2", shape=bias_shape2, dtype=dtype)
+
+    # C = relay.nn.relu(A)
+    conv1 = relay.nn.conv2d(
+        A,
+        W1,
+        data_layout="NCHW",
+        kernel_layout="OIHW",
+        padding=[0, 0, 0, 0],
+        strides=[2, 2],
+        out_dtype=dtype,
+        channels=96,
+        kernel_size=(2, 2),
+    )
+    D = relay.op.add(conv1, B1)
+    D = relay.op.nn.relu(D)
+
+    conv2 = relay.nn.conv2d(
+        D,
+        W2,
+        data_layout="NCHW",
+        kernel_layout="OIHW",
+        padding=[0, 0, 0, 0],
+        strides=[2, 2],
+        out_dtype=dtype,
+        channels=32,
+        kernel_size=(2, 2),
+    )
+    conv2 = relay.op.add(conv2, B2)
+    conv2 = relay.op.nn.relu(conv2)
+
+    conv3 = relay.nn.conv2d(
+        D,
+        W3,
+        data_layout="NCHW",
+        kernel_layout="OIHW",
+        padding=[0, 0, 0, 0],
+        strides=[2, 2],
+        out_dtype=dtype,
+        channels=5,
+        kernel_size=(2, 2),
+    )
+
+    t = relay.Tuple([conv2, conv3])
+    c = relay.op.concatenate(t, axis=1)
+
+
+    mod = relay.Function([A, W1, B1, W2, B2, W3], c)
+    np.random.seed(0)
+    initializer = relay.testing.init.Xavier()
+    filter_data1 = np.zeros(filter_shape1).astype(dtype)
+    bias_data1 = np.zeros(bias_shape1).astype(dtype)
+    initializer("weight", filter_data1)
+    initializer("bias", bias_data1)
+    filter_data2 = np.zeros(filter_shape2).astype(dtype)
+    bias_data2 = np.zeros(bias_shape2).astype(dtype)
+    initializer("weight", filter_data2)
+    initializer("bias", bias_data2)
+    filter_data3 = np.zeros(filter_shape3).astype(dtype)
+    initializer("weight", filter_data3)
+    params1 = {
+        "weight1": tvm.nd.array(filter_data1),
+        "bias1": tvm.nd.array(bias_data1),
+        "weight2": tvm.nd.array(filter_data2),
+        "bias2": tvm.nd.array(bias_data2),
+        "weight3": tvm.nd.array(filter_data3),
+    }
+
+    # static_memory_scope = [
+    #     "global",
+    #     "global",
+    #     "global.texture-weight",
+    #     "global.texture-weight",
+    #     "global.texture-nhwc",
+    #     "global.texture-weight",
+    #     "global.texture-weight",
+    #     "global",
+    #     "global",
+    # ]
+
+    static_memory_scope = []
+
+    build_run_compare(mod, params1, {"data": input_shape}, dtype, target, static_memory_scope)
+
+
 if __name__ == "__main__":
-    test_2conv2d()
+    test_branch_textures()
