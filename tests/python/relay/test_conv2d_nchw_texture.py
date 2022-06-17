@@ -440,6 +440,7 @@ def test_2conv2d():
     D = relay.op.nn.relu(D)
 
     mod = relay.Function([A, W1, B1, W2, B2], D)
+    print(mod)
     np.random.seed(0)
     initializer = relay.testing.init.Xavier()
     filter_data1 = np.zeros(filter_shape1).astype(dtype)
@@ -465,8 +466,8 @@ def test_2conv2d():
         "global.texture-nhwc",
         "global.texture-weight",
         "global.texture-weight",
-        "global",
-        "global",
+        "",
+        "",
     ]
 
     build_run_compare(mod, params1, {"data": input_shape}, dtype, target, static_memory_scope)
@@ -515,8 +516,9 @@ def test_residual_block():
         kernel_size=(1, 1),
     )
     D = relay.op.add(conv2, D)
+    D = D * relay.const(0.15, "float16")
     D = relay.op.nn.relu(D)
-    
+
     conv3 = relay.nn.conv2d(
         D,
         W3,
@@ -552,16 +554,17 @@ def test_residual_block():
     }
 
     static_memory_scope = [
-        "global", 
-        "global", 
-        "global.texture-weight", 
-        "global.texture-weight", 
-        "global.texture", 
-        "global.texture-weight", 
-        "global.texture", 
-        "global.texture-weight", 
-        "global", 
-        "global"
+        "global",
+        "global",
+        "global.texture-weight",
+        "global.texture-weight",
+        "global.texture",
+        "global.texture-weight",
+        'global',
+        "global.texture",
+        "global.texture-weight",
+        "",
+        ""
     ]
 
     build_run_compare(mod, params1, {"data": input_shape}, dtype, target, static_memory_scope)
@@ -732,4 +735,5 @@ def test_branch_textures():
 
 
 if __name__ == "__main__":
-    test_branch_textures()
+    #test_branch_textures()
+    test_residual_block()

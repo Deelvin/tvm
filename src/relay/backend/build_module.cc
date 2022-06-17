@@ -402,6 +402,7 @@ class RelayBuildModule : public runtime::ModuleNode {
     } else {
       relay_module = seq(relay_module);
     }
+    relay_module = transform::InferType()(relay_module);
     ICHECK(relay_module.defined());
 
     return relay_module;

@@ -66,6 +66,19 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
       storage_map.Set(GetRef<Expr>(kv.first), Array<String>{storage_scopes});
     }
 
+    // Filling the input arguments by "global" scope to handle PlanDevice algo which propagates
+    // virtual devices from outputs to inputs. At the same time outputs must be unconstrained
+    // to avoid useless device_copy
+    for (const auto& cs: storage_info.consumer_storage_scopes_) {
+      // we have record in consumers that mean that potentially consumer
+      // dealt with textures anyhow, it's safe to mark this expr as global scope
+      // even without verification of the consumer's outputs scope
+      if (storage_info.CanConsumeTextures(cs.second) &&
+        storage_map.find(GetRef<Expr>(cs.first)) == storage_map.end()) {
+        storage_map.Set(GetRef<Expr>(cs.first), Array<String>{"global"});
+      }
+    }
+
     // initial algo assumes mapping of outputs of the expr that is not enough, need to update
     // VirtualDevice for function variables to get proper codegen. Adding vars to storage_map
     for (const auto& a : storage_info.args_to_vars_) {
@@ -125,7 +138,6 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
                 storage_scope_[call].push_back("global.texture");
               }
             }
-            storage_scope_[fn->body.operator->()] = storage_scope_[call];
             for (size_t i = 0; i < fn->params.size(); i++) {
               args_to_vars_[call->args[i]].push_back(fn->params[i]);
             }
@@ -277,6 +289,19 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
     return texture_tag;
   }
 
+  bool CanConsumeTextures(const std::vector<std::string>& consumer_scopes) const {
+    if (!consumer_scopes.size()) {
+      return false;
+    }
+    std::string texture_tag = "global.texture";
+    for (auto& consumer_scope : consumer_scopes) {
+      if (consumer_scope.find(texture_tag) == 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool HasMixedStorageOutputs(const ExprNode* expr) {
     if (storage_scope_.count(expr)) {
       std::string ref_scope = storage_scope_[expr][0];
@@ -324,7 +349,7 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
   /*! \brief output storage scopes used by consumers of expr key  */
   std::unordered_map<const ExprNode*, std::vector<std::string>> consumer_storage_scopes_;
   /*! \brief mapping of arguments to call to function variables*/
-  std::unordered_map<Expr, std::vector<Expr>, ObjectPtrHash, ObjectPtrEqual> args_to_vars_;
+  std::unordered_map<Expr, std::vector<Var>, ObjectPtrHash, ObjectPtrEqual> args_to_vars_;
 };
 
 }  // namespace
@@ -359,8 +384,7 @@ class VDRewriter : public transform::DeviceAwareExprMutator {
   }
 
   Expr VisitExpr_(const ConstantNode* vn) final {
-    if (storage_scope_.find(GetRef<Expr>(vn)) != storage_scope_.end() &&
-        storage_scope_[GetRef<Expr>(vn)][0] != "global") {
+    if (storage_scope_.find(GetRef<Expr>(vn)) != storage_scope_.end()) {
       Expr c = Constant(vn->data, vn->span);
       auto virtual_device = GetVirtualDevice(GetRef<Expr>(vn));
       c = OnDevice(c,
@@ -375,9 +399,8 @@ class VDRewriter : public transform::DeviceAwareExprMutator {
   Expr DeviceAwareVisitExpr_(const CallNode* call_node) final {
     auto new_call = transform::DeviceAwareExprMutator::DeviceAwareVisitExpr_(call_node);
     auto virtual_device = GetVirtualDevice(GetRef<Expr>(call_node));
-    std::string memory_scope = "global";
-    if (storage_scope_.find(GetRef<Expr>(call_node)) != storage_scope_.end() &&
-        storage_scope_[GetRef<Expr>(call_node)][0] != "global") {
+    std::string memory_scope = "";
+    if (storage_scope_.find(GetRef<Expr>(call_node)) != storage_scope_.end()) {
       memory_scope = storage_scope_[GetRef<Expr>(call_node)][0];
     } else if (virtual_device->memory_scope != "") {
       memory_scope = virtual_device->memory_scope;
