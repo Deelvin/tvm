@@ -78,6 +78,71 @@ class SimplifyReshape : public DFPatternRewrite {
 };
 
 /*!
+ * \brief SimplifyConcatenateReshape matches the pattern of consecutive concatenate reshape ops,
+ *   and merges into one concatenate op.
+ */
+class SimplifyConcatReshape : public DFPatternRewrite {
+ public:
+  SimplifyConcatReshape() {
+    x_ = IsWildcard();
+    concat_ = IsOp("concatenate");
+    reshape_ = IsOp("reshape");
+    pattern_ = reshape_({concat_({x_})});
+  }
+
+  Expr Callback(const Expr& pre, const Expr& post,
+                const Map<DFPattern, Array<Expr>>& node_map) const override {
+    auto x = node_map[x_][0];
+    auto in_shape = Downcast<TensorType>(post->checked_type())->shape;
+    bool const_shape = true;
+    for (auto dim : in_shape) {
+      if (dim.as<IntImmNode>() == nullptr) {
+        const_shape = false;
+        break;
+      }
+    }
+    if (!const_shape)
+      return post;
+    auto* node = static_cast<const CallNode*>(pre.get());
+    if (node != nullptr) {
+      auto attr = node->attrs.as<ReshapeAttrs>();
+      if (attr) {
+        if (attr->allowzero == true) {
+          // true empty tensor, so we sould skip it
+          return post;
+        }
+        size_t ind = 0;
+        size_t cnt = 0;
+        for (size_t i = 0; i < attr->newshape.size(); ++i) {
+          if ((int64_t)attr->newshape[i] < 0) {
+            cnt++;
+            ind = i;
+          }
+        }
+        if (cnt == 1 && attr->newshape[ind] == -1){
+          auto concat = node_map[concat_][0];
+          auto concat_node = static_cast<const CallNode*>(concat.get());
+          if (concat_node != nullptr) {
+            auto attr = node->attrs.as<ConcatenateAttrs>();
+            if (attr != nullptr) {
+              return  MakeConcatenate(x, attr->axis);
+            }
+          }
+        }
+      }
+    }
+    return post;
+  }
+
+ private:
+  /*! \brief Pattern input */
+  DFPattern x_;
+  DFPattern concat_;
+  DFPattern reshape_;
+};
+
+
+/*!
  * \brief SimplifySameCast matches the pattern of cast data to the same dtype.
  */
 class SimplifySameCast : public DFPatternRewrite {
@@ -693,6 +758,7 @@ Expr SimplifyExpr(const Expr& expr, const IRModule& mod) {
   composer.AddRewrite<ConcretizeBroadcastToLikeRewrite>();
   composer.AddRewrite<EliminateIdentityRewrite>();
   composer.AddRewrite<SimplifyReshape>();
+  composer.AddRewrite<SimplifyConcatReshape>();
   composer.AddRewrite<SimplifyTranspose>();
   composer.AddRewrite<SimplifySameCast>();
   composer.AddRewrite<SimplifyConsecutiveCast>();
