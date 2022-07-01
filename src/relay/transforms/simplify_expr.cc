@@ -85,9 +85,8 @@ class SimplifyConcatReshape : public DFPatternRewrite {
  public:
   SimplifyConcatReshape() {
     x_ = IsWildcard();
-    concat_ = IsOp("concatenate");
-    reshape_ = IsOp("reshape");
-    pattern_ = reshape_({concat_({x_})});
+    concat_ = IsOp("concatenate")({x_});
+    pattern_ = IsOp("reshape")({concat_});
   }
 
   Expr Callback(const Expr& pre, const Expr& post,
@@ -121,11 +120,11 @@ class SimplifyConcatReshape : public DFPatternRewrite {
         }
         if (cnt == 1 && attr->newshape[ind] == -1){
           auto concat = node_map[concat_][0];
-          auto concat_node = static_cast<const CallNode*>(concat.get());
+          auto concat_node = concat.as<CallNode>();
           if (concat_node != nullptr) {
-            auto attr = node->attrs.as<ConcatenateAttrs>();
-            if (attr != nullptr) {
-              return  MakeConcatenate(x, attr->axis);
+            auto concat_attr = concat_node->attrs.as<ConcatenateAttrs>();
+            if (concat_attr) {
+              return  MakeConcatenate(x, concat_attr->axis);
             }
           }
         }
@@ -138,7 +137,6 @@ class SimplifyConcatReshape : public DFPatternRewrite {
   /*! \brief Pattern input */
   DFPattern x_;
   DFPattern concat_;
-  DFPattern reshape_;
 };
 
 
