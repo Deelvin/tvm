@@ -184,6 +184,164 @@ def test_plan_memory():
     )
 
 
+def test_plan_memory2d_fuse():
+    HOST_TARGET = tvm.target.Target("llvm")
+    GPU_DEVICE = tvm.device("opencl --device=adreno")
+    GPU_TARGET = tvm.target.Target("opencl --device=adreno").with_host(HOST_TARGET)
+    GPU = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET)
+    CTXT = tvm.transform.PassContext(config={"relay.fallback_device_type": GPU.device_type_int})
+
+    gpu_scope_global = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET, memory_scope="global")
+    gpu_scope_textures = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET, memory_scope="global.texture")
+
+    metatable = {
+        "VirtualDevice": [
+            gpu_scope_global,
+            gpu_scope_textures
+        ]
+    }
+
+    mod = tvm.parser.parse(
+        """
+        #[version = "0.0.5"]
+        def @main(%data1 {virtual_device=meta[VirtualDevice][0]}: Tensor[(1, 32, 40, 40), float32],
+                  %data2 {virtual_device=meta[VirtualDevice][0]}: Tensor[(1, 32, 40, 40), float32]) {
+        %0 = fn (%a {virtual_device=meta[VirtualDevice][0]}) {
+          layout_transform(%a, src_layout="NCHW", dst_layout="NCHW4c")
+        };
+        %1 = %0(%data1);
+        %2 = on_device(%1, virtual_device=meta[VirtualDevice][0], constrain_result=True);
+        %3 = %0(%data2);
+        %4 = on_device(%3, virtual_device=meta[VirtualDevice][0], constrain_result=True);
+        %5 = fn (%a {virtual_device=meta[VirtualDevice][0]}, %b {virtual_device=meta[VirtualDevice][0]}) {
+          add(%a, %b)
+        };
+        %6 = %5(%2, %4);
+        %7 = on_device(%6, virtual_device=meta[VirtualDevice][1], constrain_result=True);
+        %10 = fn (%a {virtual_device=meta[VirtualDevice][1]}) {
+          layout_transform(%a, src_layout="NCHW4c", dst_layout="NCHW")
+        };
+        %10(%7)
+        }
+        """,
+        "from_string",
+        None,
+        metatable,
+    )
+    print(mod)
+
+    config = tvm.target.make_compilation_config(CTXT, GPU_TARGET, HOST_TARGET)
+    mod = relay.transform.InferType()(mod)
+    mod = relay.transform.PlanDevices(config)(mod)
+    mod = relay.transform.InferType()(mod)
+    print(mod)
+    # func = mod["main"]
+    # memory_plan = relay.backend._backend.GraphPlanMemory(func)
+
+
+def test_plan_memory2d_nofuse():
+    HOST_TARGET = tvm.target.Target("llvm")
+    GPU_DEVICE = tvm.device("opencl --device=adreno")
+    GPU_TARGET = tvm.target.Target("opencl --device=adreno").with_host(HOST_TARGET)
+    GPU = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET)
+    CTXT = tvm.transform.PassContext(config={"relay.fallback_device_type": GPU.device_type_int})
+
+
+    gpu_scope_global = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET, memory_scope="global")
+    gpu_scope_textures = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET, memory_scope="global.texture")
+    gpu_scope_textures_w = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET, memory_scope="global.texture-weight")
+    input_shape = (1, 32, 40, 40)
+    dtype = "float32"
+
+    metatable = {
+        "VirtualDevice": [
+            gpu_scope_global,
+            gpu_scope_textures
+        ],
+        "relay.Constant": [relay.const(tvm.nd.array(np.array([2], dtype="float32")))]
+    }
+
+    mod = tvm.parser.parse(
+        """
+        #[version = "0.0.5"]
+        def @main(%data1 {virtual_device=meta[VirtualDevice][0]}: Tensor[(1, 32, 40, 40), float32],
+                  %data2 {virtual_device=meta[VirtualDevice][0]}: Tensor[(1, 32, 40, 40), float32]) {
+        %0 = layout_transform(%data1, src_layout="NCHW", dst_layout="NCHW4c");
+        %1 = layout_transform(%data2, src_layout="NCHW", dst_layout="NCHW4c");
+        %2 = on_device(%0, virtual_device=meta[VirtualDevice][0], constrain_result=True);
+        %3 = on_device(%1, virtual_device=meta[VirtualDevice][0], constrain_result=True);
+        %4 = add(%2, %3);
+        %5 = on_device(%4, virtual_device=meta[VirtualDevice][1], constrain_result=True);
+        layout_transform(%5, src_layout="NCHW4c", dst_layout="NCHW")
+        }
+        """,
+        "from_string",
+        None,
+        metatable,
+    )
+    print(mod)
+
+    config = tvm.target.make_compilation_config(CTXT, GPU_TARGET, HOST_TARGET)
+    mod = relay.transform.InferType()(mod)
+    mod = relay.transform.PlanDevices(config)(mod)
+    mod = relay.transform.InferType()(mod)
+    print(mod)
+    # func = mod["main"]
+    # memory_plan = relay.backend._backend.GraphPlanMemory(func)
+
+
+def test_plan_memory2d_noexpect_copy():
+    HOST_TARGET = tvm.target.Target("llvm")
+    GPU_DEVICE = tvm.device("opencl --device=adreno")
+    GPU_TARGET = tvm.target.Target("opencl --device=adreno").with_host(HOST_TARGET)
+    GPU = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET)
+    CTXT = tvm.transform.PassContext(config={"relay.fallback_device_type": GPU.device_type_int})
+
+
+    gpu_scope_global = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET, memory_scope="global")
+    gpu_scope_textures = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET, memory_scope="global.texture")
+    gpu_scope_textures_w = tvm.target.VirtualDevice(GPU_DEVICE, GPU_TARGET, memory_scope="global.texture-weight")
+    input_shape = (1, 32, 40, 40)
+    dtype = "float32"
+
+    metatable = {
+        "VirtualDevice": [
+            gpu_scope_global,
+            gpu_scope_textures
+        ],
+        "relay.Constant": [relay.const(tvm.nd.array(np.array([2], dtype="float32")))]
+    }
+
+    mod = tvm.parser.parse(
+        """
+        #[version = "0.0.5"]
+        def @main(%data1 {virtual_device=meta[VirtualDevice][0]}: Tensor[(1, 32, 40, 40), float32],
+                  %data2 {virtual_device=meta[VirtualDevice][0]}: Tensor[(1, 32, 40, 40), float32]) {
+        %0 = layout_transform(%data1, src_layout="NCHW", dst_layout="NCHW4c");
+        %1 = layout_transform(%data2, src_layout="NCHW", dst_layout="NCHW4c");
+        %2 = add(%0, %1);
+        %3 = on_device(%2, virtual_device=meta[VirtualDevice][0]);
+        %4 = on_device(meta[relay.Constant][0], virtual_device=meta[VirtualDevice][0]);
+        %5 = multiply(%3, %4);
+        %6 = on_device(%5, virtual_device=meta[VirtualDevice][1]);
+
+        layout_transform(%6, src_layout="NCHW4c", dst_layout="NCHW")
+        }
+        """,
+        "from_string",
+        None,
+        metatable,
+    )
+
+    config = tvm.target.make_compilation_config(CTXT, GPU_TARGET, HOST_TARGET)
+    mod = relay.transform.InferType()(mod)
+    mod = relay.transform.PlanDevices(config)(mod)
+    mod = relay.transform.InferType()(mod)
+    print(mod)
+    # func = mod["main"]
+    # memory_plan = relay.backend._backend.GraphPlanMemory(func)
+
+
 def test_reshape_nop():
     # test that reshape can be turned into nop
     x = relay.var("x", shape=(10, 4))
@@ -432,4 +590,7 @@ def test_benchmark_end_to_end_rpc():
 
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    #pytest.main([__file__])
+    test_plan_memory2d_fuse()
+    #test_plan_memory2d_nofuse()
+    #test_plan_memory2d_noexpect_copy()
