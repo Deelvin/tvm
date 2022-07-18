@@ -502,7 +502,7 @@ def test_2conv2d():
 
     static_memory_scope = [
         "",
-        "global",
+        "global.texture",
         "global.texture-weight",
         "global.texture-weight",
         "global.texture-nhwc",
@@ -598,7 +598,7 @@ def test_residual_block():
 
     static_memory_scope = [
         "",
-        "global",
+        "global.texture",
         "global.texture-weight",
         "global.texture-weight",
         "global.texture",
