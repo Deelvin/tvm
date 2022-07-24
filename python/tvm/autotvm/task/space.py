@@ -672,6 +672,18 @@ class ConfigSpace(object):
         self.flop = 0
         self.cost = None
         self.is_fallback = False
+        self._shared_filter = None
+        # self._non_filtered_length = None
+        # self._non_filtered_space_map = None
+        self.check_map = {}
+        # self.filtered_indexes = None
+        # self.a2f_indexes = None
+        # self.filtered_saved = 0
+        # self.unfiltered_saved = 0
+        # self.ice_offset = None
+        # self.ice_unblocked = None
+        # self.space_map = OrderedDict()  # name -> space
+        # self.orig_space_map = OrderedDict()  # name -> space
 
     @staticmethod
     def axis(var):
@@ -822,6 +834,53 @@ class ConfigSpace(object):
         """
         return not bool(self.errors)
 
+    def check_index(self, t):
+        if not self._shared_filter:
+            return True
+        if t not in self.check_map: 
+            entities = {}
+            for name, space in self.space_map.items():
+                entities[name] = space[t % len(space)]
+                t //= len(space)
+            self.check_map[t] = self._shared_filter(entities)
+        return self.check_map[t]
+
+    #  OrderedDict([('tile_fc', Split(policy=factors, product=8, num_outputs=3) len=6), ('tile_y', Split(policy=factors, product=152, num_outputs=3) len=10), ('tile_x', Split(policy=factors, product=152, num_outputs=3) len=10), ('tile_rcc', Split(policy=factors, product=1, num_outputs=2) len=1), ('tile_ry', Split(policy=factors, product=3, num_outputs=2) len=2), ('tile_rx', Split(policy=factors, product=3, num_outputs=2) len=2), ('auto_unroll_max_step', OtherOption([0, 512, 1500]) len=3), ('unroll_explicit', OtherOption([0, 1]) len=2)])
+    def multi_filter(self, **kwargs):
+        print("ICE multi_filter", self._collect, flush=True)
+        if self._collect:
+            self._shared_filter = kwargs.get("filter", lambda x: True)
+            self._length = int(np.prod([len(x) for x in self.space_map.values()]))
+            # new_len = 0
+            print("ICE _length", self._length,flush=True)
+            print("ICE self.space_map\n", repr(self.space_map),flush=True)
+            # self.filtered_indexes = {}
+            # self.a2f_indexes = {}
+            # for i in range(self._length):
+            #     entities = OrderedDict()
+            #     t = i
+            #     for name, space in self.space_map.items():
+            #         entities[name] = space[t % len(space)]
+            #         t //= len(space)
+            #     print("ICE index {} check {}".format(i, self._shared_filter(entities)),flush=True)
+            #     if self._shared_filter(entities) == True:
+            #         # self.ice_unblocked.add(i)
+            #         # self.filtered_indexes[new_len] = i
+            #         # self.a2f_indexes[i] = new_len
+            #         # self.ice_offset.append(i - new_len)
+            #         new_len += 1
+            # raise IndexError("ICE STOP")
+            # if new_len > 0:
+            #     self._non_filtered_length = self._length
+            #     self._length = new_len
+            #     # pass
+            # else:
+            #     self.filtered_indexes = None
+            #     self.a2f_indexes = None
+                # self.ice_offset = None
+                # self.ice_unblocked = None
+            # print(self._length)
+
     def _add_new_transform(self, space_class, name, axes, policy, **kwargs):
         """Add a new transform space in template"""
         # if we do not have tuned info (_collect == True) but defined KNOB value
@@ -843,7 +902,12 @@ class ConfigSpace(object):
             self._length = int(np.prod([len(x) for x in self.space_map.values()]))
         return self._length
 
-    def get(self, index):
+    # def check_ice(self, index):
+    #     if self.a2f_indexes and (index not in self.a2f_indexes):
+    #         return False
+    #     return True
+
+    def get__ice(self, index):
         """Get a config entity with detailed parameters from this space
 
         Parameters
@@ -854,6 +918,19 @@ class ConfigSpace(object):
         if index < 0 or index >= len(self):
             raise IndexError("Index out of range: size {}, got index {}".format(len(self), index))
         entities = OrderedDict()
+        # if self.a2f_indexes:
+        #     if index not in self.a2f_indexes:
+        #         print('ICE index:', index)
+        #         for i in self.a2f_indexes:
+        #             print('ICE unblocked:', i)
+
+        #         raise IndexError("Index out of filtered values: got index {}".format(index))
+        #     t = index
+        # # if self.filtered_indexes:
+        # #     t = self.filtered_indexes[index]
+        # else:
+        if self.check_index(index):
+            return None
         t = index
         for name, space in self.space_map.items():
             entities[name] = space[t % len(space)]

@@ -66,8 +66,11 @@ class GridSearchTuner(IndexBaseTuner):
             if self.counter >= self.range_length:
                 break
             index = self.counter + self.index_offset
-            ret.append(self.task.config_space.get(index))
-            self.counter = self.counter + 1
+            cfg = self.task.config_space.get__ice(index)
+            if cfg:
+                print("ICE GridSearchTuner", flush=True)
+                ret.append(cfg) # ice
+            self.counter += 1
         return ret
 
 
@@ -104,8 +107,11 @@ class RandomTuner(IndexBaseTuner):
 
             # Use the indirect index to get a direct index.
             index = self.rand_state.get(index_, index_) + self.index_offset
-            ret.append(self.task.config_space.get(index))
-            self.visited.append(index)
+            cfg = self.task.config_space.get__ice(index)
+            if cfg:
+                print("ICE RandomTuner", flush=True)
+                ret.append(cfg) # ICE
+                self.visited.append(index)
 
             # Update the direct index map.
             self.rand_state[index_] = self.rand_state.get(self.rand_max, self.rand_max)

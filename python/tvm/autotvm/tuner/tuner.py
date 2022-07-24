@@ -110,6 +110,7 @@ class Tuner(object):
         si_prefix: str
             One of tvm.autotvm.utils.SI_PREFIXES. The SI prefix to use when reporting FLOPS.
         """
+        print("\nICE Tuner.tune", flush=True)
         measure_batch = create_measure_batch(self.task, measure_option)
         n_parallel = getattr(measure_batch, "n_parallel", 1)
         early_stopping = early_stopping or 1e9
@@ -129,6 +130,7 @@ class Tuner(object):
                 break
 
             configs = self.next_batch(min(n_parallel, n_trial - i))
+            print("ICE configs\n", configs, flush=True)
 
             inputs = [MeasureInput(self.task.target, self.task, config) for config in configs]
             results = measure_batch(inputs)
@@ -196,6 +198,7 @@ class Tuner(object):
             )
         GLOBAL_SCOPE.in_tuning = False
         del measure_batch
+        print("ICE Tuner.tune end", flush=True)
 
     def reset(self):
         """reset the status of tuner"""

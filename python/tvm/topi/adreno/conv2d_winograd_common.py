@@ -434,10 +434,10 @@ def schedule_conv2d_winograd(cfg, s, output, pre_computed):
         filter=lambda entry: entry.size[2] <= 64 and entry.size[1] >= 4 and entry.size[1] <= 16,
     )
     cfg.define_split("tile_rc", rcc, num_outputs=2)
-    # TODO: Uncomment the following lines when multi_filter will be introduced
-    # cfg.multi_filter(
-    # filter=lambda entity: entity["tile_y"].size[2] * entity["tile_x"].size[2] in range(32,1024)
-    # )
+    print("ICE conv wino", flush=True)
+    cfg.multi_filter(
+        filter=lambda entity: 32 <= (entity["tile_y"].size[2] * entity["tile_x"].size[2]) < 1024
+    )
     ##### space definition end #####
 
     # batch gemm

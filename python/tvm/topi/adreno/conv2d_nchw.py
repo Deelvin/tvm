@@ -263,7 +263,10 @@ def schedule_conv2d_NCHWc_KCRSk(cfg, s, output):
     cfg.define_split("tile_rx", rx, num_outputs=2)
     cfg.define_knob("auto_unroll_max_step", [0, 512, 1500])
     cfg.define_knob("unroll_explicit", [0, 1])
-
+    # print("ICE conv multi_filter", flush=True)
+    cfg.multi_filter(
+        filter=lambda entity: 32 <= (entity["tile_fc"].size[2] * entity["tile_y"].size[2] * entity["tile_x"].size[2]) < 1024
+    )
     ##### space definition end #####
 
     pad_data, kernel = s[conv].op.input_tensors
