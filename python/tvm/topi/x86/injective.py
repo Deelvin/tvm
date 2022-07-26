@@ -144,6 +144,9 @@ def schedule_concatenate_cpu(outs):
 
     outs = [outs] if isinstance(outs, te.tensor.Tensor) else outs
     s = te.create_schedule([x.op for x in outs])
+
+    te.schedule.AutoInlineInjective(s)
+
     scheduled_ops = []
 
     def traverse(op):
@@ -153,6 +156,12 @@ def schedule_concatenate_cpu(outs):
         for tensor in op.input_tensors:
             if tensor.op.input_tensors and tensor.op not in scheduled_ops:
                 traverse(tensor.op)
+                # Workaround to clue-up fused operations onto single scope.
+                # Applicable only for consecutive ComputeOp operations with fuse flag.
+                if isinstance(op, te.ComputeOp) and isinstance(tensor.op, te.ComputeOp):
+                    if tag.is_injective(op.tag) and tag.is_injective(tensor.op.tag):
+                        s[tensor.op].compute_at(s[op], s[op].leaf_iter_vars[0])
+
         scheduled_ops.append(op)
 
     for out in outs:
