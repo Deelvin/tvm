@@ -591,6 +591,8 @@ runtime::Module BuildOpenCL(IRModule mod, Target target) {
     if (fpostproc) {
       fsource = (*fpostproc)(fsource).operator std::string();
     }
+    std::cout << "--------------------------------------------------" << std::endl;
+    std::cout << fsource << std::endl;
     code << fsource;
   }
 

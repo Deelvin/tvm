@@ -805,6 +805,19 @@ def adreno(model="unknown", options=None):
     opts = _merge_opts(opts, options)
     return Target(" ".join(["opencl"] + opts))
 
+def avec(model="unknown", options=None):
+    """Returns a Qualcomm GPU target.
+    Parameters
+    ----------
+    model: str
+        The model of this device
+    options : str or list of str
+        Additional options
+    """
+    opts = ["-device=adreno", "-model=%s" % model]
+    opts = _merge_opts(opts, options)
+    return Target(" ".join(["opencl"] + opts))
+
 
 def create(target):
     """Deprecated. Use the constructor of :py:mod:`tvm.target.Target` directly."""
