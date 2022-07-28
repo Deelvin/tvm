@@ -301,8 +301,8 @@ runtime::Module BuildOpenCL(IRModule mod, Target target) {
       fsource = (*fpostproc)(fsource).operator std::string();
     }
     code << fsource;
+    std::cout << fsource << std::endl;
   }
-
   return OpenCLModuleCreate(code.str(), "cl", ExtractFuncInfo(mod), code.str());
 }
 

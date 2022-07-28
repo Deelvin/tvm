@@ -526,6 +526,20 @@ def hexagon(cpu_ver="v66", sim_args=None, llvm_args=None, hvx=128):
     return Target(" ".join(["hexagon"] + args_list))
 
 
+def avec(model="unknown", options=None):
+    """Returns a Qualcomm GPU target.
+    Parameters
+    ----------
+    model: str
+        The model of this device
+    options : str or list of str
+        Additional options
+    """
+    opts = ["-device=adreno", "-model=%s" % model]
+    opts = _merge_opts(opts, options)
+    return Target(" ".join(["opencl"] + opts))
+
+
 def create(target):
     """Deprecated. Use the constructor of :py:mod:`tvm.target.Target` directly."""
     warnings.warn("tvm.target.create() is being deprecated. Please use tvm.target.Target() instead")

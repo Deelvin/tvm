@@ -61,6 +61,7 @@ from . import image
 from . import sparse
 from . import hls
 from . import random
+from . import avec
 
 # error reporting
 from .utils import InvalidShapeError
