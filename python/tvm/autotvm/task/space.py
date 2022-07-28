@@ -672,6 +672,8 @@ class ConfigSpace(object):
         self.flop = 0
         self.cost = None
         self.is_fallback = False
+        self._shared_filter = None
+        self.check_map = {}
 
     @staticmethod
     def axis(var):
@@ -822,6 +824,22 @@ class ConfigSpace(object):
         """
         return not bool(self.errors)
 
+    def check_index(self, t):
+        if not self._shared_filter:
+            return True
+        if t not in self.check_map: 
+            entities = {}
+            for name, space in self.space_map.items():
+                entities[name] = space[t % len(space)]
+                t //= len(space)
+            self.check_map[t] = self._shared_filter(entities)
+        return self.check_map[t]
+
+    def multi_filter(self, **kwargs):
+        if self._collect:
+            self._shared_filter = kwargs.get("filter", lambda x: True)
+            self._length = int(np.prod([len(x) for x in self.space_map.values()]))
+
     def _add_new_transform(self, space_class, name, axes, policy, **kwargs):
         """Add a new transform space in template"""
         # if we do not have tuned info (_collect == True) but defined KNOB value
@@ -854,6 +872,8 @@ class ConfigSpace(object):
         if index < 0 or index >= len(self):
             raise IndexError("Index out of range: size {}, got index {}".format(len(self), index))
         entities = OrderedDict()
+        if self.check_index(index):
+            return None
         t = index
         for name, space in self.space_map.items():
             entities[name] = space[t % len(space)]

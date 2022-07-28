@@ -224,6 +224,7 @@ class ModelBasedTuner(Tuner):
         self.trials = []
         self.trial_pt = 0
         self.visited = set()
+        self.bad_visited = set()
 
         # observed samples
         self.xs = []
@@ -235,13 +236,14 @@ class ModelBasedTuner(Tuner):
         ret = []
 
         counter = 0
-        while counter < batch_size:
-            if len(self.visited) >= len(self.space):
+        while counter < batch_size: # ICE TODO
+            if (len(self.visited) + len(self.bad_visited)) >= len(self.space):
                 break
+            index = None
 
             while self.trial_pt < len(self.trials):
                 index = self.trials[self.trial_pt]
-                if index not in self.visited:
+                if index not in self.visited and index not in self.bad_visited:
                     break
                 self.trial_pt += 1
 
@@ -249,16 +251,22 @@ class ModelBasedTuner(Tuner):
                 # if the trial list is empty or
                 # the tuner is doing the last 5% trials (e-greedy), choose randomly
                 index = np.random.randint(len(self.space))
-                while index in self.visited:
+                while index in self.visited or index in self.bad_visited:
                     index = np.random.randint(len(self.space))
 
-            ret.append(self.space.get(index))
-            self.visited.add(index)
+            # if index >= len(self.space):
+            #     index = len(self.space) - 1
 
-            counter += 1
+            cfg = self.space.get(index) # ICE TODO
+            if cfg:
+                ret.append(cfg)
+                counter += 1
+                self.visited.add(index) # ICE TODO
+            else:
+                self.bad_visited.add(index)
         return ret
 
-    def update(self, inputs, results):
+    def update(self, inputs, results): # ICE TODO
         for inp, res in zip(inputs, results):
             index = inp.config.index
             if res.error_no == 0:
@@ -274,7 +282,7 @@ class ModelBasedTuner(Tuner):
             # However, adding the index to visited again here enables us
             # to also use this update function to resume tuning progress in
             # case of interruption.
-            self.visited.add(index)
+            self.visited.add(index) # ICE TODO
 
         # if we have enough new training samples
         if len(self.xs) >= self.plan_size * (self.train_ct + 1) and self.flops_max > 1e-6:
@@ -319,7 +327,7 @@ class ModelBasedTuner(Tuner):
         GLOBAL_SCOPE.in_tuning = False
 
     def has_next(self):
-        return len(self.visited) < len(self.space)
+        return (len(self.visited) + len(self.bad_visited)) < len(self.space)
 
 
 def point2knob(p, dims):

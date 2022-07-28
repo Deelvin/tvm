@@ -57,7 +57,7 @@ def get_rank(values):
     return ranks
 
 
-def sample_ints(low, high, m):
+def sample_ints(low, high, m, check_index):
     """
     Sample m different integer numbers from [low, high) without replacement
     This function is an alternative of `np.random.choice` when (high - low) > 2 ^ 32, in
@@ -77,13 +77,20 @@ def sample_ints(low, high, m):
     ints: an array of size m
     """
     vis = set()
-    assert m <= high - low
+    unsuitable = set()
+    range_size = high - low
+    assert m <= range_size
     while len(vis) < m:
         new = randrange(low, high)
-        while new in vis:
+        while new in vis or new in unsuitable:
             new = randrange(low, high)
-        vis.add(new)
+        if check_index(new):
+            vis.add(new)
+        else:
+            unsuitable.add(new)
+        assert len(vis) + len(unsuitable) <= range_size
 
+    assert len(vis) == m
     return list(vis)
 
 
