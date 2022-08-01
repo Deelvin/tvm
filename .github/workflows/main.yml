@@ -144,11 +144,11 @@ jobs:
       - name: Build android_camera
         working-directory: apps/android_camera
         run: |
+          export PYTHONPATH=$TVM_HOME/python:${PYTHONPATH}
           set -eux
           mkdir -p app/src/main/assets/models/
           export TVM_NDK_CC=${ANDROID_NDK_LATEST_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang++
           export TVM_HOME=~/work/tvm/tvm
-          export PYTHONPATH=$TVM_HOME/python:${PYTHONPATH}
           python3 ${TVM_HOME}/python/gen_requirements.py
           pip3 install -r ${TVM_HOME}/python/requirements/core.txt
           cd models
