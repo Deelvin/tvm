@@ -176,7 +176,7 @@ def test_vthread_vectorized():
         B[0:4] = T.broadcast(vthread, 4)
 
     @T.prim_func
-    def main():
+    def expected_func():
         B = T.allocate([4], "int32x4", "shared")
         B[0 * 4 / 4] = T.broadcast(0, 4)
         B[1 * 4 / 4] = T.broadcast(1, 4)
