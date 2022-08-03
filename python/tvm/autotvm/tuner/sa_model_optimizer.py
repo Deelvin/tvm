@@ -60,7 +60,7 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
         log_interval=50,
     ):
         super(SimulatedAnnealingOptimizer, self).__init__()
-
+        print("ICE SimulatedAnnealingOptimizer", task, flush=True)
         self.task = task
         self.dims = [len(x) for x in self.task.config_space.space_map.values()] # ICE TODO
 
@@ -114,7 +114,14 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
         while k < n_iter and k < k_last_modify + early_stop:
             new_points = np.empty_like(points)
             for i, p in enumerate(points):
-                new_points[i] = random_walk(p, self.dims, self.task.config_space.check_index, len(self.task.config_space))
+                # print(i)
+                # print(p)
+                # print(self.dims)
+                # print(self.task.config_space.check_index)
+                # print(self.task.config_space)
+                # print(len(self.task.config_space))
+                new_points[i] = SimulatedAnnealingOptimizer.random_walk(point=p, dims=self.dims, 
+                    check_index=self.task.config_space.check_index, size=len(self.task.config_space))
 
             new_scores = model.predict(new_points)
 
@@ -161,6 +168,10 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
 
 
     def random_walk(point, dims, check_index, size):
+        # print("random_walk.point",point)
+        # print("random_walk.dims",dims)
+        # print("random_walk.check_index",check_index)
+        # print("random_walk.size",size)
         from tvm.autotvm.tuner.model_based_tuner import knob2point, point2knob
         """random walk as local transition
 
@@ -180,9 +191,11 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
         knob = point2knob(point, dims)
         new_knob = knob.copy()
         unsuitable = set([point])
-        new_point = None
+        new_point = point
         # mutate
         while new_point in unsuitable:
+            # print("random_walk.new_point",new_point)
+            # print("random_walk.unsuitable",unsuitable)
             from_i = np.random.randint(len(knob))
             to_v = np.random.randint(dims[from_i])
             new_knob[from_i] = to_v
@@ -194,5 +207,5 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
             if not len(unsuitable) < size:
                 logger.debug("random_walk did not find a new suitable point. The original will be returned")
                 return point
-
+        # print("random_walk.new_point end",new_point)
         return new_point

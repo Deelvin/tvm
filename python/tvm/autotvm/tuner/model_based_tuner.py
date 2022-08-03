@@ -211,6 +211,7 @@ class ModelBasedTuner(Tuner):
         self.space_len = len(task.config_space)
         self.dims = [len(x) for x in self.space.space_map.values()]
 
+        # print("ICE ModelBasedTuner task ", self.task, flush=True)
         self.cost_model = cost_model
         self.model_optimizer = model_optimizer
         self.diversity_filter_ratio = diversity_filter_ratio
@@ -256,8 +257,9 @@ class ModelBasedTuner(Tuner):
 
             # if index >= len(self.space):
             #     index = len(self.space) - 1
-
+            # print("ICE ModelBasedTuner index ", index, flush=True)
             cfg = self.space.get(index) # ICE TODO
+            # print("ICE ModelBasedTuner cfg ", cfg, flush=True)
             if cfg:
                 ret.append(cfg)
                 counter += 1
@@ -265,11 +267,16 @@ class ModelBasedTuner(Tuner):
             else:
                 self.bad_visited.add(index)
 
-        print("ICE ModelBasedTuner next_batch ", len(ret), "/", batch_size, flush=True)
+        # print("ICE ModelBasedTuner next_batch ", len(ret), "/", batch_size, flush=True)
+        # print("ICE ModelBasedTuner visited ", self.visited, flush=True)
+        # print("ICE ModelBasedTuner bad_visited ", self.bad_visited, flush=True)
         assert(len(ret) == batch_size)
         return ret
 
     def update(self, inputs, results): # ICE TODO
+        # print("ICE ModelBasedTuner update self.visited", self.visited, flush=True)
+
+        # print("ICE ModelBasedTuner update self.bad_visited", self.bad_visited, flush=True)
         for inp, res in zip(inputs, results):
             index = inp.config.index
             if res.error_no == 0:
@@ -286,7 +293,7 @@ class ModelBasedTuner(Tuner):
             # to also use this update function to resume tuning progress in
             # case of interruption.
             self.visited.add(index) # ICE TODO
-
+        # print("ICE ModelBasedTuner update self.visited 2", self.visited, flush=True)
         # if we have enough new training samples
         if len(self.xs) >= self.plan_size * (self.train_ct + 1) and self.flops_max > 1e-6:
             self.cost_model.fit(self.xs, self.ys, self.plan_size)
@@ -306,7 +313,8 @@ class ModelBasedTuner(Tuner):
             self.trials = maximums
             self.trial_pt = 0
             self.train_ct += 1
-        print("ICE ModelBasedTuner update ", self.visited, flush=True)
+        # print("ICE ModelBasedTuner task ", self.task, flush=True)
+        # print("ICE ModelBasedTuner update ", self.visited, flush=True)
 
     def load_history(self, data_set, min_seed_records=500):
         # set in_tuning as True to make the feature extraction consistent
@@ -331,8 +339,8 @@ class ModelBasedTuner(Tuner):
         GLOBAL_SCOPE.in_tuning = False
 
     def has_next(self):  # ICE TODO
-        print("ICE ModelBasedTuner has_next", 
-            len(self.visited) + len(self.bad_visited), "/", len(self.space), flush=True)
+        # print("ICE ModelBasedTuner has_next", 
+        #     len(self.visited) + len(self.bad_visited), "/", len(self.space), flush=True)
         return (len(self.visited) + len(self.bad_visited)) < len(self.space)
 
 

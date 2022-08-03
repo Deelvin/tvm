@@ -252,6 +252,7 @@ class SplitSpace(TransformSpace):
         return kwargs["num_outputs"]
 
     def __repr__(self):
+        # print(self.__dict__)
         return "Split(policy=%s, product=%d, num_outputs=%d) len=%d" % (
             self.policy,
             self.product,
@@ -642,6 +643,7 @@ class OtherOptionSpace(TransformSpace):
         return 0
 
     def __repr__(self):
+        # print(self.__dict__)
         return "OtherOption(%s) len=%d" % (self.entities, len(self))
 
 
@@ -674,6 +676,10 @@ class ConfigSpace(object):
         self.is_fallback = False
         self._shared_filter = None
         self.check_map = {}
+        self.check_set = set()
+        self.check_index_counter = 0
+        self.check_tuple = ()
+        self.checked_length = 0
 
     @staticmethod
     def axis(var):
@@ -824,22 +830,97 @@ class ConfigSpace(object):
         """
         return not bool(self.errors)
 
-    def check_index(self, t):
+    def check_index(self, i):
+        # if i == 1539:
+        #     print("ICE1539")
+        #     if self._shared_filter:
+        #         entities = OrderedDict()
+        #         t = i
+        #         for name, space in self.space_map.items():
+        #             entities[name] = space[t % len(space)]
+        #             t //= len(space)
+        #         # print(repr(self.space_map))
+        #         # print(repr(self.space_map['tile_y']))
+        #         # print(type(self.space_map['tile_y']))
+        #         # print(repr(self.space_map['tile_y'].entities))
+        #         # print(type(self.space_map['tile_y'].entities))
+        #         # print(repr(self.space_map['tile_y'].entities[0]))
+        #         # print(type(self.space_map['tile_y'].entities[0]))
+        #         # print(repr(entities))
+        #         print(self._shared_filter(entities) == True)
+
+        #         # Split(policy=factors, product=4, num_outputs=3) len=6
+        #         # <class 'tvm.autotvm.task.space.SplitSpace'>
+        #         # <class 'list'>
+        #         # <class 'tvm.autotvm.task.space.SplitEntity'>
+        #         # OrderedDict([('tile_fc', [-1, 1, 251]), ('tile_y', [-1, 2, 1]), ('tile_x', [-1, 4, 1]), ('tile_rcc', [-1, 2]), ('tile_ry', [-1, 1]), ('tile_rx', [-1, 1]), ('auto_unroll_max_step', 1500), ('unroll_explicit', 0)])
+        #         # True
+        #     else:
+        #         print("~True")
+
+
         if not self._shared_filter:
             return True
-        i = t
-        if i not in self.check_map: 
-            entities = {}
-            for name, space in self.space_map.items():
-                entities[name] = space[t % len(space)]
-                t //= len(space)
-            self.check_map[i] = self._shared_filter(entities)
-        return self.check_map[i]
+
+
+        # #w
+        # entities = OrderedDict()
+        # t = i
+        # for name, space in self.space_map.items():
+        #     entities[name] = space[t % len(space)]
+        #     t //= len(space)
+        # self.check_index_counter += 1
+        # #print("ICE SPACE check_index ", self.check_index_counter, "/", self._length)
+        # return self._shared_filter(entities) == True
+        
+        # wc
+        # t = i
+        # if i not in self.check_map: 
+        #     entities = OrderedDict()
+        #     for name, space in self.space_map.items():
+        #         entities[name] = space[t % len(space)]
+        #         t //= len(space)
+        #     self.check_map[i] = (self._shared_filter(entities) == True)
+        #     #self.check_index_counter += 1 ??? size of check_map
+        #     #print("ICE SPACE check_index ", self.check_index_counter, "/", self._length)
+        # return self.check_map[i]
+        
+        # # ws ??? size if check_set
+        # return (i in self.check_set)
+
+        # wt
+        return self.check_tuple[i]
+        self.check_tuple = ()
 
     def multi_filter(self, **kwargs):
         if self._collect:
             self._shared_filter = kwargs.get("filter", lambda x: True)
             self._length = int(np.prod([len(x) for x in self.space_map.values()]))
+
+            # # ws
+            # for i in range(self._length):
+            #     entities = OrderedDict()
+            #     t = i
+            #     for name, space in self.space_map.items():
+            #         entities[name] = space[t % len(space)]
+            #         t //= len(space)
+            #     if self._shared_filter(entities) == True:
+            #         self.check_set.add(i)
+            # print("ICE multi_filter set size:", len(self.check_set), flush=True)
+            
+            # wt
+            def f(t):
+                entities = OrderedDict()
+                for name, space in self.space_map.items():
+                    entities[name] = space[t % len(space)]
+                    t //= len(space)
+                return bool(self._shared_filter(entities))
+
+            self.check_tuple = tuple(f(i) for i in range(self._length))
+            self.checked_length = self.check_tuple.count(True)
+            # print("ICE multi_filter checked_length:", checked_length, flush=True)
+
+            
 
     def _add_new_transform(self, space_class, name, axes, policy, **kwargs):
         """Add a new transform space in template"""
@@ -873,7 +954,7 @@ class ConfigSpace(object):
         if index < 0 or index >= len(self):
             raise IndexError("Index out of range: size {}, got index {}".format(len(self), index))
         entities = OrderedDict()
-        if self.check_index(index):
+        if not self.check_index(index):
             return None
         t = index
         for name, space in self.space_map.items():
