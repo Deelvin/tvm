@@ -827,13 +827,14 @@ class ConfigSpace(object):
     def check_index(self, t):
         if not self._shared_filter:
             return True
-        if t not in self.check_map: 
+        i = t
+        if i not in self.check_map: 
             entities = {}
             for name, space in self.space_map.items():
                 entities[name] = space[t % len(space)]
                 t //= len(space)
-            self.check_map[t] = self._shared_filter(entities)
-        return self.check_map[t]
+            self.check_map[i] = self._shared_filter(entities)
+        return self.check_map[i]
 
     def multi_filter(self, **kwargs):
         if self._collect:

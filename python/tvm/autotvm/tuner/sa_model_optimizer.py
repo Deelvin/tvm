@@ -182,7 +182,7 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
         unsuitable = set([point])
         new_point = None
         # mutate
-        while new_point in unsuitable and len(unsuitable) < size:
+        while new_point in unsuitable:
             from_i = np.random.randint(len(knob))
             to_v = np.random.randint(dims[from_i])
             new_knob[from_i] = to_v

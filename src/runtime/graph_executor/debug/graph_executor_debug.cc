@@ -112,7 +112,7 @@ class GraphExecutorDebug : public GraphExecutor {
   std::string RunIndividualNode(int node_index, int number, int repeat, int min_repeat_ms,
                                 int cooldown_interval_ms, int repeats_to_cooldown) {
     std::string tkey = module_->type_key();
-
+    std::cout << "RunIndividualNode i: " << node_index << " name: "  << GetNodeName(node_index) << std::endl;
     if (tkey == "rpc") {
       LOG(FATAL) << "RPC measurements should not use RunIndividualNode!";
     }

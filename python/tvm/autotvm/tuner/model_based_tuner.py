@@ -264,6 +264,9 @@ class ModelBasedTuner(Tuner):
                 self.visited.add(index) # ICE TODO
             else:
                 self.bad_visited.add(index)
+
+        print("ICE ModelBasedTuner next_batch ", len(ret), "/", batch_size, flush=True)
+        assert(len(ret) == batch_size)
         return ret
 
     def update(self, inputs, results): # ICE TODO
@@ -303,6 +306,7 @@ class ModelBasedTuner(Tuner):
             self.trials = maximums
             self.trial_pt = 0
             self.train_ct += 1
+        print("ICE ModelBasedTuner update ", self.visited, flush=True)
 
     def load_history(self, data_set, min_seed_records=500):
         # set in_tuning as True to make the feature extraction consistent
@@ -326,7 +330,9 @@ class ModelBasedTuner(Tuner):
         self.cost_model.load_basemodel(base_model)
         GLOBAL_SCOPE.in_tuning = False
 
-    def has_next(self):
+    def has_next(self):  # ICE TODO
+        print("ICE ModelBasedTuner has_next", 
+            len(self.visited) + len(self.bad_visited), "/", len(self.space), flush=True)
         return (len(self.visited) + len(self.bad_visited)) < len(self.space)
 
 

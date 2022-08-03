@@ -78,6 +78,7 @@ class GATuner(Tuner):
             self.visited.add(knob2point(tmp_gene, self.dims))
 
     def next_batch(self, batch_size):
+        print("ICE GATuner next_batch", flush=True)
         ret = []
         for _ in range(batch_size):
             gene = self.genes[self.trial_pt % self.pop_size]
@@ -85,7 +86,7 @@ class GATuner(Tuner):
             cfg = self.space.get(knob2point(gene, self.dims)) # ICE TODO
             if cfg:
                 ret.append(cfg) # ICE TODO
-
+        assert(len(ret) == batch_size)
         return ret
 
     def update(self, inputs, results):
@@ -142,7 +143,7 @@ class GATuner(Tuner):
             self.trial_pt = 0
             self.scores = []
 
-    def has_next(self):
+    def has_next(self): # ICE TODO
         return len(self.visited) - (len(self.genes) - self.trial_pt) < len(self.space)
 
     def load_history(self, data_set, min_seed_records=500):

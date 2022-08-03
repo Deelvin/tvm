@@ -342,7 +342,7 @@ class XGBoostCostModel(CostModel):
         for idx in indexes:
             if fea_cache[idx] is not None:
                 feature_len = max(fea_cache[idx].shape[-1], feature_len)
-
+        print("ICE _get_feature indexes", indexes, flush=True)
         ret = np.empty((len(indexes), feature_len), dtype=np.float32)
         for i, ii in enumerate(indexes):
             t = fea_cache[ii]
