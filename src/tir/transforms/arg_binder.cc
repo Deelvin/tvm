@@ -41,8 +41,12 @@ void BinderAddAssert(arith::Analyzer* ana, PrimExpr cond, const std::string& arg
                << " on argument " << arg_name;
   }
   if (!is_one(scond)) {
+    
+    // tir::as_const_int(scond);
     std::ostringstream os;
-    os << "Argument " << arg_name << " has an unsatisfied constraint: " << cond;
+    os << "Argument " << arg_name << " has an unsatisfied constraint: " << cond; // ICE TODO
+    // Assert fail: (73 == int32(arg.T_relu.shape[2])), 
+    // Argument arg.T_relu.shape[2] has an unsatisfied constraint: (73 == int32(arg.T_relu.shape[2]))
     asserts->emplace_back(AssertStmt(scond, tvm::tir::StringImm(os.str()), Evaluate(0)));
   }
 }
@@ -63,16 +67,30 @@ bool ArgBinder::Bind_(const PrimExpr& arg, const PrimExpr& value, const std::str
       }
       return true;
     } else {
+      // size_t s = asserts_.size();
       BinderAddAssert(&analyzer_, it->second == value, arg_name, &asserts_);
+      // if (asserts_.size() > s) {
+      //   std::cout << "arg " << arg << std::endl;          
+      //   std::cout << "value " << value  << std::endl;          
+      //   std::cout << "arg_name " << arg_name << std::endl;          
+      //   std::cout << std::flush << std::endl;  
+      // } 
     }
   } else {
+    // size_t s = asserts_.size();
     BinderAddAssert(&analyzer_, arg == value, arg_name, &asserts_);
+    // if (asserts_.size() > s) {
+    //   std::cout << "arg " << arg << std::endl;          
+    //   std::cout << "value " << value  << std::endl;          
+    //   std::cout << "arg_name " << arg_name << std::endl;          
+    //   std::cout << std::flush << std::endl;  
+    // } 
   }
   return false;
 }
 
 void ArgBinder::Bind(const PrimExpr& arg, const PrimExpr& value, const std::string& arg_name,
-                     bool with_let) {
+                     bool with_let) {       
   Bind_(arg, value, arg_name, with_let);
 }
 
@@ -112,6 +130,7 @@ void ArgBinder::BindBuffer(const Buffer& arg, const Buffer& value, const std::st
         PrimExpr offset = value->elem_offset;
         PrimExpr factor = make_const(offset.dtype(), arg->offset_factor);
         PrimExpr zero = make_zero(offset.dtype());
+        // std::cout << "BinderAddAssert 3" << std::flush << std::endl;
         BinderAddAssert(&analyzer_, truncmod(offset, factor) == zero, arg_name + ".elem_offset",
                         &asserts_);
       }
@@ -288,6 +307,7 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
         PrimExpr offset = buffer->elem_offset;
         PrimExpr factor = make_const(offset.dtype(), buffer->offset_factor);
         PrimExpr zero = make_zero(offset.dtype());
+        // std::cout << "BinderAddAssert 4" << std::flush << std::endl;
         BinderAddAssert(&analyzer_, truncmod(offset, factor) == zero, arg_name + ".elem_offset",
                         &asserts_);
       }

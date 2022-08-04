@@ -332,17 +332,28 @@ class XGBoostCostModel(CostModel):
         indexes = np.array(indexes)
         need_extract = [x for x in indexes if x not in fea_cache]
 
+        # print("ICE _get_feature need_extract", repr(need_extract), flush=True)
+        
+
         if need_extract:
             pool = self._get_pool()
             feas = pool.map_with_error_catching(self.feature_extract_func, need_extract)
             for i, fea in zip(need_extract, feas):
+                # fea.status
                 fea_cache[i] = fea.value if fea.status == StatusKind.COMPLETE else None
+                # print("ICE _get_feature fea.status:", repr(fea.status), flush=True)
+                # print("ICE _get_feature fea_cache[", i, "]:", repr(fea_cache[i]), flush=True)
 
         feature_len = -1
         for idx in indexes:
             if fea_cache[idx] is not None:
                 feature_len = max(fea_cache[idx].shape[-1], feature_len)
-
+        # import sys
+        # import numpy
+        # numpy.set_printoptions(threshold=sys.maxsize)
+        # print("ICE _get_feature indexes", repr(indexes), flush=True)
+        # print("ICE _get_feature feature_len", repr(feature_len), flush=True)
+        # print("ICE _get_feature fea_cache", repr(fea_cache), flush=True)
         ret = np.empty((len(indexes), feature_len), dtype=np.float32)
         for i, ii in enumerate(indexes):
             t = fea_cache[ii]

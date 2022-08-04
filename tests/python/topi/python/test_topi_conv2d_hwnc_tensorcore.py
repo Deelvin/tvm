@@ -178,11 +178,11 @@ def verify_feature_length():
     idx1 = np.random.randint(len(space))
     idx2 = np.random.randint(len(space))
 
-    cfg = space.get(idx1)
+    cfg = space.get(idx1) # ICE TODO
     sch, arg_bufs = task.instantiate(cfg)
     fea1 = autotvm.feature.get_itervar_feature_flatten(sch, arg_bufs, take_log=True)
 
-    cfg = space.get(idx2)
+    cfg = space.get(idx2) # ICE TODO
     sch, arg_bufs = task.instantiate(cfg)
     fea2 = autotvm.feature.get_itervar_feature_flatten(sch, arg_bufs, take_log=True)
 
