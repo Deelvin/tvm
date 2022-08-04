@@ -50,7 +50,7 @@ class IndexBaseTuner(Tuner):
             self.index_offset = range_idx[0]
         self.counter = 0
 
-    def has_next(self):
+    def has_next(self):  # ICE TODO
         return self.counter < self.range_length
 
     def load_history(self, data_set, min_seed_records=500):
@@ -61,13 +61,17 @@ class GridSearchTuner(IndexBaseTuner):
     """Enumerate the search space in a grid search order"""
 
     def next_batch(self, batch_size):
+        print("ICE GridSearchTuner next_batch", flush=True)
         ret = []
         for _ in range(batch_size):
             if self.counter >= self.range_length:
                 break
             index = self.counter + self.index_offset
-            ret.append(self.task.config_space.get(index))
-            self.counter = self.counter + 1
+            cfg = self.task.config_space.get(index) # ICE TODO
+            if cfg:
+                ret.append(cfg)
+            self.counter += 1
+        assert(len(ret) == batch_size)
         return ret
 
 
@@ -92,7 +96,8 @@ class RandomTuner(IndexBaseTuner):
         self.rand_max = self.range_length
         self.visited = []
 
-    def next_batch(self, batch_size):
+    def next_batch(self, batch_size):  # ICE TODO
+        print("ICE RandomTuner next_batch", flush=True)
         ret = []
         for _ in range(batch_size):
             if self.rand_max == 0:
@@ -104,11 +109,14 @@ class RandomTuner(IndexBaseTuner):
 
             # Use the indirect index to get a direct index.
             index = self.rand_state.get(index_, index_) + self.index_offset
-            ret.append(self.task.config_space.get(index))
-            self.visited.append(index)
+            cfg = self.task.config_space.get(index) # ICE TODO
+            if cfg:
+                ret.append(cfg)
+                self.visited.append(index)
 
             # Update the direct index map.
             self.rand_state[index_] = self.rand_state.get(self.rand_max, self.rand_max)
             self.rand_state.pop(self.rand_max, None)
             self.counter += 1
+        assert(len(ret) == batch_size)
         return ret

@@ -55,12 +55,12 @@ def conv2d_strategy_adreno(attrs, inputs, out_type, target):
                         name="conv2d_nchw_winograd.image2d",
                         plevel=5,
                     )
-                strategy.add_implementation(
-                    wrap_compute_conv2d(topi.adreno.conv2d_nchw_winograd_acc32),
-                    wrap_topi_schedule(topi.adreno.schedule_conv2d_nchw_winograd_acc32),
-                    name="conv2d_nchw_winograd_acc32.image2d",
-                    plevel=7,
-                )
+                # strategy.add_implementation(
+                #     wrap_compute_conv2d(topi.adreno.conv2d_nchw_winograd_acc32),
+                #     wrap_topi_schedule(topi.adreno.schedule_conv2d_nchw_winograd_acc32),
+                #     name="conv2d_nchw_winograd_acc32.image2d",
+                #     plevel=7,
+                # )
             if out_type.dtype == "float16":
                 strategy.add_implementation(
                     wrap_compute_conv2d(topi.adreno.conv2d_nchwc),
@@ -68,12 +68,12 @@ def conv2d_strategy_adreno(attrs, inputs, out_type, target):
                     name="conv2d_nchwc.image2d",
                     plevel=10,
                 )
-            strategy.add_implementation(
-                wrap_compute_conv2d(topi.adreno.conv2d_nchwc_acc32),
-                wrap_topi_schedule(topi.adreno.schedule_conv2d_nchwc_acc32),
-                name="conv2d_nchwc_acc32.image2d",
-                plevel=20,
-            )
+            # strategy.add_implementation(
+            #     wrap_compute_conv2d(topi.adreno.conv2d_nchwc_acc32),
+            #     wrap_topi_schedule(topi.adreno.schedule_conv2d_nchwc_acc32),
+            #     name="conv2d_nchwc_acc32.image2d",
+            #     plevel=20,
+            # )
         elif (data_layout == "NHWC" and kernel_layout == "HWIO") or (
             data_layout == "NHWC4c" and kernel_layout == "HWIO4o"
         ):
@@ -93,12 +93,12 @@ def conv2d_strategy_adreno(attrs, inputs, out_type, target):
                         name="conv2d_nhwc_winograd.image2d",
                         plevel=5,
                     )
-                strategy.add_implementation(
-                    wrap_compute_conv2d(topi.adreno.conv2d_nhwc_winograd_acc32),
-                    wrap_topi_schedule(topi.adreno.schedule_conv2d_nhwc_winograd_acc32),
-                    name="conv2d_nhwc_winograd_acc32.image2d",
-                    plevel=7,
-                )
+                # strategy.add_implementation(
+                #     wrap_compute_conv2d(topi.adreno.conv2d_nhwc_winograd_acc32),
+                #     wrap_topi_schedule(topi.adreno.schedule_conv2d_nhwc_winograd_acc32),
+                #     name="conv2d_nhwc_winograd_acc32.image2d",
+                #     plevel=7,
+                # )
             if out_type.dtype == "float16":
                 strategy.add_implementation(
                     wrap_compute_conv2d(topi.adreno.conv2d_nhwc),
@@ -106,12 +106,12 @@ def conv2d_strategy_adreno(attrs, inputs, out_type, target):
                     name="conv2d_nhwc.image2d",
                     plevel=10,
                 )
-            strategy.add_implementation(
-                wrap_compute_conv2d(topi.adreno.conv2d_nhwc_acc32),
-                wrap_topi_schedule(topi.adreno.schedule_conv2d_nhwc_acc32),
-                name="conv2d_nhwc_acc32.image2d",
-                plevel=20,
-            )
+            # strategy.add_implementation(
+            #     wrap_compute_conv2d(topi.adreno.conv2d_nhwc_acc32),
+            #     wrap_topi_schedule(topi.adreno.schedule_conv2d_nhwc_acc32),
+            #     name="conv2d_nhwc_acc32.image2d",
+            #     plevel=20,
+            # )
         else:
             raise RuntimeError(
                 "Layout not supported: ("
@@ -156,12 +156,12 @@ def conv2d_strategy_adreno(attrs, inputs, out_type, target):
                         name="depthwise_conv2d_nchwc.image2d",
                         plevel=10,
                     )
-                strategy.add_implementation(
-                    wrap_compute_conv2d(topi.adreno.depthwise_conv2d_nchwc_acc32),
-                    wrap_topi_schedule(topi.adreno.schedule_depthwise_conv2d_nchwc_acc32),
-                    name="depthwise_conv2d_nchwc_acc32.image2d",
-                    plevel=20,
-                )
+                # strategy.add_implementation(
+                #     wrap_compute_conv2d(topi.adreno.depthwise_conv2d_nchwc_acc32),
+                #     wrap_topi_schedule(topi.adreno.schedule_depthwise_conv2d_nchwc_acc32),
+                #     name="depthwise_conv2d_nchwc_acc32.image2d",
+                #     plevel=20,
+                # )
             elif (data_layout == "NHWC" and kernel_layout == "HWOI") or (
                 data_layout == "NHWC4c" and kernel_layout == "HWOI4o"
             ):
@@ -173,12 +173,12 @@ def conv2d_strategy_adreno(attrs, inputs, out_type, target):
                             name="depthwise_conv2d_nhwc.image2d",
                             plevel=10,
                         )
-                    strategy.add_implementation(
-                        wrap_compute_conv2d(topi.adreno.depthwise_conv2d_nhwc_acc32),
-                        wrap_topi_schedule(topi.adreno.schedule_depthwise_conv2d_nhwc_acc32),
-                        name="depthwise_conv2d_nhwc_acc32.image2d",
-                        plevel=20,
-                    )
+                    # strategy.add_implementation(
+                    #     wrap_compute_conv2d(topi.adreno.depthwise_conv2d_nhwc_acc32),
+                    #     wrap_topi_schedule(topi.adreno.schedule_depthwise_conv2d_nhwc_acc32),
+                    #     name="depthwise_conv2d_nhwc_acc32.image2d",
+                    #     plevel=20,
+                    # )
                 else:
                     strategy.add_implementation(
                         wrap_compute_conv2d(topi.nn.depthwise_conv2d_nhwc),
@@ -217,14 +217,14 @@ def conv2d_winograd_without_weight_transfrom_strategy_adreno(attrs, inputs, out_
                 name="conv2d_nchw_winograd_without_weight_transform.image2d",
                 plevel=5,
             )
-        strategy.add_implementation(
-            wrap_compute_conv2d(topi.adreno.conv2d_nchw_winograd_without_weight_transform_acc32),
-            wrap_topi_schedule(
-                topi.adreno.schedule_conv2d_nchw_winograd_without_weight_transform_acc32
-            ),
-            name="conv2d_nchw_winograd_without_weight_transform_acc32.image2d",
-            plevel=7,
-        )
+        # strategy.add_implementation(
+        #     wrap_compute_conv2d(topi.adreno.conv2d_nchw_winograd_without_weight_transform_acc32),
+        #     wrap_topi_schedule(
+        #         topi.adreno.schedule_conv2d_nchw_winograd_without_weight_transform_acc32
+        #     ),
+        #     name="conv2d_nchw_winograd_without_weight_transform_acc32.image2d",
+        #     plevel=7,
+        # )
     elif layout in ("NHWC", "NHWC4c"):
         if out_type.dtype == "float16":
             strategy.add_implementation(
@@ -235,14 +235,14 @@ def conv2d_winograd_without_weight_transfrom_strategy_adreno(attrs, inputs, out_
                 name="conv2d_nhwc_winograd_without_weight_transform.image2d",
                 plevel=5,
             )
-        strategy.add_implementation(
-            wrap_compute_conv2d(topi.adreno.conv2d_nhwc_winograd_without_weight_transform_acc32),
-            wrap_topi_schedule(
-                topi.adreno.schedule_conv2d_nhwc_winograd_without_weight_transform_acc32
-            ),
-            name="conv2d_nhwc_winograd_without_weight_transform_acc32.image2d",
-            plevel=7,
-        )
+        # strategy.add_implementation(
+        #     wrap_compute_conv2d(topi.adreno.conv2d_nhwc_winograd_without_weight_transform_acc32),
+        #     wrap_topi_schedule(
+        #         topi.adreno.schedule_conv2d_nhwc_winograd_without_weight_transform_acc32
+        #     ),
+        #     name="conv2d_nhwc_winograd_without_weight_transform_acc32.image2d",
+        #     plevel=7,
+        # )
     else:
         raise RuntimeError(
             "Unsupported conv2d_winograd_without_weight_transfrom layout {}".format(layout)
