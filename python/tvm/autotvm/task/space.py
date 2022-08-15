@@ -867,7 +867,7 @@ class ConfigSpace(object):
                 entities[name] = space[t % len(space)] # ICE TODO Check type of space and len using
                 t //= len(space)  # ICE TODO Check type of space and len using
             return bool(self._shared_filter(entities))
-        self._shared_filter_cash = tuple(apply(i) for i in range(self._total_length))
+        self._shared_filter_cash = tuple(apply(i) for i in range(self.total_length))
         self._filtered_length = self._shared_filter_cash.count(True)
 
     def sample_ints(self, m):
