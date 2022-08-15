@@ -67,23 +67,50 @@ class GATuner(Tuner):
         self.trial_pt = 0
 
         # random initialization
-        self.pop_size = min(self.pop_size, len(self.space))
+        self.pop_size = min(self.pop_size, self.space.filtered_length)
         self.elite_num = min(self.pop_size, self.elite_num)
         for _ in range(self.pop_size):
-            tmp_gene = point2knob(np.random.randint(len(self.space)), self.dims)
+            idx = np.random.randint(self.space.total_length)
+            tmp_gene = point2knob(idx, self.dims)
             while knob2point(tmp_gene, self.dims) in self.visited:
-                tmp_gene = point2knob(np.random.randint(len(self.space)), self.dims)
-
+                tmp_gene = point2knob(np.random.randint(self.space.total_length), self.dims)
+            # Add checks
             self.genes.append(tmp_gene)
             self.visited.add(knob2point(tmp_gene, self.dims))
+
+        """
+        low = 0
+        high = self.filtered_length
+
+        suitable = set()
+        unsuitable = set()
+        assert m <= self.filtered_length
+
+        while len(suitable) < m:
+            # make new int
+            new = randrange(low, high)
+            while new in suitable or new in unsuitable:
+                new = randrange(low, high)
+            # distribute new int
+            if self.is_index_filtered(new):
+                suitable.add(new)
+            else:
+                unsuitable.add(new)
+            assert len(suitable) <= self.filtered_length
+
+        assert len(suitable) == m
+        return np.fromiter(suitable, int, len(suitable))
+        """
+
 
     def next_batch(self, batch_size):
         ret = []
         for _ in range(batch_size):
             gene = self.genes[self.trial_pt % self.pop_size]
             self.trial_pt += 1
-            ret.append(self.space.get(knob2point(gene, self.dims)))
-
+            cfg = self.space.get(knob2point(gene, self.dims))
+            if cfg:
+                ret.append(cfg) # todo test
         return ret
 
     def update(self, inputs, results):
@@ -94,7 +121,7 @@ class GATuner(Tuner):
             else:
                 self.scores.append(0.0)
 
-        if len(self.scores) >= len(self.genes) and len(self.visited) < len(self.space):
+        if len(self.scores) >= len(self.genes) and len(self.visited) < self.space.filtered_length:
             genes = self.genes + self.elites
             scores = np.array(self.scores[: len(self.genes)] + self.elite_scores)
 
@@ -125,7 +152,7 @@ class GATuner(Tuner):
                     if np.random.random() < self.mutation_prob:
                         tmp_gene[j] = np.random.randint(dim)
 
-                if len(self.visited) < len(self.space):
+                if len(self.visited) < self.space.filtered_length:
                     while knob2point(tmp_gene, self.dims) in self.visited:
                         j = np.random.randint(len(self.dims))
                         tmp_gene[j] = np.random.randint(
@@ -141,7 +168,7 @@ class GATuner(Tuner):
             self.scores = []
 
     def has_next(self):
-        return len(self.visited) - (len(self.genes) - self.trial_pt) < len(self.space)
+        return len(self.visited) - (len(self.genes) - self.trial_pt) < self.space.filtered_length
 
     def load_history(self, data_set, min_seed_records=500):
         pass

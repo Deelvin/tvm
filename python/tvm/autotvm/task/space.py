@@ -664,7 +664,8 @@ class ConfigSpace(object):
         # private dict to provide sugar
         self.space_map = OrderedDict()  # name -> space
         self._collect = True
-        self._length = None
+        self._total_length = None
+        self._filtered_length = None
         self._entity_map = OrderedDict()  # name -> entity
         self._constraints = []
         self.errors = []
@@ -672,6 +673,8 @@ class ConfigSpace(object):
         self.flop = 0
         self.cost = None
         self.is_fallback = False
+        self._shared_filter = None
+        self._shared_filter_cash = None
 
     @staticmethod
     def axis(var):
@@ -822,6 +825,90 @@ class ConfigSpace(object):
         """
         return not bool(self.errors)
 
+    def is_index_filtered(self, i):
+        if self._shared_filter is None:
+            return True
+        
+        if self._shared_filter_cash is None:
+            self._make_shared_filter_cash()
+    
+        return self._shared_filter_cash[i]
+
+    def multi_filter(self, **kwargs):
+        if self._collect:
+            self._shared_filter_cash = None
+            self._filtered_length = 0
+            self._shared_filter = kwargs.get("filter", lambda x: True)
+
+    @property
+    def total_length(self):
+        if self._total_length is None:
+            self._total_length = int(np.prod([len(x) for x in self.space_map.values()]))
+        return self._total_length
+
+    @property
+    def filtered_length(self):
+        if self._shared_filter is None:
+            return self.total_length 
+        
+        if self._shared_filter_cash is None:
+            self._make_shared_filter_cash()
+    
+        return self._filtered_length
+
+    def clear_shared_filter_cash(self):
+        del self._shared_filter_cash
+        self._shared_filter_cash = None
+
+    def _make_shared_filter_cash(self):
+        def apply(t):
+            entities = OrderedDict()
+            for name, space in self.space_map.items():
+                entities[name] = space[t % len(space)] # ICE TODO Check type of space and len using
+                t //= len(space)  # ICE TODO Check type of space and len using
+            return bool(self._shared_filter(entities))
+        self._shared_filter_cash = tuple(apply(i) for i in range(self._total_length))
+        self._filtered_length = self._shared_filter_cash.count(True)
+
+    def sample_ints(self, m):
+        from random import randrange
+        """
+        Sample m different integer numbers from [0, config_space.filtered_length) without replacement
+        This function is an alternative of `np.random.choice` when (config_space.filtered_length - 0) > 2 ^ 32, in
+        which case numpy does not work.
+
+        Parameters
+        ----------
+        m: int
+            The number of sampled int
+
+        Returns
+        -------
+        ints: an numpy array of size m
+        """
+
+        low = 0
+        high = self.filtered_length
+
+        suitable = set()
+        unsuitable = set()
+        assert m <= self.filtered_length
+
+        while len(suitable) < m:
+            # make new int
+            new = randrange(low, high)
+            while new in suitable or new in unsuitable:
+                new = randrange(low, high)
+            # distribute new int
+            if self.is_index_filtered(new):
+                suitable.add(new)
+            else:
+                unsuitable.add(new)
+            assert len(suitable) <= self.filtered_length
+
+        assert len(suitable) == m
+        return np.fromiter(suitable, int, len(suitable))
+
     def _add_new_transform(self, space_class, name, axes, policy, **kwargs):
         """Add a new transform space in template"""
         # if we do not have tuned info (_collect == True) but defined KNOB value
@@ -838,11 +925,6 @@ class ConfigSpace(object):
             return [Axis(space, i) for i in range(space.num_output)]
         return [Axis(None, i) for i in range(space_class.get_num_output(axes, policy, **kwargs))]
 
-    def __len__(self):
-        if self._length is None:
-            self._length = int(np.prod([len(x) for x in self.space_map.values()]))
-        return self._length
-
     def get(self, index):
         """Get a config entity with detailed parameters from this space
 
@@ -851,13 +933,15 @@ class ConfigSpace(object):
         index: int
             index in the space
         """
-        if index < 0 or index >= len(self):
-            raise IndexError("Index out of range: size {}, got index {}".format(len(self), index))
+        if index < 0 or index >= self.total_length:
+            raise IndexError("Index out of range: size {}, got index {}".format(self.total_length, index))
         entities = OrderedDict()
+        if not self.is_index_filtered(index):
+            return None
         t = index
         for name, space in self.space_map.items():
-            entities[name] = space[t % len(space)]
-            t //= len(space)
+            entities[name] = space[t % len(space)] # ICE TODO Check type of space and len using
+            t //= len(space) # ICE TODO Check type of space and len using
         ret = ConfigEntity(index, self.code_hash, entities, self._constraints)
         return ret
 
@@ -876,7 +960,7 @@ class ConfigSpace(object):
         return self._entity_map[name]
 
     def __repr__(self):
-        res = "ConfigSpace (len=%d, space_map=\n" % len(self)
+        res = "ConfigSpace (total_length={}, filtered_length={}, space_map=\n".format(self.total_length, self.filtered_length)
         for i, (name, space) in enumerate(self.space_map.items()):
             res += "  %2d %s: %s\n" % (i, name, space)
         return res + ")"

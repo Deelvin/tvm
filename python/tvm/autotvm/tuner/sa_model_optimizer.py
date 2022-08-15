@@ -25,7 +25,6 @@ import time
 
 import numpy as np
 
-from ..utils import sample_ints
 from .model_based_tuner import ModelOptimizer, knob2point, point2knob
 
 logger = logging.getLogger("autotvm")
@@ -60,19 +59,20 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
         log_interval=50,
     ):
         super(SimulatedAnnealingOptimizer, self).__init__()
-
+        print("ICE SimulatedAnnealingOptimizer", task, flush=True)
         self.task = task
-        self.dims = [len(x) for x in self.task.config_space.space_map.values()]
+        self.dims = [len(x) for x in self.task.config_space.space_map.values()] # ICE TODO
 
         self.n_iter = n_iter
         self.temp = temp
         self.persistent = persistent
-        self.parallel_size = min(parallel_size, len(self.task.config_space))
+        self.parallel_size = min(parallel_size, self.task.config_space.filtered_length)
         self.early_stop = early_stop or 1e9
         self.log_interval = log_interval
         self.points = None
 
     def find_maximums(self, model, num, exclusive):
+        # print("ICE find_maximums", num, "exclusive", exclusive, flush=True)
         tic = time.time()
         temp, n_iter, early_stop, log_interval = (
             self.temp,
@@ -84,9 +84,10 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
         if self.persistent and self.points is not None:
             points = self.points
         else:
-            points = np.array(sample_ints(0, len(self.task.config_space), self.parallel_size))
+            points = self.task.config_space.sample_ints(self.parallel_size)
 
-        scores = model.predict(points)
+        # print("ICE find_maximums predict", flush=True)
+        scores = model.predict(points) # ICE TODO
 
         # build heap and insert initial points
         heap_items = [(float("-inf"), -1 - i) for i in range(num)]
@@ -109,11 +110,12 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
         else:
             t = temp
             cool = 0
-
         while k < n_iter and k < k_last_modify + early_stop:
+            # print("ICE find_maximums while", k, n_iter, k_last_modify + early_stop, flush=True)
             new_points = np.empty_like(points)
             for i, p in enumerate(points):
-                new_points[i] = random_walk(p, self.dims)
+                new_points[i] = SimulatedAnnealingOptimizer.random_walk(point=p, dims=self.dims, 
+                    is_index_filtered=self.task.config_space.is_index_filtered, size=self.task.config_space.total_length)
 
             new_scores = model.predict(new_points)
 
@@ -155,34 +157,45 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
 
         if self.persistent:
             self.points = points
-
+        # print("ICE find_maximums end", flush=True)
         return [x[1] for x in heap_items]
 
 
-def random_walk(p, dims):
-    """random walk as local transition
+    def random_walk(point, dims, is_index_filtered, size):
+        from tvm.autotvm.tuner.model_based_tuner import knob2point, point2knob
+        """random walk as local transition
 
-    Parameters
-    ----------
-    p: int
-        index of the ConfigEntity
-    dims: Array of int
-        sizes of each dimension
+        Parameters
+        ----------
+        p: int
+            index of the ConfigEntity
+        dims: Array of int
+            sizes of each dimension
 
-    Returns
-    -------
-    new_p: int
-        new neighborhood index
-    """
-    # transform to knob form
-    old = point2knob(p, dims)
-    new = list(old)
+        Returns
+        -------
+        new_p: int
+            new neighborhood index
+        """
+        # transform to knob form
+        knob = point2knob(point, dims)
+        new_knob = knob.copy()
+        unsuitable = set([point])
+        new_point = point
+        # mutate
+        while new_point in unsuitable:
+            # print("random_walk.new_point",new_point)
+            # print("random_walk.unsuitable",unsuitable)
+            from_i = np.random.randint(len(knob))
+            to_v = np.random.randint(dims[from_i])
+            new_knob[from_i] = to_v
 
-    # mutate
-    while new == old:
-        from_i = np.random.randint(len(old))
-        to_v = np.random.randint(dims[from_i])
-        new[from_i] = to_v
-
-    # transform to index form
-    return knob2point(new, dims)
+        # transform to index form
+            new_point = knob2point(new_knob, dims)
+            if not is_index_filtered(new_point):
+                unsuitable.add(new_point)
+            if not len(unsuitable) < size:
+                logger.debug("random_walk did not find a new suitable point. The original will be returned")
+                return point
+        # print("random_walk.new_point end",new_point)
+        return new_point
