@@ -888,7 +888,7 @@ class ConfigSpace(object):
         """
 
         low = 0
-        high = self.filtered_length
+        high = self.total_length
 
         suitable = set()
         unsuitable = set()
@@ -907,6 +907,7 @@ class ConfigSpace(object):
             assert len(suitable) <= self.filtered_length
 
         assert len(suitable) == m
+        # print("ICE suitable", suitable, flush=True)
         return np.fromiter(suitable, int, len(suitable))
 
     def _add_new_transform(self, space_class, name, axes, policy, **kwargs):
