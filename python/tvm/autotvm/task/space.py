@@ -28,8 +28,10 @@ from __future__ import absolute_import as _abs
 
 import itertools
 import functools
+import logging
 import math
 from collections import namedtuple, OrderedDict
+from random import randrange
 import numpy as np
 
 from tvm.te import schedule, thread_axis
@@ -37,6 +39,8 @@ from tvm.tir import expr
 from tvm.autotvm.utils import get_const_int
 
 Axis = namedtuple("Axis", ["space", "index"])
+
+logger = logging.getLogger("autotvm")
 
 try:
     _long = long
@@ -664,7 +668,9 @@ class ConfigSpace(object):
         # private dict to provide sugar
         self.space_map = OrderedDict()  # name -> space
         self._collect = True
-        self._length = None
+        self._total_length = None
+        self._filtered_length = None
+        self._dims = None
         self._entity_map = OrderedDict()  # name -> entity
         self._constraints = []
         self.errors = []
@@ -672,6 +678,8 @@ class ConfigSpace(object):
         self.flop = 0
         self.cost = None
         self.is_fallback = False
+        self._shared_filter = None
+        self._shared_filter_cash = None
 
     @staticmethod
     def axis(var):
@@ -822,6 +830,152 @@ class ConfigSpace(object):
         """
         return not bool(self.errors)
 
+    def is_index_filtered(self, i):
+        """checks if the index satisfies the multi_filter"""
+        if self._shared_filter is None:
+            return True
+
+        if self._shared_filter_cash is None:
+            self._make_shared_filter_cash()
+
+        return self._shared_filter_cash[i]
+
+    def multi_filter(self, **kwargs):
+        "Keeps arg named 'filter'as function as a multi_filter"
+        if self._collect:
+            self._shared_filter_cash = None
+            self._filtered_length = 0
+            self._shared_filter = kwargs.get("filter", lambda x: True)
+
+    @property
+    def total_length(self):
+        """returns the count of the number of indexes"""
+        if self._total_length is None:
+            self._total_length = int(np.prod([len(x) for x in self.space_map.values()]))
+        return self._total_length
+
+    @property
+    def filtered_length(self):
+        """returns the count of the number of indexes satisfying the multifilter"""
+        if self._shared_filter is None:
+            return self.total_length
+
+        if self._shared_filter_cash is None:
+            self._make_shared_filter_cash()
+
+        return self._filtered_length
+
+    @property
+    def dims(self):
+        if self._dims is None:
+            self._dims = [len(x) for x in self.space_map.values()]
+        return self._dims
+
+    def filtered_within_range_length(self, s, e):
+        """returns the count of the number of indexes satisfying the multi_filter in the given range"""
+        assert s >= 0 and s <= e
+        assert e <= self.total_length and e >= s
+        if self._shared_filter is None:
+            return e - s
+        if self._shared_filter_cash is None:
+            self._make_shared_filter_cash()
+        return self.shared_filter_cash[s:e].count(True)
+
+    def clear_shared_filter_cash(self):
+        """is used to clean the multi-filter cache, useful in case you care about memory"""
+        del self._shared_filter_cash
+        self._shared_filter_cash = None
+
+    def _make_shared_filter_cash(self):
+        def apply(t):
+            entities = OrderedDict()
+            for name, space in self.space_map.items():
+                entities[name] = space[t % len(space)]
+                t //= len(space)
+            return bool(self._shared_filter(entities))
+
+        self._shared_filter_cash = tuple(apply(i) for i in range(self.total_length))
+        self._filtered_length = self._shared_filter_cash.count(True)
+
+    def point2knob(self, point):
+        """convert point form (single integer) to knob form (vector)"""
+        knob = []
+        for dim in self.dims:
+            knob.append(point % dim)
+            point //= dim
+        return knob
+
+    def knob2point(self, knob):
+        """convert knob form (vector) to point form (single integer)"""
+        point = 0
+        for j, k in enumerate(knob):
+            point += int(np.prod(self.dims[:j])) * k
+        return point
+
+    def sample_ints(self, m):
+        """
+        Sample m different integer numbers from [0, self.total_length) without replacement
+        This function is an alternative of `np.random.choice` when self.total_length > 2 ^ 32, in
+        which case numpy does not work.
+
+        Parameters
+        ----------
+        m: int
+            The number of sampled int
+
+        Returns
+        -------
+        ints: an numpy array of size m
+        """
+        suitable = set()
+        unsuitable = set()
+
+        assert m <= self.filtered_length
+
+        while len(suitable) < m:
+            # make new int
+            new = randrange(0, self.total_length)
+            while new in suitable or new in unsuitable:
+                new = randrange(0, self.total_length)
+            # distribute new int
+            suitable.add(new) if self.is_index_filtered(new) else unsuitable.add(new)
+
+        return np.fromiter(suitable, int, len(suitable))
+
+    def random_walk(self, point):
+        """random walk as local transition
+
+        Parameters
+        ----------
+        point: int
+            index of the ConfigEntity
+
+        Returns
+        -------
+        new_point: int
+            new neighborhood index
+        """
+        # transform to knob form
+        knob = self.point2knob(point)
+        new_knob = knob.copy()
+        unsuitable = set([point])
+        new_point = point
+        # mutate
+        while new_point in unsuitable:
+            from_i = np.random.randint(len(knob))
+            to_v = np.random.randint(self.dims[from_i])
+            new_knob[from_i] = to_v
+            # transform to index form
+            new_point = self.knob2point(new_knob)
+            if not self.is_index_filtered(new_point):
+                unsuitable.add(new_point)
+            if not len(unsuitable) < self.total_length:
+                logger.debug(
+                    "random_walk did not find a new suitable point. The original will be returned"
+                )
+                return point
+        return new_point
+
     def _add_new_transform(self, space_class, name, axes, policy, **kwargs):
         """Add a new transform space in template"""
         # if we do not have tuned info (_collect == True) but defined KNOB value
@@ -838,11 +992,6 @@ class ConfigSpace(object):
             return [Axis(space, i) for i in range(space.num_output)]
         return [Axis(None, i) for i in range(space_class.get_num_output(axes, policy, **kwargs))]
 
-    def __len__(self):
-        if self._length is None:
-            self._length = int(np.prod([len(x) for x in self.space_map.values()]))
-        return self._length
-
     def get(self, index):
         """Get a config entity with detailed parameters from this space
 
@@ -850,10 +999,19 @@ class ConfigSpace(object):
         ----------
         index: int
             index in the space
+
+        Returns
+        -------
+        config: ConfigEntity
+            if the index satisfies the multi_filter otherwise None
         """
-        if index < 0 or index >= len(self):
-            raise IndexError("Index out of range: size {}, got index {}".format(len(self), index))
+        if index < 0 or index >= self.total_length:
+            raise IndexError(
+                "Index out of range: size {}, got index {}".format(self.total_length, index)
+            )
         entities = OrderedDict()
+        if not self.is_index_filtered(index):
+            return None
         t = index
         for name, space in self.space_map.items():
             entities[name] = space[t % len(space)]
@@ -876,7 +1034,9 @@ class ConfigSpace(object):
         return self._entity_map[name]
 
     def __repr__(self):
-        res = "ConfigSpace (len=%d, space_map=\n" % len(self)
+        res = "ConfigSpace (total_length={}, filtered_length={}, space_map=\n".format(
+            self.total_length, self.filtered_length
+        )
         for i, (name, space) in enumerate(self.space_map.items()):
             res += "  %2d %s: %s\n" % (i, name, space)
         return res + ")"

@@ -208,8 +208,6 @@ class ModelBasedTuner(Tuner):
         self.target = task.target
         self.plan_size = plan_size
         self.space = task.config_space
-        self.space_len = len(task.config_space)
-        self.dims = [len(x) for x in self.space.space_map.values()]
 
         self.cost_model = cost_model
         self.model_optimizer = model_optimizer
@@ -224,6 +222,7 @@ class ModelBasedTuner(Tuner):
         self.trials = []
         self.trial_pt = 0
         self.visited = set()
+        self.unsuitable = set()
 
         # observed samples
         self.xs = []
@@ -236,26 +235,29 @@ class ModelBasedTuner(Tuner):
 
         counter = 0
         while counter < batch_size:
-            if len(self.visited) >= len(self.space):
+            if len(self.visited) >= self.space.filtered_length:
                 break
 
             while self.trial_pt < len(self.trials):
                 index = self.trials[self.trial_pt]
-                if index not in self.visited:
+                if index not in self.visited and index not in self.unsuitable:
                     break
                 self.trial_pt += 1
 
             if self.trial_pt >= len(self.trials) - int(0.05 * self.plan_size):
                 # if the trial list is empty or
                 # the tuner is doing the last 5% trials (e-greedy), choose randomly
-                index = np.random.randint(len(self.space))
-                while index in self.visited:
-                    index = np.random.randint(len(self.space))
+                index = np.random.randint(self.space.total_length)
+                while index in self.visited or index in self.unsuitable:
+                    index = np.random.randint(self.space.total_length)
 
-            ret.append(self.space.get(index))
-            self.visited.add(index)
-
-            counter += 1
+            cfg = self.space.get(index)
+            if cfg:
+                ret.append(cfg)
+                counter += 1
+                self.visited.add(index)
+            else:
+                self.unsuitable.add(index)
         return ret
 
     def update(self, inputs, results):
@@ -275,7 +277,6 @@ class ModelBasedTuner(Tuner):
             # to also use this update function to resume tuning progress in
             # case of interruption.
             self.visited.add(index)
-
         # if we have enough new training samples
         if len(self.xs) >= self.plan_size * (self.train_ct + 1) and self.flops_max > 1e-6:
             self.cost_model.fit(self.xs, self.ys, self.plan_size)
@@ -284,7 +285,7 @@ class ModelBasedTuner(Tuner):
                     self.cost_model, self.plan_size * self.diversity_filter_ratio, self.visited
                 )
                 scores = self.cost_model.predict(candidate)
-                knobs = [point2knob(x, self.dims) for x in candidate]
+                knobs = [self.space.point2knob(x) for x in candidate]
                 pick_index = submodular_pick(0 * scores, knobs, self.plan_size, knob_weight=1)
                 maximums = np.array(candidate)[pick_index]
             else:
@@ -319,24 +320,7 @@ class ModelBasedTuner(Tuner):
         GLOBAL_SCOPE.in_tuning = False
 
     def has_next(self):
-        return len(self.visited) < len(self.space)
-
-
-def point2knob(p, dims):
-    """convert point form (single integer) to knob form (vector)"""
-    knob = []
-    for dim in dims:
-        knob.append(p % dim)
-        p //= dim
-    return knob
-
-
-def knob2point(knob, dims):
-    """convert knob form (vector) to point form (single integer)"""
-    p = 0
-    for j, k in enumerate(knob):
-        p += int(np.prod(dims[:j])) * k
-    return p
+        return len(self.visited) < self.space.filtered_length
 
 
 def submodular_pick(scores, knobs, n_pick, knob_weight=1.0):

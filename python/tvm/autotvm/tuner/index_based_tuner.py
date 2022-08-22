@@ -41,17 +41,23 @@ class IndexBaseTuner(Tuner):
             range_idx, tuple
         ), "range_idx must be None or (int, int)"
 
-        self.range_length = len(self.task.config_space)
+        self.range_length = self.task.config_space.total_length
+        self.counter_max = self.task.config_space.filtered_length
         self.index_offset = 0
         if range_idx is not None:
             assert range_idx[1] > range_idx[0], "Index range must be positive"
             assert range_idx[0] >= 0, "Start index must be positive"
             self.range_length = range_idx[1] - range_idx[0] + 1
             self.index_offset = range_idx[0]
+            self.counter_max = self.task.config_space.filtered_within_range_length(
+                self.index_offset, self.index_offset + self.range_length
+            )
+
         self.counter = 0
+        self.index = self.index_offset
 
     def has_next(self):
-        return self.counter < self.range_length
+        return self.counter < self.counter_max
 
     def load_history(self, data_set, min_seed_records=500):
         pass
@@ -62,12 +68,12 @@ class GridSearchTuner(IndexBaseTuner):
 
     def next_batch(self, batch_size):
         ret = []
-        for _ in range(batch_size):
-            if self.counter >= self.range_length:
-                break
-            index = self.counter + self.index_offset
-            ret.append(self.task.config_space.get(index))
-            self.counter = self.counter + 1
+        while len(ret) < batch_size or self.counter < self.counter_max:
+            cfg = self.task.config_space.get(self.index)
+            if cfg:
+                ret.append(cfg)
+                self.counter += 1
+            self.index += 1
         return ret
 
 
@@ -90,25 +96,22 @@ class RandomTuner(IndexBaseTuner):
         # we can generate non-repetitive random indices.
         self.rand_state = {}
         self.rand_max = self.range_length
-        self.visited = []
 
     def next_batch(self, batch_size):
         ret = []
-        for _ in range(batch_size):
-            if self.rand_max == 0:
-                break
-
+        while len(ret) < batch_size and self.rand_max > 0:
             # Random an indirect index.
             index_ = np.random.randint(self.rand_max)
             self.rand_max -= 1
 
             # Use the indirect index to get a direct index.
             index = self.rand_state.get(index_, index_) + self.index_offset
-            ret.append(self.task.config_space.get(index))
-            self.visited.append(index)
+            cfg = self.task.config_space.get(index)
+            if cfg:
+                ret.append(cfg)
+                self.counter += 1
 
             # Update the direct index map.
             self.rand_state[index_] = self.rand_state.get(self.rand_max, self.rand_max)
             self.rand_state.pop(self.rand_max, None)
-            self.counter += 1
         return ret
