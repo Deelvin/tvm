@@ -160,10 +160,35 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
   return HardwareParams();
 }
 
+
+TVM_REGISTER_GLOBAL("auto_scheduler.SetReferenceTensors")
+    .set_body_typed([](SearchTask task, Array<tvm::runtime::NDArray> arr) {
+        auto task_t = const_cast<SearchTaskNode*>(task.as<SearchTaskNode>());
+        task_t->SetReferenceTensors(arr);
+    });
+
+TVM_REGISTER_GLOBAL("auto_scheduler.SetTarget")
+    .set_body_typed([](SearchTask task, Target target, Target target_host) {
+        auto task_t = const_cast<SearchTaskNode*>(task.as<SearchTaskNode>());
+        task_t->SetTarget(target, target_host);
+    });
+
+
+
+void SearchTaskNode::SetReferenceTensors(Array<tvm::runtime::NDArray> arr) {
+    ref_output_tensors = std::move(arr);
+}
+
+void SearchTaskNode::SetTarget(Target _target, Target _target_host) {
+    target = std::move(_target);
+    target_host = std::move(_target_host);
+}
+
+
 SearchTask::SearchTask(ComputeDAG compute_dag, String workload_key, Target target,
                        Target target_host, Optional<HardwareParams> hardware_params,
                        LayoutRewriteOption layout_rewrite_option, Array<String> task_input_names,
-                       String desc) {
+                       String desc, Array<tvm::runtime::NDArray> ref_output_tensors, int custom_seed) {
   CheckAndUpdateHostConsistency(&target, &target_host);
   auto node = make_object<SearchTaskNode>();
   node->compute_dag = std::move(compute_dag);
@@ -179,6 +204,10 @@ SearchTask::SearchTask(ComputeDAG compute_dag, String workload_key, Target targe
   }
   node->layout_rewrite_option = layout_rewrite_option;
   node->task_input_names = std::move(task_input_names);
+
+  node->custom_seed = custom_seed;
+  node->ref_output_tensors = ref_output_tensors;
+
   data_ = std::move(node);
 }
 
@@ -199,10 +228,13 @@ TVM_REGISTER_GLOBAL("auto_scheduler.GetDefaultHardwareParams")
 TVM_REGISTER_GLOBAL("auto_scheduler.SearchTask")
     .set_body_typed([](ComputeDAG compute_dag, String workload_key, Target target,
                        Target target_host, Optional<HardwareParams> hardware_params,
-                       int layout_rewrite_option, Array<String> task_input_names, String desc) {
+                       int layout_rewrite_option, Array<String> task_input_names,
+                       String desc, Array<tvm::runtime::NDArray> ref_output_tensors,
+                       int custom_seed ) {
       CheckAndUpdateHostConsistency(&target, &target_host);
       return SearchTask(compute_dag, workload_key, target, target_host, hardware_params,
-                        LayoutRewriteOption(layout_rewrite_option), task_input_names, desc);
+                        LayoutRewriteOption(layout_rewrite_option), task_input_names,
+                         desc, ref_output_tensors, custom_seed);
     });
 
 }  // namespace auto_scheduler

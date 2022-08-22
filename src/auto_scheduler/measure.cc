@@ -153,6 +153,27 @@ Array<MeasureResult> LocalRunnerNode::Run(const Array<MeasureInput>& inputs,
   throw;
 }
 
+Array<tvm::runtime::NDArray> LocalRunnerNode::GetOutput(const Array<MeasureInput>& inputs,
+                                          const Array<BuildResult>& build_results, int verbose) {
+
+  if (const auto* f = runtime::Registry::Get("auto_scheduler.local_runner.get_output")) {
+
+
+    Array<tvm::runtime::NDArray> results =
+        (*f)(inputs, build_results, timeout, number, repeat, min_repeat_ms, cooldown_interval,
+             enable_cpu_cache_flush, verbose);
+
+
+    return results;
+
+  }
+  LOG(FATAL) << "auto_scheduler.local_runner.get_output is not registered. "
+             << "This is a function registered in Python, "
+             << "make sure the TVM Python runtime has been loaded successfully.";
+  throw;
+}
+
+
 /********** RPCRunner **********/
 RPCRunner::RPCRunner(const String& key, const String& host, int port, int priority, int n_parallel,
                      int timeout, int number, int repeat, int min_repeat_ms,
@@ -186,6 +207,16 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
                << "make sure the TVM Python runtime has been loaded successfully.";
   }
   return Array<MeasureResult>();
+
+}
+  
+Array<tvm::runtime::NDArray> RPCRunnerNode::GetOutput(const Array<MeasureInput>& inputs,
+                                          const Array<BuildResult>& build_results, int verbose) {
+
+  LOG(FATAL) << "auto_scheduler.rpc_runner.get_output is not registered/implemented. "
+             << "This is a function registered in Python, "
+             << "make sure the TVM Python runtime has been loaded successfully.";
+  throw;
 }
 
 /********** MeasureCallback **********/
@@ -403,6 +434,15 @@ TVM_REGISTER_GLOBAL("auto_scheduler.ProgramRunnerRun")
     .set_body_typed([](const ProgramRunner& runner, const Array<MeasureInput>& inputs,
                        const Array<BuildResult>& build_results,
                        int verbose) { return runner->Run(inputs, build_results, verbose); });
+
+
+TVM_REGISTER_GLOBAL("auto_scheduler.ProgramRunnerGetOutput")
+    .set_body_typed([](const ProgramRunner& runner, const Array<MeasureInput>& inputs,
+                       const Array<BuildResult>& build_results,
+                       int verbose) {
+
+                       return runner->GetOutput(inputs, build_results, verbose); });
+
 
 TVM_REGISTER_GLOBAL("auto_scheduler.LocalBuilder")
     .set_body_typed([](int timeout, int n_parallel, const String& build_func) {

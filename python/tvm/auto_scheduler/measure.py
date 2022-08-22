@@ -230,6 +230,7 @@ def recover_measure_input(inp, rebuild_state=False):
         hardware_params=task.hardware_params,
         layout_rewrite_option=task.layout_rewrite_option,
         task_inputs=list(task.task_input_names),
+        ref_output_tensors=task.ref_output_tensors,
     )
 
     if rebuild_state:
@@ -282,6 +283,10 @@ class ProgramRunner(Object):
         res : List[MeasureResult]
         """
         return _ffi_api.ProgramRunnerRun(self, measure_inputs, build_results, verbose)
+
+    def get_ouput(self, measure_inputs, build_results, verbose=1):
+
+        return _ffi_api.ProgramRunnerGetOutput(self, measure_inputs, build_results, verbose)
 
 
 @tvm._ffi.register_object("auto_scheduler.ProgramMeasurer")
@@ -630,7 +635,7 @@ def _local_build_worker(inp_serialized, build_func, verbose):
 
         try:
             with transform.PassContext().current():
-                func = build_module.build(sch, args, target=task.target)
+                func = build_module.build(sch, args, target=task.target, target_host=task.target_host)
             func.export_library(filename, build_func)
         # pylint: disable=broad-except
         except Exception:
@@ -920,7 +925,7 @@ def _timed_eval_func(
                     empty_array = ndarray.empty(
                         get_const_tuple(build_res_arg.shape), build_res_arg.dtype, dev
                     )
-                    random_fill(empty_array)
+                    random_fill(empty_array, inp.task.custom_seed)
                     loc_args.append(empty_array)
                 else:
                     loc_args.append(ndarray.array(args[idx], dev))
@@ -942,6 +947,90 @@ def _timed_eval_func(
         else:
             print("*E", end="", flush=True)  # Run error
     return costs, error_no, error_msg, toc - tic + build_res.time_cost, toc
+
+
+def _get_output_func(
+    inp_serialized,
+    build_res,
+    args,
+    number,
+    repeat,
+    min_repeat_ms,
+    cooldown_interval,
+    enable_cpu_cache_flush,
+    verbose,
+):
+
+    inp = MeasureInput.deserialize(inp_serialized)
+    tic = time.time()
+    error_no = 0
+    error_msg = None
+    try:
+        func = module.load_module(build_res.filename)
+        dev = ndarray.device(str(inp.task.target), 0)
+
+        f_prepare = "cache_flush_cpu_non_first_arg" if enable_cpu_cache_flush else ""
+        time_f = func.time_evaluator(
+            func.entry_name,
+            dev,
+            number=number,
+            repeat=repeat,
+            min_repeat_ms=min_repeat_ms,
+            f_preproc=f_prepare,
+        )
+
+
+    # pylint: disable=broad-except
+    except Exception:
+        costs = (MAX_FLOAT,)
+        error_no = MeasureErrorNo.COMPILE_DEVICE
+        error_msg = make_traceback_info()
+
+    result = []
+    if error_no == 0:
+        try:
+            random_fill = tvm.get_global_func("tvm.contrib.random.random_fill", True)
+            assert random_fill, "Please make sure USE_RANDOM is ON in the config.cmake"
+            assert len(args) == len(build_res.args)
+
+            loc_args = []
+
+            # pylint: disable=consider-using-enumerate
+            for idx in range(len(args)):
+                if args[idx] is None:
+                    build_res_arg = build_res.args[idx]
+                    empty_array = ndarray.empty(
+                        get_const_tuple(build_res_arg.shape), build_res_arg.dtype, dev
+                    )
+                    random_fill(empty_array, inp.task.custom_seed)
+                    loc_args.append(empty_array)
+                else:
+                    loc_args.append(ndarray.array(args[idx], dev))
+            dev.sync()
+            costs = time_f(*loc_args).results
+
+            idx = len(loc_args) - 1
+            arr = ndarray.array(loc_args[len(loc_args) - 1], dev)
+            result.append(arr.numpy())
+
+
+        # pylint: disable=broad-except
+        except Exception:
+            costs = (MAX_FLOAT,)
+            error_no = MeasureErrorNo.RUNTIME_DEVICE
+            error_msg = make_traceback_info()
+
+    shutil.rmtree(os.path.dirname(build_res.filename))
+    toc = time.time()
+    time.sleep(cooldown_interval)
+
+    if verbose >= 1:
+        if error_no == MeasureErrorNo.NO_ERROR:
+            print("*", end="", flush=True)
+        else:
+            print("*E", end="", flush=True)  # Run error
+
+    return result
 
 
 @tvm._ffi.register_func("auto_scheduler.local_runner.run")
@@ -1063,6 +1152,58 @@ def local_run(
 
     return measure_results
 
+@tvm._ffi.register_func("auto_scheduler.local_runner.get_output")
+def local_get_ouput(
+    inputs,
+    build_results,
+    timeout=10,
+    number=3,
+    repeat=1,
+    min_repeat_ms=0,
+    cooldown_interval=0,
+    enable_cpu_cache_flush=False,
+    verbose=1,
+):
+
+    measure_results = []
+    assert len(inputs) == len(build_results), "Measure input size should be equal to build results"
+    worker = PopenWorker()
+    for inp, build_res in zip(inputs, build_results):
+        if build_res.error_no != 0:
+            res = None
+            if verbose >= 1:
+                print("*B", end="", flush=True)  # Build error
+        else:
+            args = prepare_runner_args(inp, build_res)
+            res = call_func_with_timeout(
+                worker,
+                timeout,
+                _get_output_func,
+                args=(
+                    inp.serialize(),
+                    build_res,
+                    args,
+                    number,
+                    repeat,
+                    min_repeat_ms,
+                    cooldown_interval,
+                    enable_cpu_cache_flush,
+                    verbose,
+                ),
+            )
+            if isinstance(res, TimeoutError):
+                if verbose >= 1:
+                    print("*T", end="", flush=True)  # Run timeout
+            elif isinstance(res, Exception):
+                if verbose >= 1:
+                    print("*E", end="", flush=True)  # Run error
+
+        measure_results.append(*res)
+
+    if verbose >= 1:
+        print("", flush=True)
+
+    return [tvm.nd.array(x) for x in measure_results]
 
 def _rpc_run(
     inp_serialized,
@@ -1129,7 +1270,7 @@ def _rpc_run(
                     empty_array = ndarray.empty(
                         get_const_tuple(build_res_arg.shape), build_res_arg.dtype, dev
                     )
-                    random_fill(empty_array)
+                    random_fill(empty_array, inp.task.custom_seed)
                     loc_args.append(empty_array)
                 else:
                     loc_args.append(ndarray.array(args[idx], dev))
@@ -1138,6 +1279,16 @@ def _rpc_run(
             # First run for check that the kernel is correct
             func.entry_func(*loc_args)
             dev.sync()
+
+            # TODO: DEELVIN 
+            # check vs ref values
+            arr = ndarray.array(loc_args[len(loc_args) - 1], dev)
+           
+            diff = np.abs(arr.numpy() - inp.task.ref_output_tensors[0].numpy())
+            if (diff <= 1e-3).all():
+                print(f'\nAccuracy verification: FAILED\nmaximum element difference: {np.amax(diff)}, l2 diff: {np.linalg.norm(diff)}')
+                raise ValueError("Accuracy verification: FAILED ")
+
 
             costs = time_f(*loc_args).results
 

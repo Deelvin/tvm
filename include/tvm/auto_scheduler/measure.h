@@ -38,6 +38,8 @@
 #ifndef TVM_AUTO_SCHEDULER_MEASURE_H_
 #define TVM_AUTO_SCHEDULER_MEASURE_H_
 
+#include <tvm/runtime/ndarray.h>
+
 #include <tvm/auto_scheduler/loop_state.h>
 #include <tvm/auto_scheduler/search_task.h>
 
@@ -322,6 +324,10 @@ class ProgramRunnerNode : public Object {
   virtual Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
                                    const Array<BuildResult>& build_results, int verbose) = 0;
 
+
+  virtual Array<tvm::runtime::NDArray> GetOutput(const Array<MeasureInput>& inputs,
+                                   const Array<BuildResult>& build_results, int verbose) = 0;
+
   static constexpr const char* _type_key = "auto_scheduler.ProgramRunner";
   TVM_DECLARE_BASE_OBJECT_INFO(ProgramRunnerNode, Object);
 };
@@ -373,6 +379,10 @@ class LocalRunnerNode : public ProgramRunnerNode {
   Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
                            const Array<BuildResult>& build_results, int verbose) final;
 
+  Array<tvm::runtime::NDArray> GetOutput(const Array<MeasureInput>& inputs,
+                                   const Array<BuildResult>& build_results, int verbose) final;
+
+
   static constexpr const char* _type_key = "auto_scheduler.LocalRunner";
   TVM_DECLARE_FINAL_OBJECT_INFO(LocalRunnerNode, ProgramRunnerNode);
 };
@@ -421,6 +431,10 @@ class RPCRunnerNode : public ProgramRunnerNode {
 
   Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
                            const Array<BuildResult>& build_results, int verbose) final;
+
+  virtual Array<tvm::runtime::NDArray> GetOutput(const Array<MeasureInput>& inputs,
+                                   const Array<BuildResult>& build_results, int verbose) final;
+
 
   static constexpr const char* _type_key = "auto_scheduler.RPCRunner";
   TVM_DECLARE_FINAL_OBJECT_INFO(RPCRunnerNode, ProgramRunnerNode);

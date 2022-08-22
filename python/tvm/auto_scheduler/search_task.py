@@ -436,6 +436,8 @@ class SearchTask(Object):
         task_inputs_overwrite=False,
         task_inputs_save_to_file=False,
         desc="",
+        ref_output_tensors=None,
+        custom_seed = 42,
     ):
         assert (
             func is not None or workload_key is not None
@@ -479,6 +481,8 @@ class SearchTask(Object):
             layout_rewrite_option,
             task_input_names,
             desc,
+            ref_output_tensors,
+            custom_seed,
         )
 
     def tune(self, tuning_options, search_policy=None, adaptive_training=False):
@@ -598,6 +602,8 @@ class SearchTask(Object):
             state["layout_rewrite_option"],
             state["task_input_names"],
             state["desc"],
+            state["ref_ouput_tensors"],
+            state["custom_seed"],
         )
 
 
