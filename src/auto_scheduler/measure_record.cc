@@ -176,18 +176,21 @@ struct Handler<::tvm::auto_scheduler::SearchTaskNode> {
     }
     writer->WriteArrayItem(static_cast<int>(data.layout_rewrite_option));
 
-    //DEELVIN: adding serialization of custom_seed
+    //DEELVIN: adding serialization of custom_seed and ref tensors
     writer->WriteArrayItem(static_cast<int>(data.custom_seed));
     std::string serialized_tensors_file = "tmp.stream";
 
     dmlc::Stream* fs = dmlc::Stream::Create(serialized_tensors_file.c_str(),"wb");
 
     writer->WriteArrayItem(serialized_tensors_file);
+
     for (const auto& i : data.ref_output_tensors) {
         i.Save(fs);
     }
 
     delete fs;
+
+
 
     writer->WriteArraySeperator();
     writer->BeginArray(false);

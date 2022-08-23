@@ -46,6 +46,7 @@ from tvm.driver import build_module
 from tvm.ir import transform
 from tvm.runtime import Object, module, ndarray
 from tvm.target import Target
+import numpy as np
 
 from . import _ffi_api
 from .loop_state import StateObject
@@ -1280,15 +1281,16 @@ def _rpc_run(
             func.entry_func(*loc_args)
             dev.sync()
 
-            # TODO: DEELVIN 
             # check vs ref values
-            arr = ndarray.array(loc_args[len(loc_args) - 1], dev)
-           
-            diff = np.abs(arr.numpy() - inp.task.ref_output_tensors[0].numpy())
-            if (diff <= 1e-3).all():
+            arr = ndarray.array(loc_args[len(loc_args) - 1], dev).numpy()
+            ref = inp.task.ref_output_tensors[0].numpy()
+            diff = np.abs(arr - ref)
+            if (diff <= 1e-3).all() == False:
                 print(f'\nAccuracy verification: FAILED\nmaximum element difference: {np.amax(diff)}, l2 diff: {np.linalg.norm(diff)}')
                 raise ValueError("Accuracy verification: FAILED ")
-
+            else:
+                print(f'\nAccuracy verification: PASSED\nmaximum element difference: {np.amax(diff)}, l2 diff: {np.linalg.norm(diff)}')
+                
 
             costs = time_f(*loc_args).results
 

@@ -121,6 +121,10 @@ TVM_REGISTER_GLOBAL("tvm.contrib.random.normal").set_body([](TVMArgs args, TVMRe
 TVM_REGISTER_GLOBAL("tvm.contrib.random.random_fill").set_body([](TVMArgs args, TVMRetValue* ret) {
   RandomThreadLocalEntry* entry = RandomThreadLocalEntry::ThreadLocal();
   DLTensor* out = args[0];
+  int seed = args[1];
+
+  // adding seed for reproducability
+  entry->random_engine.Seed(seed);
   entry->random_engine.RandomFill(out);
 });
 

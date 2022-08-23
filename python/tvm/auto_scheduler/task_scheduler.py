@@ -284,37 +284,41 @@ class TaskScheduler:
    
     def calc_ref_tensors(self):
 
-        # calc reference tensors
-        local_builder = LocalBuilder()
-        local_runner  = LocalRunner()
+        try:
+            # calc reference tensors
+            local_builder = LocalBuilder()
+            local_runner  = LocalRunner()
 
 
-        for idx, task in enumerate(self.tasks):
-            print("========== Task %d  (workload key: %s) ==========" %
-                (idx, task.workload_key))
-            print(task.compute_dag)
-            
-            state = task.compute_dag.get_init_state()
-            original_target = task.target
-            original_target_host = task.target_host
+            for idx, task in enumerate(self.tasks):
+                print("========== Task %d  (workload key: %s) ==========" %
+                    (idx, task.workload_key))
+                print(task.compute_dag)
+                
+                state = task.compute_dag.get_init_state()
+                original_target = task.target
+                original_target_host = task.target_host
 
-            ref_target = tvm.target.Target("llvm", host="llvm")
-            _ffi_api.SetTarget(task, ref_target, None)
-            measure_inputs = [MeasureInput(task, state)]
-            
+                ref_target = tvm.target.Target("llvm", host="llvm")
+                _ffi_api.SetTarget(task, ref_target, None)
+                measure_inputs = [MeasureInput(task, state)]
 
+                print("Collecting reference output tensors:")
+                # build in silent mode
+                build_results = local_builder.build(measure_inputs, verbose=0)
 
-            print("Collecting reference output tensors:")
-            # build in silent mode
-            build_results = local_builder.build(measure_inputs, verbose=0)
-            print("Build is done")
+                results = local_runner.get_ouput(measure_inputs, build_results)
 
-            results = local_runner.get_ouput(measure_inputs, build_results)
+                _ffi_api.SetReferenceTensors(task, results)
+                _ffi_api.SetTarget(task, original_target, original_target_host)
 
-            _ffi_api.SetReferenceTensors(task, results)
-            _ffi_api.SetTarget(task, original_target, original_target_host)
+                print("DONE")
 
-            print("DONE")
+        # pylint: disable=broad-except
+        except Exception:
+            error_msg = make_traceback_info()
+            print(error_msg)
+
 
 
 

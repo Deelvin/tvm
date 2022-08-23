@@ -144,6 +144,11 @@ def extract_tasks(
     # create search tasks
     tasks = []
     weights = []
+
+    #faked ref to extract task
+    #TODO: without it, initial serialization crashes... how to solve it more elegantly? 
+    ref = [tvm.nd.empty((1, 1))]
+
     for wkl_key, (weight, func_names) in env.wkl_key_to_weight.items():
         tasks.append(
             SearchTask(
@@ -160,6 +165,7 @@ def extract_tasks(
                 ),
                 task_inputs_save_to_file=True,
                 desc=",".join(func_names),
+                ref_output_tensors=ref,
             )
         )
         weights.append(int(weight))
