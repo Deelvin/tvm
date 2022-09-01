@@ -1058,6 +1058,7 @@ export class Instance implements Disposable {
       nstep: number,
       repeat: number,
       minRepeatMs: number,
+      maxRepeatMs: number,
       limitZeroTimeIterations: number,
       cooldownIntervalMs: number,
       repeatsToCooldown: number
