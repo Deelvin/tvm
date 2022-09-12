@@ -501,7 +501,9 @@ class StorageAllocator : public StorageAllocaBaseVisitor {
      * \return The result token.
      */
     StorageToken* Request(StorageToken* prototype) {
-      auto shape = GetSize2D(prototype);
+      return nullptr;
+/*      auto shape = GetSize2D(prototype);
+      std::cout << shape.height << ", " << shape.width << std::endl;
       int64_t requested_size = shape.height * shape.width;
       int64_t min_added_size = std::numeric_limits<int64_t>::max();
       int64_t min_wasted_size = std::numeric_limits<int64_t>::max();
@@ -539,6 +541,7 @@ class StorageAllocator : public StorageAllocaBaseVisitor {
         return best_mem.token_;
       }
       return nullptr;
+*/
     }
     /*!
      * \brief Alloacte a storage token by consuming prototype
