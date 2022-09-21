@@ -50,7 +50,7 @@ def _alter_conv2d_layout(attrs, inputs, tinfos, out_type):
     target = tvm.target.Target.current(allow_none=False)
     dispatch_ctx = autotvm.task.DispatchContext.current
     new_attrs = {k: attrs[k] for k in attrs.keys()}
-
+    
     # Parse the attributes.
     padding = attrs.get_int_tuple("padding")
     strides = attrs.get_int_tuple("strides")
@@ -60,7 +60,7 @@ def _alter_conv2d_layout(attrs, inputs, tinfos, out_type):
     data_tensor, kernel_tensor = tinfos
     data_dtype = data_tensor.dtype
     out_dtype = out_type.dtype
-
+    
     if isinstance(dispatch_ctx, autotvm.task.ApplyGraphBest):
         cfg = dispatch_ctx.query(target, None)
         workload = cfg.workload
@@ -317,7 +317,7 @@ def _alter_conv2d_layout(attrs, inputs, tinfos, out_type):
             else:
                 new_attrs["data_layout"] = "NCHW"
             # (oc, ic, h, w) -> (OC, ic, h, w, oc)
-            new_attrs["kernel_layout"] = "OIHW%do" % num_filter_block
+            new_attrs["kernel_layout"] = "OIHW4o4o"# % num_filter_block
             new_attrs["out_layout"] = "NCHW%dc" % num_filter_block
 
             # Store altered operator's config for applying of tuned AutoTVM statistics
@@ -328,10 +328,16 @@ def _alter_conv2d_layout(attrs, inputs, tinfos, out_type):
                 )
             else:
                 new_data = data_tensor
+            # new_kernel = te.placeholder(
+            #     (out_channel // num_filter_block, in_filter_channel, kh, kw, num_filter_block),
+            #     dtype=kernel_tensor.dtype,
+            # )
+
             new_kernel = te.placeholder(
-                (out_channel // num_filter_block, in_filter_channel, kh, kw, num_filter_block),
+                (out_channel // (4 * num_filter_block), in_filter_channel, kh, kw, num_filter_block, 4),
                 dtype=kernel_tensor.dtype,
             )
+            print("NEW KERNEL ", new_kernel)
             new_workload = autotvm.task.args_to_workload(
                 [
                     new_data,

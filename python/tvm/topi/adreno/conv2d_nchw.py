@@ -101,13 +101,16 @@ def conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
             )
     else:
         batch, in_channel_chunks, in_height, in_width, in_channel_block = Input.shape
-
+    tmp_flag = False
     if len(Filter.shape) == 4:
         out_channles, in_filter_channels, kernel_h, kernel_w = Filter.shape
         out_channel_chunks, out_channel_block, out_channel_tail = split_to_chunks(out_channles, 4)
-
+        tmp_flag = True
         if autotvm.GLOBAL_SCOPE.in_tuning:
-            kshape = (out_channel_chunks, in_filter_channels, kernel_h, kernel_w, out_channel_block)
+            # kshape = (out_channel_chunks, in_filter_channels, kernel_h, kernel_w, out_channel_block)
+            out_channel_chunks = tvm.tir.floordiv(out_channel_chunks, 4)
+            # out_channel_chunks /= 4
+            kshape = (out_channel_chunks, in_filter_channels, kernel_h, kernel_w, out_channel_block, 4)
             Filter = tvm.te.placeholder(kshape, Filter.dtype, name="kernel_placeholder")
         else:
             convert_from4d = True
@@ -125,11 +128,18 @@ def conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
                 kernel_w,
             )
     else:
-        out_channel_chunks, in_filter_channels, kernel_h, kernel_w, out_channel_block = Filter.shape
-
+        out_channel_chunks, in_filter_channels, kernel_h, kernel_w, out_channel_block, _ = Filter.shape
+        # out_channel_chunks //= 4
+        # kshape = (out_channel_chunks, in_filter_channels, kernel_h, kernel_w, out_channel_block, 4)
+        # Filter = tvm.te.placeholder(kshape, Filter.dtype, name="kernel_placeholder")
     out_height_orig, out_height, out_width_orig, out_width = expand_spatial_dimensions(
         in_height, in_width, kernel_h, kernel_w, dilation_h, dilation_w, padding, stride_h, stride_w
     )
+    
+    if tmp_flag and not autotvm.GLOBAL_SCOPE.in_tuning:
+        out_channel_chunks = tvm.tir.floordiv(out_channel_chunks, 4)
+        kshape = (out_channel_chunks, in_filter_channels, kernel_h, kernel_w, out_channel_block, 4)
+        Filter = tvm.te.placeholder(kshape, Filter.dtype, name="kernel_placeholder123")
 
     temp = add_pad(
         Input,
@@ -151,11 +161,11 @@ def conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
     rx = te.reduce_axis((0, kernel_w), name="rx")
 
     conv = te.compute(
-        (batch, out_channel_chunks, out_height, out_width, out_channel_block),
+        (batch, out_channel_chunks * 4, out_height, out_width, out_channel_block),
         lambda nn, ffc, yy, xx, ffb: te.sum(
             (
                 temp[nn, rcc, yy * stride_h + ry * dilation_h, xx * stride_w + rx * dilation_w, rcb]
-                * Filter[ffc, rcc * in_channel_block + rcb, ry, rx, ffb]
+                * Filter[tvm.tir.floordiv(ffc, 4), rcc * in_channel_block + rcb, ry, rx, tvm.tir.floormod(ffc, 4), ffb]
             ).astype(out_dtype),
             axis=[rcc, rcb, ry, rx],
         ),
@@ -175,7 +185,7 @@ def conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
         )
     else:
         return te.compute(
-            (batch, out_channel_chunks, out_height_orig, out_width_orig, out_channel_block),
+            (batch, out_channel_chunks * 4, out_height_orig, out_width_orig, out_channel_block),
             lambda n, ffc, y, x, ffb: conv[n, ffc, y, x, ffb].astype(out_dtype),
             tag="adreno_conv2d_latest_op",
         )
@@ -204,6 +214,7 @@ def schedule_conv2d_NCHWc_KCRSk(cfg, s, output):
        of data type
     7. In case of 4d conv we need to schedule postops as well
     """
+    
     latest = s.outputs[0].output(0)
     if len(latest.op.axis) == 4:
         latest_blocked = dummy = output.op.input_tensors[0]
@@ -213,6 +224,7 @@ def schedule_conv2d_NCHWc_KCRSk(cfg, s, output):
         latest_blocked = latest
 
     pad_data, kernel = s[conv].op.input_tensors
+
     filter_pack_rt = bool(
         isinstance(kernel.op, tvm.te.ComputeOp) and "filter_pack" in kernel.op.tag
     )
@@ -260,7 +272,15 @@ def schedule_conv2d_NCHWc_KCRSk(cfg, s, output):
     cfg.define_split("tile_rx", rx, num_outputs=2)
     cfg.define_knob("auto_unroll_max_step", [0, 512, 1500])
     cfg.define_knob("unroll_explicit", [0, 1])
-
+    cfg.multi_filter(
+        filter=lambda entity: (  # pylint: disable=chained-comparison
+            entity["tile_fc"].size[1] * entity["tile_y"].size[1] * entity["tile_x"].size[1]
+        )
+        <= 24
+        and 32
+        <= (entity["tile_fc"].size[2] * entity["tile_y"].size[2] * entity["tile_x"].size[2])
+        < 1024
+    )
     if cfg.is_fallback:
         get_default_conv2d_config(cfg, conv.shape[1], conv.shape[2], conv.shape[3])
     ##### space definition end #####
@@ -351,7 +371,7 @@ def schedule_conv2d_NCHWc_KCRSk(cfg, s, output):
             s[output].compute_inline()
 
     N, OCC, OH, OW, OCB = get_const_tuple(latest_blocked.shape)
-    _, IC, KH, KW, _ = get_const_tuple(kernel.shape)
+    _, IC, KH, KW, _, _ = get_const_tuple(kernel.shape)
     ICKHKW = IC * KH * KW
 
     if isinstance(N, int):

@@ -363,11 +363,11 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
   bool SupportsTextureStorage(const CallNode* call) const {
     bool supports_texture_storage = false;
     if (auto attrs = call->attrs.as<Conv2DAttrs>()) {
-      if (attrs->data_layout == "NCHW4c" && attrs->kernel_layout == "OIHW4o") {
+      if (attrs->data_layout == "NCHW4c" && attrs->kernel_layout == "OIHW4o4o") {
         supports_texture_storage = true;
       } else if (attrs->data_layout == "NHWC4c" &&
                  (attrs->kernel_layout == "HWOI4o" || attrs->kernel_layout == "HWIO4o" ||
-                  attrs->kernel_layout == "OIHW4o")) {
+                  attrs->kernel_layout == "OIHW4o" || attrs->kernel_layout == "OIHW4o4o")) {
         supports_texture_storage = true;
       }
     } else if (auto attrs = call->attrs.as<Conv2DWinogradAttrs>()) {
@@ -392,7 +392,7 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
       auto pattern = fpattern[GetRef<Op>(opnode)];
       if (pattern <= kInjective) {
         if (const auto* ttype = call->checked_type().as<TensorTypeNode>()) {
-          if (ttype->shape.size() == 5) {
+          if (ttype->shape.size() == 5 || ttype->shape.size() == 6) {
             supports_texture_storage = true;
           }
         }
