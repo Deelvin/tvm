@@ -16,14 +16,46 @@
 # under the License.
 # pylint: disable=invalid-name,unused-variable,too-many-locals,len-as-condition
 """Schedule for reduce operators"""
-from __future__ import absolute_import as _abs
+import numpy
 from operator import mul
 from functools import reduce
 import tvm
 from tvm import te
 from .. import tag
+from ..utils import get_const_tuple
 from .injective import schedule_injective_from_existing
+from .utils import get_div
 
+def _schedule_reduce_adreno(op, sch):
+    data_out = op.output(0)
+    shape = get_const_tuple(data_out.shape)
+    latest4 = True if shape[-1] == 4 else False
+    div4 = True if numpy.prod(shape) % 4 == 0 else False
+
+    # Fuse and split the axis
+    if latest4:
+        fused_outer = sch[data_out].fuse(
+            *[sch[data_out].op.axis[i] for i in range(len(sch[data_out].op.axis) - 1)]
+        )
+    else:
+        fused_outer = sch[data_out].fuse(
+            *[sch[data_out].op.axis[i] for i in range(len(sch[data_out].op.axis))]
+        )
+
+    ftc = numpy.prod(shape)
+    if latest4:
+        sch[data_out].vectorize(sch[data_out].op.axis[-1])
+        a = fused_outer
+    elif div4:
+        a, b = sch[data_out].split(fused_outer, factor=4)
+        sch[data_out].vectorize(b)
+        ftc = ftc / 4
+
+    num_thread = get_div(ftc, 128)
+    bx, outer_in = sch[data_out].split(a, factor=num_thread)
+
+    sch[data_out].bind(bx, te.thread_axis("blockIdx.x"))
+    sch[data_out].bind(outer_in, te.thread_axis("threadIdx.x"))
 
 def _schedule_reduce(op, sch, is_idx_reduce=False):
     if is_idx_reduce:
@@ -42,7 +74,7 @@ def _schedule_reduce(op, sch, is_idx_reduce=False):
         if target and (target.kind.name == "opencl" or target.kind.name == "metal"):
             # without it, CL_INVALID_WORK_GROUP_SIZE occurred when running test_topi_reduce.py
             # don't know why
-            num_thread = 1
+            num_thread = 8
         block_x = te.thread_axis("blockIdx.x")
         thread_x = te.thread_axis((0, num_thread), "threadIdx.x")
         thread_y = te.thread_axis((0, num_thread), "threadIdx.y")
@@ -162,7 +194,7 @@ def schedule_reduce(outs):
                         traverse_after_reduce(tensor.op)
         elif operator.tag == "comm_reduce":
             if operator not in scheduled_ops:
-                _schedule_reduce(operator, sch, is_idx_reduce=False)
+                _schedule_reduce_adreno(operator, sch)
             for tensor in operator.input_tensors:
                 if tensor.op not in scheduled_ops:
                     traverse_before_reduce(tensor.op)
