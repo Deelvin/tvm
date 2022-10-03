@@ -183,6 +183,10 @@ class Target(Object):
         return int(self.attrs.get("max_function_args", -1))
 
     @property
+    def sram_capacity(self):
+        return int(self.attrs.get("sram_capacity", -1))
+
+    @property
     def device_name(self):
         return str(self.attrs.get("device", ""))
 
@@ -617,7 +621,7 @@ def riscv_cpu(model="sifive-u54", options=None):
     return Target(" ".join(["llvm"] + opts))
 
 
-def hexagon(cpu_ver="v66", **kwargs):
+def hexagon(cpu_ver="v66", **kwargs): # ICE
     """Returns a Hexagon target.
 
     Parameters
@@ -638,6 +642,9 @@ def hexagon(cpu_ver="v66", **kwargs):
         Whether to use IEEE HVX instructions
     num_cores : int (default: 4)
         The number of HVX threads. This attribute is required by meta scheduler.
+    sram_capacity: int (default: 0)
+        Hexagon SRAM capacity limitation. Value of 0 disables this limitation codegen.
+
 
     Note: Floating point support in HVX requires LLVM 14+.
     """
@@ -671,6 +678,7 @@ def hexagon(cpu_ver="v66", **kwargs):
         "llvm_options": None,
         "use_qfloat": arch_version >= 68,
         "use_ieee_fp": False,
+        "sram_capacity": 0,
     }
     config.update(kwargs)
 
@@ -744,7 +752,9 @@ def hexagon(cpu_ver="v66", **kwargs):
 
     num_cores = config["num_cores"] if "num_cores" in kwargs else 4
     args_list.append("--num-cores=%d" % num_cores)
+    args_list.append("--sram-capacity=%d" % config["sram_capacity"])
 
+    print(" ".join(["hexagon"] + args_list))
     return Target(" ".join(["hexagon"] + args_list))
 
 

@@ -332,6 +332,7 @@ class RPCRunner(Runner):
             )
 
     def get_build_kwargs(self):
+        print("get_build_kwargs", self.task.target)
         kwargs = {}
         if (
             "cuda" in self.task.target.keys
@@ -349,6 +350,9 @@ class RPCRunner(Runner):
                 "max_thread_y": max_dims[1],
                 "max_thread_z": max_dims[2],
             }
+        if "hexa" in self.task.target.keys:
+            kwargs["check_hexa"] = { "sram":100000 }
+            # kwargs["check_hexa"] = { "sram":self.task.target.sram_capacity }
 
         return kwargs
 
@@ -498,7 +502,7 @@ class LocalRunner(RPCRunner):
         return server, tracker
 
 
-def _build_func_common(measure_input, runtime=None, check_gpu=None, build_option=None):
+def _build_func_common(measure_input, runtime=None, check_gpu=None, build_option=None, check_hexa=None):
     """Common part for building a configuration"""
     target, task, config = measure_input
     target, task.target_host = Target.canon_target_and_host(target, task.target_host)
@@ -533,6 +537,21 @@ def _build_func_common(measure_input, runtime=None, check_gpu=None, build_option
                 current_add_lower_pass = []
             if check_gpu:
                 current_add_lower_pass.append((2, gpu_verify_pass(**check_gpu)))
+            def get_verify_pass(valid, **kwargs):
+                    def _fverify(f, *_):
+                        # valid[0] = tvm.tir.analysis.calculate_intout_bytes(f, kwargs)
+                        valid[0] = tvm.tir.analysis.calculate_intout_bytes(f)
+                        if valid[0] == 12288:
+                        # if valid[0] != 12288
+                            from tvm.autotvm.task.space import InstantiationError
+                            raise InstantiationError("Skipped because of invalid sram size")
+                        return f
+                    return tvm.tir.transform.prim_func_pass(_fverify, opt_level=0)
+            if check_hexa:
+                valid=[]
+                current_add_lower_pass.append((2, get_verify_pass(valid)))
+
+
             current_config["tir.add_lower_pass"] = current_add_lower_pass
 
             with tvm.ir.transform.PassContext(

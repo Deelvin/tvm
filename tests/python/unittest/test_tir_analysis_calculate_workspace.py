@@ -20,7 +20,7 @@ import tvm
 from tvm import tir
 from tvm.script import tir as T
 
-
+# ICE
 # fmt: off
 @T.prim_func
 def primfunc_global_allocates(placeholder_144: T.handle, placeholder_145: T.handle, placeholder_146: T.handle, T_cast_48: T.handle) -> None:
@@ -106,5 +106,159 @@ def test_local_allocates(alignment, size, consts):
 
 
 if __name__ == "__main__":
-    test_global_allocates()
-    test_local_allocates()
+    # test_global_allocates()
+    # test_local_allocates()
+    from tvm.te import create_prim_func
+    from tvm.meta_schedule.testing import te_workload
+    from tvm import te
+    from tvm import autotvm
+    # mod = create_prim_func(te_workload.matmul(n=512, m=512, k=512))
+    target = tvm.target.Target("llvm", host="llvm")
+
+    data_shape = (1024,)
+    weight_shape = (1024,)
+    output_shape = (1024,)
+    dtype = "float32"
+
+    @autotvm.template("test")
+    def test():
+
+        data = te.placeholder(data_shape, name="data", dtype=dtype)
+        weight = te.placeholder(weight_shape, name="weight", dtype=dtype)
+
+        res = te.compute(output_shape, lambda i: data[i] * weight[i], name="res")
+        cfg = autotvm.get_config()
+        (d,) = res.op.axis
+        cfg.define_split("tile_d", d, num_outputs=4)
+
+        s = te.create_schedule(res.op)
+        return s, [data, weight, res]
+
+    s, (data, weight, res) = test()
+
+    task = autotvm.task.create("test", args=(), target=target)
+    print(task.config_space)
+    tasks = [task]
+
+    print(tvm.lower(s, [data, weight, res], simple_mode=True))
+
+
+    mod = tvm.build(s, [data, weight, res], target=target)
+    prim = mod[mod.entry_name]
+
+    pp = tvm.lower(s, [data, weight, res], simple_mode=True)
+    pp = list(pp.functions.values())[0]
+
+    model_name = "my_sobel"
+    log_file = "%s.log" % model_name
+
+    tuning_option = {
+        "log_filename": log_file,
+        "tuner": "xgb",
+        "early_stopping": None,
+        "measure_option": autotvm.measure_option(
+            builder=autotvm.LocalBuilder(),
+            runner=autotvm.LocalRunner(
+                number=1, repeat=10, min_repeat_ms=0, enable_cpu_cache_flush=True
+            ),
+        ),
+    }
+    
+    from tvm.autotvm.tuner import XGBTuner, GATuner, RandomTuner, GridSearchTuner
+    def run_tuning(
+        tasks, measure_option, tuner="gridsearch", early_stopping=None, log_filename="tuning.log"
+    ):
+        for i, task in enumerate(tasks):
+            prefix = "[Task %2d/%2d] " % (i + 1, len(tasks))
+
+            # create tuner
+            if tuner == "xgb" or tuner == "xgb-rank":
+                tuner_obj = XGBTuner(task, loss_type="rank")
+            elif tuner == "ga":
+                tuner_obj = GATuner(task, pop_size=50)
+            elif tuner == "random":
+                tuner_obj = RandomTuner(task)
+            elif tuner == "gridsearch":
+                tuner_obj = GridSearchTuner(task)
+            else:
+                raise ValueError("Invalid tuner: " + tuner)
+
+            # do tuning
+            n_trial = len(task.config_space)
+            tuner_obj.tune(
+                n_trial=n_trial,
+                early_stopping=early_stopping,
+                measure_option=measure_option,
+                callbacks=[
+                    autotvm.callback.progress_bar(n_trial, prefix=prefix),
+                    autotvm.callback.log_to_file(log_filename),
+                ],
+            )
+
+    run_tuning(tasks, **tuning_option)
+    # print(prim)
+    # print(pp)
+    # print(dir(prim))
+    # print(dir(pp))
+    # print(type(prim))
+    # print(type(pp))
+    # print()
+    # print(tvm.tir.analysis.calculate_workspace_bytes(pp, 8))
+
+
+
+    # print("res", tvm.tir.analysis.calculate_intout_bytes(pp))
+    # print("ref", data_shape[0] * 4 + weight_shape[0] * 4 +  output_shape[0] * 4)
+
+
+
+    # print("ref", data_shape[0] * weight_shape[0] * output_shape[0] * 32)
+
+    # def gpu_verify_pass(**kwargs):
+    #     """Verify the validity of a gpu kernel.
+    #     This pass will check memory usage and number of threads per block.
+    #     """
+
+    #     def verify_pass(f, *_):
+    #         count = tvm.tir.analysis.calculate_intout_bytes(f, kwargs)
+    #         # target
+
+    #         if count < 10000:
+    #             raise InstantiationError("Skipped because of invalid gpu kernel")
+    #         return f
+
+    #     return tvm.tir.transform.prim_func_pass(verify_pass, opt_level=0)
+
+
+
+
+    # def get_verify_pass(valid, **kwargs):
+    #     def _fverify(f, *_):
+    #         # valid[0] = tvm.tir.analysis.calculate_intout_bytes(f, kwargs)
+    #         valid[0] = tvm.tir.analysis.calculate_intout_bytes(f)
+    #         if valid[0] == 12288:
+    #         # if valid[0] != 12288
+    #             from tvm.autotvm.task.space import InstantiationError
+    #             raise InstantiationError("Skipped because of invalid sram size")
+            
+    #         return f
+
+    #     return tvm.tir.transform.prim_func_pass(_fverify, opt_level=0)
+
+
+    # valid = [None]
+    # with tvm.transform.PassContext(
+    #     config={
+    #         "tir.add_lower_pass": [
+    #             (
+    #                 2,
+    #                 get_verify_pass(
+    #                     valid
+    #                 ),
+    #             )
+    #         ]
+    #     }
+    # ):
+    #     m = tvm.build(s, [data, weight, res], target)
+    #     print(m)
+    # print("valid", valid)
