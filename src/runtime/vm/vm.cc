@@ -22,6 +22,8 @@
  * \brief The Relay virtual machine runtime.
  */
 
+#include <chrono>
+
 #include <dmlc/memory_io.h>
 #include <tvm/runtime/container/adt.h>
 #include <tvm/runtime/data_type.h>
@@ -131,6 +133,8 @@ PackedFunc VirtualMachine::GetFunction(const std::string& name,
                                        const ObjectPtr<Object>& sptr_to_self) {
   if (name == "invoke") {
     return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+      auto inv_start = TestClock::now();
+      std::cout << "VM invoke is started" << std::endl;
       ICHECK(exec_) << "The executable is not created yet.";
 
       std::string func_name = args[0];
@@ -141,19 +145,30 @@ PackedFunc VirtualMachine::GetFunction(const std::string& name,
       if (func.params.empty()) {
         *rv = Invoke(func, {});
       } else {
+        auto start = TestClock::now();
         auto it = inputs_.find(func_name);
         ICHECK(it != inputs_.end()) << "Input has not been set for function " << func_name;
         const std::vector<ObjectRef>& input_args = it->second;
         if (set_outputs_enabled_.count(func_name) && set_outputs_enabled_[func_name]) {
           ICHECK(outputs_.count(func_name))
               << "Outputs have not been set for function " << func_name;
+          start = TestClock::now();
           *rv = Invoke(func, input_args, outputs_[func_name]);
+          auto end = TestClock::now();
+          std::chrono::duration<double> elapsed_seconds = end - start;
+          std::cout << "Native VM invoke = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
           outputs_[func_name].clear();
           set_outputs_enabled_[func_name] = false;
         } else {
           *rv = Invoke(func, input_args);
         }
+        auto end = TestClock::now();
+        std::chrono::duration<double> elapsed_seconds = end - start;
+        std::cout << "VM invoke with args = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
       }
+      auto inv_end = TestClock::now();
+      std::chrono::duration<double> elapsed_seconds = inv_end - inv_start;
+      std::cout << "VM invoke full time = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
     });
   } else if (name == "invoke_stateful") {
     // TODO(tkonolige, jroesch, tqchen): invoke_stateful and get_output are
@@ -442,14 +457,29 @@ ObjectRef VirtualMachine::Invoke(const std::string& name, const std::vector<Obje
 
 ObjectRef VirtualMachine::Invoke(const VMFunction& func, const std::vector<ObjectRef>& input_args,
                                  const std::vector<ObjectRef>& output_args) {
+  auto start = TestClock::now();
   PrintInfoAndSetInputArgs(func, input_args);
+  auto end = TestClock::now();
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::cout << "Native VM invoke (PrintInfoAndSetInputArgs) = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
+
+  start = TestClock::now();
   SetOutputTensorsToRegister(func.name, output_args);
+  end = TestClock::now();
+  elapsed_seconds = end - start;
+  std::cout << "Native VM invoke (SetOutputTensorsToRegister) = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
+
+  start = TestClock::now();
   RunLoop(output_tensor_reg_indices_[func.name]);
+  end = TestClock::now();
+  elapsed_seconds = end - start;
+  std::cout << "Native VM invoke (RunLoop) = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
   return return_register_;
 }
 
 void VirtualMachine::InvokePacked(Index packed_index, const PackedFunc& func, Index arg_count,
                                   Index output_size, const std::vector<ObjectRef>& args) {
+  auto start = TestClock::now();
   size_t arity = 0;
   for (Index i = 0; i < arg_count; i++) {
     if (const auto* obj = args[i].as<ADTObj>()) {
@@ -458,7 +488,11 @@ void VirtualMachine::InvokePacked(Index packed_index, const PackedFunc& func, In
       ++arity;
     }
   }
+  auto end = TestClock::now();
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::cout << "VirtualMachine::InvokePacked Calc arity = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
 
+  start = TestClock::now();
   std::vector<TVMValue> values(arity);
   std::vector<int> codes(arity);
   runtime::TVMArgsSetter setter(values.data(), codes.data());
@@ -486,11 +520,18 @@ void VirtualMachine::InvokePacked(Index packed_index, const PackedFunc& func, In
       setter(idx++, nd_array);
     }
   }
+  end = TestClock::now();
+  elapsed_seconds = end - start;
+  std::cout << "VirtualMachine::InvokePacked Fill setter = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
 
+  start = TestClock::now();
   if (!is_empty_output) {
     TVMRetValue rv;
     func.CallPacked(TVMArgs(values.data(), codes.data(), arity), &rv);
   }
+  end = TestClock::now();
+  elapsed_seconds = end - start;
+  std::cout << "VirtualMachine::InvokePacked Func launch = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
 }
 
 void VirtualMachine::LoadExecutable(const ObjectPtr<Executable>& exec) {
@@ -625,13 +666,25 @@ std::vector<Index> VirtualMachine::GetOutputTensorRegIndices() {
 }
 
 void VirtualMachine::RunLoop(const std::vector<Index>& output_tensor_reg_indices) {
+  auto start = TestClock::now();
   ICHECK(this->exec_);
   ICHECK(this->code_);
   pc_ = 0;
   Index frame_start = frames_.size();
+  auto end = TestClock::now();
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::cout << "RUNLOOP preparation = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
+
   while (true) {
   main_loop:
     auto const& instr = code_[this->pc_];
+    if (pc_ > 0) {
+      end = TestClock::now();
+      std::chrono::duration<double> elapsed_seconds = end - start;
+      auto prev_pc = pc_ - 1;
+      std::cout << "Iteration " << prev_pc << " type " << int(code_[prev_pc].op) << " = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
+    }
+    start = TestClock::now();
     VLOG(2) << "Executing(" << pc_ << "): " << instr;
 
     switch (instr.op) {
@@ -687,10 +740,16 @@ void VirtualMachine::RunLoop(const std::vector<Index>& output_tensor_reg_indices
         goto main_loop;
       }
       case Opcode::InvokePacked: {
+        auto start = TestClock::now();
         ICHECK_LE(instr.packed_index, packed_funcs_.size());
         const auto& func = packed_funcs_[instr.packed_index];
         const auto& arity = instr.arity;
         std::vector<ObjectRef> args;
+        auto end = TestClock::now();
+        std::chrono::duration<double> elapsed_seconds = end - start;
+        std::cout << "Opcode::InvokePacked preparation = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
+
+        start = TestClock::now();
         for (Index i = 0; i < arity; ++i) {
           auto arg = ReadRegister(instr.packed_args[i]);
           args.push_back(arg);
@@ -703,10 +762,17 @@ void VirtualMachine::RunLoop(const std::vector<Index>& output_tensor_reg_indices
           }
 #endif
         }
+        end = TestClock::now();
+        elapsed_seconds = end - start;
+        std::cout << "Opcode::InvokePacked ReadArgs = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
 
+        start = TestClock::now();
         // We no longer need to write the registers back, we write directly
         // through the registers mutably.
         InvokePacked(instr.packed_index, func, arity, instr.output_size, args);
+        end = TestClock::now();
+        elapsed_seconds = end - start;
+        std::cout << "Opcode::InvokePacked InvokePacked = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
 
 #if TVM_LOG_DEBUG
         for (Index i = arity - instr.output_size; i < arity; ++i) {
@@ -773,9 +839,17 @@ void VirtualMachine::RunLoop(const std::vector<Index>& output_tensor_reg_indices
       case Opcode::AllocTensor: {
         OpStartHook(instr);
         if (!output_tensor_reg_indices.empty() && FindIndex(output_tensor_reg_indices, instr.dst)) {
+          auto start = TestClock::now();
           WriteAllocatedTensorFromOutside(instr);
+          auto end = TestClock::now();
+          std::chrono::duration<double> elapsed_seconds = end - start;
+          std::cout << "WriteAllocatedTensorFromOutside for " << pc_ << "-th instruction = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
         } else {
+          auto start = TestClock::now();
           WriteAllocatedTensor(instr);
+          auto end = TestClock::now();
+          std::chrono::duration<double> elapsed_seconds = end - start;
+          std::cout << "WriteAllocatedTensor for " << pc_ << "-th instruction = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
         }
         OpStopHook();
         pc_++;
@@ -861,6 +935,9 @@ void VirtualMachine::RunLoop(const std::vector<Index>& output_tensor_reg_indices
         auto caller_return_register = frames_.back().caller_return_register;
 
         if (PopFrame() == frame_start) {
+          end = TestClock::now();
+          std::chrono::duration<double> elapsed_seconds = end - start;
+          std::cout << "Ret Iteration " << pc_ << " = " << 1000*elapsed_seconds.count() << " ms" << std::endl;
           return;
           // Otherwise we are just returning from a local call.
         } else {

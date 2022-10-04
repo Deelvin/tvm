@@ -146,6 +146,7 @@ struct VMFrame {
  * wire.
  */
 class TVM_DLL VirtualMachine : public runtime::ModuleNode {
+  using TestClock = std::chrono::high_resolution_clock;
  public:
   /*!
    * \brief Get a PackedFunc from module.
