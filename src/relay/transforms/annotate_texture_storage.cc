@@ -152,7 +152,7 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
     // Check the contents of this primitive function
     if (const auto* fn = call->op.as<FunctionNode>()) {
       if (fn->HasNonzeroAttr(attr::kPrimitive)) {
-        primitive_supports_texture_ = false;
+        primitive_supports_texture_ = true;
         Visit(call->op);
         if (primitive_supports_texture_) {
           if (call->checked_type().as<TensorTypeNode>()) {
@@ -206,7 +206,9 @@ class StorageInfo : private transform::DeviceAwareExprVisitor {
       }
     }
 
-    primitive_supports_texture_ = SupportsTextureStorage(call);
+    if (primitive_supports_texture_) {
+      primitive_supports_texture_ = SupportsTextureStorage(call);
+    }
 
     for (auto& arg : call->args) {
       Visit(arg);
