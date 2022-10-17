@@ -25,6 +25,10 @@
 #include <tvm/auto_scheduler/auto_schedule.h>
 #include <tvm/runtime/registry.h>
 
+#include <tvm/driver/driver_api.h>
+#include <tvm/te/operation.h>
+#include <tvm/te/tensor.h>
+
 #include "utils.h"
 
 namespace tvm {
@@ -53,18 +57,55 @@ std::pair<te::Schedule, Array<te::Tensor>> AutoSchedule(SearchPolicy search_poli
       ProgramMeasurer(tuning_options->builder, tuning_options->runner,
                       tuning_options->measure_callbacks, tuning_options->verbose);
   // Search for the best schedule
+  std::cout << "ICE Search" << std::endl;
   State state =
       search_policy->Search(tuning_options->num_measure_trials, tuning_options->early_stopping,
                             tuning_options->num_measures_per_round, measurer);
   if (state.defined()) {
-    return search_policy->search_task->compute_dag.ApplySteps(state->transform_steps);
+    // std::cout << "ICE Search ApplySteps state.defined()" << std::endl;
+
+
+    std::pair<te::Schedule, Array<te::Tensor>> r = search_policy->search_task->compute_dag.ApplySteps(state->transform_steps);
+    // auto target = Target("llvm");
+    // te::Schedule sch = r.first;
+    // const Array<te::Tensor>& args = r.second;
+    // const std::string& name = "func";
+    // std::unordered_map<te::Tensor, Buffer> binds;
+
+    // tvm::GlobalVarSupply global_var_supply = tvm::GlobalVarSupply(tvm::NameSupply(""));
+    // bool simple_mode = true;
+
+    // auto lowered = tvm::LowerSchedule(sch, args, name, binds, global_var_supply, simple_mode);
+    // // auto module = tvm::build(lowered, target, Target());
+    
+    // std::cout << "ICE schedule_lowered\n " << lowered << std::flush << std::endl;
+    
+    return r;
   } else {
     StdCout(tuning_options->verbose)
         << "No valid state found in this search round. Check if it has traversed all of the "
         << "search space." << std::endl;
-    // Return the default schedule
-    return {te::Schedule(search_policy->search_task->compute_dag->ops),
+    // std::cout << "ICE Search ApplySteps state.defined() == false" << std::endl;
+
+
+    std::pair<te::Schedule, Array<te::Tensor>> r = {te::Schedule(search_policy->search_task->compute_dag->ops),
             search_policy->search_task->compute_dag->tensors};
+    // auto target = Target("llvm");
+    // te::Schedule sch = r.first;
+    // const Array<te::Tensor>& args = r.second;
+    // const std::string& name = "func";
+    // std::unordered_map<te::Tensor, Buffer> binds;
+
+    // tvm::GlobalVarSupply global_var_supply = tvm::GlobalVarSupply(tvm::NameSupply(""));
+    // bool simple_mode = true;
+
+    // auto lowered = tvm::LowerSchedule(sch, args, name, binds, global_var_supply, simple_mode);
+    // // auto module = tvm::build(lowered, target, Target());
+    
+    // std::cout << "ICE schedule_lowered\n " << lowered << std::flush << std::endl;
+
+    // Return the default schedule
+    return r;
   }
 }
 

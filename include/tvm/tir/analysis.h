@@ -181,6 +181,9 @@ TVM_DLL bool VerifyGPUCode(const PrimFunc& func, Map<String, PrimExpr> constrain
  *           - second: write regions
  *           - third: opaque regions
  */
+
+size_t CalculateIntOutTensorsBytes(const PrimFunc& func);
+
 TVM_DLL Array<Array<BufferRegion>> GetBlockAccessRegion(const Block& block,
                                                         const Map<Var, Buffer>& buffer_var_map);
 
@@ -261,6 +264,9 @@ TVM_DLL Pass VerifyMemory();
  * \sa tvm::tir::VerifyGPUCode
  */
 TVM_DLL Pass VerifyGPUCode(Map<String, PrimExpr> constraints);
+
+
+TVM_DLL Pass VerifySRAMLimit(size_t size_limit);
 
 /*!
  * \brief Statically check TIR code for out of bounds array access.

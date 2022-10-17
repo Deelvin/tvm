@@ -1355,7 +1355,6 @@ void GetPerStoreFeatureName(int max_n_bufs, std::vector<std::string>* ret) {
 void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, int max_n_bufs,
                                    std::vector<float>* feature, std::atomic<int>* error_ct) {
   auto [sch, tensors] = task->compute_dag.ApplySteps(state->transform_steps);
-
   // When inlining, replace const matrices with const values.
   // Produces wrong IR, but good enough for feature extraction, and
   // can improve the speed of feature extraction/search.  Must be
@@ -1398,6 +1397,17 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
       const auto& optimize = tir::transform::Sequential(pass_list);
       optimize(mod);
     }
+    // if (IsHexaTask(task)) 
+    {
+      std::cout << "ICE IsHexaTask VerifySRAMLimit " << std::flush << std::endl;
+      auto pass_list = Array<tvm::transform::Pass>();
+      // if (task->target.sram.defined()) {
+        // thread_warp_size_ = Extract(target, "thread_warp_size").IntValue();
+        pass_list.push_back(tir::transform::VerifySRAMLimit(1024*10)); // ICE
+      const auto& optimize = tir::transform::Sequential(pass_list);
+      optimize(mod);
+      // }
+    }
     const auto& optimize =
         tir::transform::Sequential(Array<tvm::transform::Pass>{tir::transform::Simplify()});
     mod = optimize(std::move(mod));
@@ -1421,6 +1431,10 @@ void GetPerStoreFeaturesFromStates(const Array<State>& states, const SearchTask&
                           GetPerStoreFeaturesWorkerFunc(task, states[i], max_n_bufs,
                                                         &(*features)[i], &error_ct);
                         });
+    if (error_ct > 0) {
+    std::cerr << "Encountered " << error_ct
+              << " errors during feature extraction. which are safely ignored." << std::endl;
+  }
 }
 
 void GetPerStoreFeaturesFromStates(const Array<State>& states, const std::vector<SearchTask>& tasks,
@@ -1436,6 +1450,10 @@ void GetPerStoreFeaturesFromStates(const Array<State>& states, const std::vector
                           GetPerStoreFeaturesWorkerFunc(tasks[i], states[i], max_n_bufs,
                                                         &(*features)[i], &error_ct);
                         });
+  if (error_ct > 0) {
+    std::cerr << "Encountered  " << error_ct
+              << " errors during feature extraction. which are safely ignored." << std::endl;
+  }
 }
 
 void GetPerStoreFeaturesFromFile(const std::string& filename, int max_lines, int max_n_bufs,
