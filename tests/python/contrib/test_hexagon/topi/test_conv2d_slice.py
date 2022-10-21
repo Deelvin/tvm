@@ -336,4 +336,4 @@ class TestConv2dSlice:
 
 
 if __name__ == "__main__":
-    tvm.testing.main()
+    tvm.testing.main() # ICE

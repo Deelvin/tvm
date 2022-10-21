@@ -58,6 +58,12 @@ inline bool IsGPUTask(const SearchTask& task) {
          device_type == kDLMetal || device_type == kDLROCM || device_type == kOpenGL;
 }
 
+/*! \brief Return whether the search task is targeting a Hexagon. */
+inline bool IsHexaTask(const SearchTask& task) {
+  int device_type = (task)->target->GetTargetDeviceType();
+  return TVMDeviceExtType(static_cast<DLDeviceType>(device_type)) == kDLHexagon;
+}
+
 /*! \brief Return whether the search task is targeting a CUDA GPU. */
 inline bool IsCUDATask(const SearchTask& task) {
   return (task)->target->GetTargetDeviceType() == kDLCUDA;

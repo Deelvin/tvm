@@ -219,10 +219,12 @@ ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
   node->max_continuous_error = max_continuous_error < 0
                                    ? ProgramMeasurerNode::DEFAULT_MAX_CONTINUOUS_ERROR
                                    : max_continuous_error;
+  std::cout << "ICE max_continuous_error " << node->max_continuous_error << std::endl << std::flush;
   data_ = std::move(node);
 }
 
 void ProgramMeasurerNode::Reset() {
+  std::cout << "ICE ProgramMeasurerNode::Reset" << std::endl << std::flush;
   ct = error_ct = 0;
   best_flops.clear();
   best_ct.clear();
@@ -230,7 +232,7 @@ void ProgramMeasurerNode::Reset() {
   has_valid.clear();
 }
 
-Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
+Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task, // ICE
                                                   const SearchPolicy& policy,
                                                   const Array<MeasureInput>& inputs,
                                                   int batch_size) {
@@ -264,10 +266,12 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       if (result_batch[j]->error_no == 0) {
         flops = task->compute_dag->flop_ct / FloatArrayMean(result_batch[j]->costs);
         error_ct = 0;
+        std::cout << "ICE error_ct set 0" << std::flush << std::endl;
         has_valid.insert(workload_key);
       } else {
         flops = 0.0;
         error_ct++;
+        std::cout << "ICE error_ct " << error_ct << std::flush << std::endl;
       }
 
       if (flops > best_flops[workload_key]) {

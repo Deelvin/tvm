@@ -161,7 +161,7 @@ class Buffer : public ObjectRef {
  public:
   // User can specify data_alignment and offset_factor to be 0
   // A default value will be picked.
-  TVM_DLL Buffer(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
+  TVM_DLL Buffer(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides, // ICE
                  PrimExpr elem_offset, String name, int data_alignment, int offset_factor,
                  BufferType buffer_type, Array<IntImm> axis_separators = {}, Span span = Span());
 

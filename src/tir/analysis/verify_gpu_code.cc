@@ -268,7 +268,7 @@ class GPUCodeVerifier : public StmtExprVisitor {
   }
 };
 
-std::vector<String> VerifyGPUCode_(const PrimFunc& func, Map<String, PrimExpr> constraints) {
+std::vector<String> VerifyGPUCode_(const PrimFunc& func, Map<String, PrimExpr> constraints) { // ICE
   GPUCodeVerifier verifier;
 
   int64_t max_local_memory_per_block = INT64_MAX;
