@@ -1,75 +1,64 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-
 """
-.. _tutorial-deploy-model-on-adreno:
 Deploy the Pretrained Model on Adreno
 =======================================
-**Author**: `Daniil Barinov`_
+**Author**: Daniil Barinov
+
 This article is a step-by-step tutorial to deploy pretrained MXNet VGG16 model on Adreno (on different precisions).
+
+For us to begin with, MXNet package must be installed.
+
+A quick solution is to install it via pip:
+
+.. code-block:: bash
+
+  pip install mxnet
+
+Besides that, you should have TVM builded for Android.
+See the following instructions on how to build it.
+
+`Deploy to Adreno GPU <https://tvm.apache.org/docs/how_to/deploy/adreno.html>`_
+
+After the build section there should be two files in *build* directory «libtvm_runtime.so» and «tvm_rpc». 
+Let's push them to the device and run TVM RPC Server.
 """
 
-######################################################################
-# For us to begin with, MXNet package must be installed.
-# A quick solution is to install it via pip:
-# .. code-block:: bash
-#
-#   pip install mxnet
-#
-# Besides that, you should have TVM builded for Android.
-# Please, refer to: `Compile and deploy models on Adreno GPU <link>`_ .
-# After the build section there should be two files in *build* directory «libtvm_runtime.so» and «tvm_rpc». Let's push them to the device and run TVM RPC Server.
 #################################################################
-# TVM RPC Server
+# TVM RPC Server    
 # -----------------
 # To get the hash of the device use:
+#
 # .. code-block:: bash
 #
 #   adb devices
 #
 # Then to upload these two files to the device you should use:
+#
 # .. code-block:: bash
 #
-#   adb -s <device_hash> push {libtvm_runtime.so,tvm_rpc} /data/local/tmp_
+#   adb -s <device_hash> push {libtvm_runtime.so,tvm_rpc} /data/local/tmp
 #
 # At this moment you will have «libtvm_runtime.so» and «tvm_rpc» on path /data/local/tmp on your device.
 # Sometimes cmake can’t find «libc++_shared.so». Use:
+#
 # .. code-block:: bash
 #
-#   find ~/Android/sdk/ndk/ -name libc++_shared.so
+#   find ${ANDROID_NDK_HOME} -name libc++_shared.so
 #
-# (Linux)
-# .. code-block:: bash
-#
-#   find ~/Library/Android/sdk/ndk/ -name libc++_shared.so
-#
-# (MacOS)
 # to find it and also push it with adb on the desired device:
+#
 # .. code-block:: bash
 #
 #   adb -s <device_hash> push libc++_shared.so /data/local/tmp
 #
 # We are now ready to run the TVM RPC Server.
 # Launch rpc_tracker with following line in 1st console:
+#
 # .. code-block:: bash
 #
 #   python3 -m tvm.exec.rpc_tracker --port 9190
 #
 # Then we need to run tvm_rpc server from under the desired device in 2nd console:
+#
 # .. code-block:: bash
 #
 #   adb -s <device_hash> reverse tcp:9190 tcp:9190
@@ -79,19 +68,21 @@ This article is a step-by-step tutorial to deploy pretrained MXNet VGG16 model o
 #   adb -s <device_hash> forward tcp:9093 tcp:9093
 #   adb -s <device_hash> shell LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/tvm_rpc server --host=0.0.0.0 --port=9090 --tracker=127.0.0.1:9190 --key=android --port-end=9190
 #
-# Before proceeding to compile and infer model, specify tracker host and tracker port, make sure that rpc.tracker and tvm_rpc server are running and check that your device is available:
+# Before proceeding to compile and infer model, specify TVM_TRACKER_HOST and TVM_TRACKER_PORT
+#
 # .. code-block:: bash
 #
 #   export TVM_TRACKER_HOST=0.0.0.0
 #   export TVM_TRACKER_PORT=9190
 #
-# Check that the tracker is running and the device is available
+# check that the tracker is running and the device is available
+#
 # .. code-block:: bash
 #
 #     python -m tvm.exec.query_rpc_tracker --port 9190
 #
-# For example, if we have 1 Android device.
-# the output can be
+# For example, if we have 1 Android device,
+# the output can be:
 #
 # .. code-block:: bash
 #
@@ -107,13 +98,13 @@ This article is a step-by-step tutorial to deploy pretrained MXNet VGG16 model o
 # Load pretrained MXNet model
 # ---------------------------
 # Create a Relay graph from a MXNet VGG16 model
-import  os
-import  numpy  as  np
-import  mxnet.gluon  as  gluon
-import  tvm
-from  tvm  import  relay, rpc
-from  tvm.contrib  import  utils, ndk
-from  tvm.contrib  import  graph_executor
+import os
+import numpy as np
+import mxnet.gluon as gluon
+import tvm
+from tvm import relay, rpc
+from tvm.contrib import utils, ndk
+from tvm.contrib import graph_executor
 
 name = "vgg16"
 model = gluon.model_zoo.vision.get_model(name, pretrained=True)
@@ -149,7 +140,7 @@ def  conv2d_mixed_precision_rule(call_node: "relay.Call", mixed_precision_type: 
 	]
  
 ######################################################################
-# and also the conversion function itself
+# and also define the conversion function itself
 def  convert_to_dtype(mod, dtype):
 	# downcast to float16
 	if  dtype == "float16"  or  dtype == "float16_acc32":
@@ -169,11 +160,16 @@ def  convert_to_dtype(mod, dtype):
 
 ######################################################################
 # Let's choose "float16_acc32" for example. 
-# You can also use "float16" or "float32" as other dtype options.
 dtype="float16_acc32"
 mod = convert_to_dtype(mod["main"], dtype)
 dtype = "float32"  if  dtype == "float32"  else  "float16"
 
+print(mod)
+
+######################################################################
+# As you can see in the IR, the architecture now contains cast operations, which are
+# needed to convert to FP16 precision. 
+# You can also use "float16" or "float32" precisions as other dtype options.
 
 ######################################################################
 # Load a test image
@@ -182,10 +178,17 @@ dtype = "float32"  if  dtype == "float32"  else  "float16"
 
 from  PIL  import  Image
 from  tvm.contrib.download  import  download_testdata
+from matplotlib import pyplot as plt
 
 img_url = "https://github.com/dmlc/mxnet.js/blob/main/data/cat.png?raw=true"
 img_path = download_testdata(img_url, "cat.png", module="data")
 img = Image.open(img_path)
+
+plt.imshow(img)
+plt.show()
+
+# Image preprocessing:
+
 img = img.resize(shape_dict[input_name][2:])
 img = np.array(img) - np.array([123.0, 117.0, 104.0])
 img /= np.array([58.395, 57.12, 57.375])
@@ -209,8 +212,8 @@ with  tvm.transform.PassContext(opt_level=3):
 ######################################################################
 # Deploy the Model Remotely by RPC
 # --------------------------------
-# Using RPC you can deploy the model remotely from host
-# machine to the remote Adreno device.
+# Using RPC you can deploy the model from host
+# machine to the remote Adreno device
 
 rpc_tracker_host = os.environ.get("TVM_TRACKER_HOST")
 rpc_tracker_port = int(os.environ.get("TVM_TRACKER_PORT"))
@@ -218,7 +221,7 @@ key="android"
 
 tracker = rpc.connect_tracker(rpc_tracker_host, rpc_tracker_port)
 remote = tracker.request(
-	key, priority=0, session_timeout=600000)
+	key, priority=0, session_timeout=6000)
 
 temp = utils.tempdir()
 dso_binary = "dev_lib_cl.so"
@@ -231,8 +234,9 @@ ctx = remote.cl(0)
 m = graph_executor.GraphModule(rlib["default"](ctx))
 
 ######################################################################
-# Run inference on Adreno
+# Run inference
 # -----------------------
+# We now can set inputs, infer our model and get predictions as output
 m.set_input(input_name, tvm.nd.array(img.astype("float32")))
 m.run()
 tvm_output = m.get_output(0)
@@ -274,25 +278,3 @@ assert  ImageNetClassifier, "Failed ImageNet classifier validation check"
 
 print("Evaluate inference time cost...")
 print(m.benchmark(ctx, number=1, repeat=10))
-
-######################################################################
-# Sample Output
-# -------------
-# The following is the result of 'cpu', 'opencl' and 'vulkan' using Adreno 530 on Snapdragon 820
-#
-# .. code-block:: bash
-#
-#    Top-1 id: 282, class name: tiger cat
-#
-#    Top5 predictions: 
-#
-#         #1: tiger cat
-#         #2: Egyptian cat
-#         #3: tabby, tabby cat
-#         #4: lynx, catamount
-#         #5: red fox, Vulpes vulpes
-#          [282 285 281 287 277]
-#    Evaluate inference time cost...
-#    Execution time summary:
-#     mean (ms)   median (ms)    max (ms)     min (ms)     std (ms)  
-#      76.6101      76.6053      77.6530      75.5720       0.6789

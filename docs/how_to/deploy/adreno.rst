@@ -1,4 +1,4 @@
-Compile and deploy models on Adreno GPU
+Deploy to Adreno GPU
 =======================================
 
 **Authors**: Daniil Barinov, Egor Churaev, Andrey Malyshev
@@ -6,17 +6,17 @@ Compile and deploy models on Adreno GPU
 Introduction
 ------------
 
-Adreno is a series of graphicfdgs processing unit (GPU) semiconductor
+Adreno is a series of graphics processing unit (GPU) semiconductor
 intellectual property cores developed by Qualcomm and used in many of
 their SoCs.
 
 The Adreno GPU accelerates the rendering of complex geometries to
 deliver high-performance graphics and a rich user experience with low
-power consumption
+power consumption.
 
-This guide will demonstrate the benefits of using textures with Adreno,
-how to build TVM with OpenCL (needed by Adreno devices) and TVM RPC
-enabled. It will also provide example code to compile and deploy models
+This guide will demonstrate :ref:`the benefits of using textures with Adreno<Advantages of the Textures>`,
+:ref:`how to build TVM with OpenCL-SDK <Building TVM for Adreno>` (needed by Adreno devices) and TVM RPC
+enabled. It will also provide :ref:`example code <Build and deploy model for Adreno>` to better understand the differences with compiling and deploying models
 on Adreno devices.
 
 Advantages of the Textures
@@ -26,8 +26,9 @@ One of the advantages of Adreno is its clever handling of textures. At
 the moment, TVM is able to benefit from this by having texture support
 for Adreno. The graph below shows the Adreno A5x architecture.
 
-|High-level overview of the Adreno A5x architecture for OpenCL| Fig. 1
-High-level overview of the Adreno A5x architecture for OpenCL
+|High-level overview of the Adreno A5x architecture for OpenCL|
+
+*Fig. 1 High-level overview of the Adreno A5x architecture for OpenCL*
 
 Reasons of using textures:
 
@@ -40,45 +41,42 @@ Reasons of using textures:
 -  Supports numerous image format and data type combinations with
    support for automatic format conversions
 
-Multiple texturing or multitexturing is the use of more than one texture
-at a time on a polygon. Adreno GPUs support up to 32 total textures in a
+In addition, Adreno GPUs support up to 32 total textures in a
 single render pass, i.e., up to 16 textures in the fragment shader and
 up to 16 textures at a time for the vertex shader.
+This simultaneous use of more than one texture on a polygon is called *Multiple texturing* or *multitexturing*.
 
 Effective use of multiple textures significantly reduces overdraw, saves
 ALU cost for fragment shaders, and avoids unnecessary vertex transforms.
 
-With textures, it is possible to achieve a significant performance boost
+Overall, with textures, it is possible to achieve a significant performance boost
 compared to OpenCL buffer based solutions.
 
 Building TVM for Adreno
 -----------------------
 
 This section gives instructions on how to build the Android part of TVM
-via OpenCL-SDK and TVM RPC Server in order to deploy models on Adreno.
+with OpenCL-SDK and TVM RPC Server in order to deploy models on Adreno.
 
 Since the process of building TVM for Adreno is exactly the same as the
 process of building TVM for Android, please refer to these instructions:
 `TVM RPC
-Server <https://github.com/apache/tvm/tree/main/apps/cpp_rpc>`__
+Server <https://github.com/apache/tvm/tree/main/apps/cpp_rpc>`_.
+
 Alternatively, to build a TVM via docker using OpenCL-Headers and set-up
-with Android TVM RPC, refer to this guide: `Deploy the Pretrained Model
-on
-Android <https://tvm.apache.org/docs/how_to/deploy_models/deploy_model_on_android.html>`__
+with Android TVM RPC, refer to this guide: `Deploy the Pretrained Model on Android <https://tvm.apache.org/docs/how_to/deploy_models/deploy_model_on_android.html>`_.
 
-**Prerequisites**: Android NDK, Android Debug Bridge (adb), OpenCL
+**Prerequisites**: Android NDK, Android Debug Bridge (adb), OpenCL-SDK
 
-For us to begin with, Android NDK, Android Debug Bridge and OpenCL must
+For us to begin with, Android NDK, Android Debug Bridge and OpenCL-SDK must
 be installed and Android part of TVM must be builded.
 
-**Android NDK installation**: https://developer.android.com/ndk
+Read documentation about *Android NDK installation* here: https://developer.android.com/ndk \
+To get access to adb tools you can see *Android Debug Bridge installation* here:
+https://developer.android.com/studio/command-line/adb \  
+For *OpenCL-SDK installation* please refer to official github repository: https://github.com/KhronosGroup/OpenCL-SDK.git
 
-**Android Debug Bridge installation**:
-https://developer.android.com/studio/command-line/adb
-
-**OpenCL installation**: https://github.com/KhronosGroup/OpenCL-SDK.git
-
-You can also build the android part of TVM via console. From the root
+You can also build the android part of TVM locally. From the root
 folder of TVM:
 
 ::
@@ -95,17 +93,22 @@ At this stage you have builded TVM for Adreno.
 Build and deploy model for Adreno
 ---------------------------------
 
-As the deployment pipelines on Android and on Adreno do not have many
-differences, in this section we will focus on one and only necessary
-aspect to compile and deploy models for Adreno and will take a look at
-the generation of kernels with and without textures. In addition, the
+In this section we will focus on target, needed to compile and deploy models for Adreno, demonstrate
+the generation of kernels with and without textures and, in addition, the
 possibility of choosing a different precision for model compilation will
-be considered.
+be considered. 
+For the complete step-py-step process of compiling and deploying models on
+Adreno, including selection of precision, running the inference of the
+model, getting the predictions, and measuring the performance please refer to this tutorial: `How To Deploy model on Adreno <https://tvm.apache.org/docs/how_to/deploy_models/deploy_model_on_adreno.html>`_
 
 | |Android deployment pipeline|
-| Fig.2 Deployment pipeline on Adreno devices ### Adreno target
-  Normally, when compiling models on Android using OpenCL, the
-  corresponding target is used
+| *Fig.2 Deployment pipeline on Adreno devices*
+
+Adreno target
+~~~~~~~~~~~~~
+
+Normally, when compiling models on Android using OpenCL, the
+corresponding target is used
 
 .. code:: python
 
@@ -118,7 +121,7 @@ use the following target to generate texture leveraging kernels
 
    target="opencl -device=adreno"
 
-Let’s write simple model and take a look at generated kernels for these
+Let's write simple model with one convolutional (conv2d) layer and take a look at generated kernels for these
 two targets
 
 .. code:: python
@@ -138,41 +141,39 @@ two targets
 
    mod = relay.Function([input, weight], D)
    params = {
-   "weight": tvm.nd.array(filter)
+      "weight": tvm.nd.array(filter)
    }
 
-Classical opencl target:
+Now compile our model with the classic OpenCL target and print its modules:
 
 .. code:: python
 
    target="opencl"
 
    with tvm.transform.PassContext(opt_level=3):
-   graph, lib, params = relay.build_module.build(mod, target, params=params)
+      graph, lib, params = relay.build_module.build(mod, target, params=params)
    print(lib.imported_modules[0].get_source())
 
-Notice the generated convolution kernel and the presence of pointers in
-the initialization of the function:
+Notice that the generated convolution kernel has pointers in
+the initialization of the function. The kernels generated with the above target are buffer-based.
 
 .. code:: c
 
    __kernel void tvmgen_default_fused_nn_conv2d_kernel0(__global float* restrict p0, __global double* restrict p1, __global float* restrict conv2d_nhwc) {
    // body..
 
-The kernels generated with the above target are buffer-based.
 
-Let’s take a look at “opencl -device=adreno” target:
+Now take a look at “opencl -device=adreno” target:
 
 .. code:: python
 
    target="opencl -device=adreno"
 
    with tvm.transform.PassContext(opt_level=3):
-   graph, lib, params = relay.build_module.build(mod, target, params=params)
+      graph, lib, params = relay.build_module.build(mod, target, params=params)
    print(lib.imported_modules[0].get_source())
 
-We can now observe the use of textures in the initialization of the
-function:
+The kernels generated this way is actually working with 2d arrays, leveraging textures
 
 .. code:: c
 
@@ -183,7 +184,12 @@ Precisions
 ~~~~~~~~~~
 
 We can also set different precision, choosing from *float16*,
-*float16_acc32* (Mixed Precision), *float32*. First of all, we need to
+*float16_acc32* (Mixed Precision), *float32*. Choosing lower precision may positively
+affect the performance of the model, but it may also have a decrease in the accuracy of the model.
+In some tasks we may sacrifice accuracy in favor of speed, and in some tasks we may prefer mixed precision,
+obtaining some kind of balance.
+
+First of all, to be able to convert precisions in general, we need to
 register conversion to mixed precision
 
 .. code:: python
@@ -215,7 +221,8 @@ register conversion to mixed precision
            mixed_precision_type,
        ]
 
-We then need to obtain **mod**, after which we can convert it to
+We then need to create a Relay graph from desired model in any convinient way
+and obtain **mod** (which is IR representation of the model), after which we can convert it to
 required **dtype** and then assemble our model sequentialy
 
 .. code:: python
@@ -230,7 +237,7 @@ required **dtype** and then assemble our model sequentialy
            seq = tvm.transform.Sequential(
                [
                    relay.transform.InferType(),
-                   relay.transform.ToMixedPrecision() # primary method
+                   relay.transform.ToMixedPrecision()
                ]
            )
            with  tvm.transform.PassContext(opt_level=3):
@@ -241,6 +248,10 @@ required **dtype** and then assemble our model sequentialy
    mod = convert_to_dtype(mod["main"], dtype)
    dtype = "float32"  if  dtype == "float32"  else  "float16"
 
+The "ToMixedPrecision" method is a pass to convert an FP32 relay graph into an FP16 version (with
+FP16 or FP32 accumulation dtypes). Doing this transformation is useful for reducing model size
+as it halves the expected size of the weights (FP16_acc16 case).
+
 From this point we can compile our model as normal
 
 .. code:: python
@@ -250,10 +261,5 @@ From this point we can compile our model as normal
            mod, target_host=target_host, target=target, params=params
        )
 
-The complete step-py-step process of compiling and deploying models on
-Adreno, including selection of precision, running the inference of the
-model, getting the predictions, and measuring the performance can be
-found in this tutorial: `How To <>`__
-
-.. |High-level overview of the Adreno A5x architecture for OpenCL| image:: https://i.ibb.co/yXm6CkG/2022-10-21-14-39-08.png
-.. |Android deployment pipeline| image:: https://i.ibb.co/xMQrgLn/Untitled-Frame-2.jpg
+.. |High-level overview of the Adreno A5x architecture for OpenCL| image:: images/adreno_architecture.png
+.. |Android deployment pipeline| image:: images/android_deployment_pipeline.jpg
