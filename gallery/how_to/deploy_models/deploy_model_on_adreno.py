@@ -22,6 +22,7 @@ After the build section there should be two files in *build* directory «libtvm_
 Let's push them to the device and run TVM RPC Server.
 """
 
+
 #################################################################
 # TVM RPC Server    
 # -----------------

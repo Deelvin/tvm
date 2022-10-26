@@ -96,7 +96,8 @@ Build and deploy model for Adreno
 In this section we will focus on target, needed to compile and deploy models for Adreno, demonstrate
 the generation of kernels with and without textures and, in addition, the
 possibility of choosing a different precision for model compilation will
-be considered. 
+be considered.
+
 For the complete step-py-step process of compiling and deploying models on
 Adreno, including selection of precision, running the inference of the
 model, getting the predictions, and measuring the performance please refer to this tutorial: `How To Deploy model on Adreno <https://tvm.apache.org/docs/how_to/deploy_models/deploy_model_on_adreno.html>`_
@@ -261,5 +262,5 @@ From this point we can compile our model as normal
            mod, target_host=target_host, target=target, params=params
        )
 
-.. |High-level overview of the Adreno A5x architecture for OpenCL| image:: images/adreno_architecture.png
-.. |Android deployment pipeline| image:: images/android_deployment_pipeline.jpg
+.. |High-level overview of the Adreno A5x architecture for OpenCL| image:: images/architecture.png
+.. |Android deployment pipeline| image:: images/deployment_pipeline.jpg
