@@ -184,7 +184,7 @@ class VerifyGPUCodeNode : public PostprocNode { // ICE
             f = WithAttr(std::move(f), "tir.noalias", Bool(true));
           }
           IRModule mod = IRModule(Map<GlobalVar, BaseFunc>({{GlobalVar(g_var->name_hint), f}}));
-          lowered = tvm::transform::Sequential(pass_list)(std::move(mod));
+          lowered = tvm::transform::Sequential(pass_list)(std::move(mod)); // ICE CHECK 
         } catch (const dmlc::Error& e) {
           return false;
         }

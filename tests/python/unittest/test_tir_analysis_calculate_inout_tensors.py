@@ -64,185 +64,237 @@ from tvm import autotvm
 
 from tvm import te
 
-@autotvm.template("test_sram")
-def test_sram(data_shape, weight_shape, output_shape, dtype):
-    data = te.placeholder(data_shape, name="data", dtype=dtype)
-    weight = te.placeholder(weight_shape, name="weight", dtype=dtype)
+# @autotvm.template("test_sram")
+# def test_sram(data_shape, weight_shape, output_shape, dtype):
+#     data = te.placeholder(data_shape, name="data", dtype=dtype)
+#     weight = te.placeholder(weight_shape, name="weight", dtype=dtype)
 
-    res = te.compute(output_shape, lambda i: data[i] * weight[i], name="res")
-    cfg = autotvm.get_config()
-    (d,) = res.op.axis
-    cfg.define_split("tile_d", d, num_outputs=4)
+#     res = te.compute(output_shape, lambda i: data[i] * weight[i], name="res")
+#     cfg = autotvm.get_config()
+#     (d,) = res.op.axis
+#     cfg.define_split("tile_d", d, num_outputs=4)
 
-    s = te.create_schedule(res.op)
-    return s, [data, weight, res]
+#     s = te.create_schedule(res.op)
+#     return s, [data, weight, res]
 
 
-def test_sram_autotvm():
-    target = tvm.target.Target("llvm", host="llvm")
-    data_shape = (1024,)
-    weight_shape = (1024,)
-    output_shape = (1024,)
-    dtype = "float32"
+# def test_sram_autotvm():
+#     target = tvm.target.Target("llvm", host="llvm")
+#     data_shape = (1024,)
+#     weight_shape = (1024,)
+#     output_shape = (1024,)
+#     dtype = "float32"
 
-    with target:
-        s, (data, weight, res) = test_sram(data_shape, weight_shape, output_shape, dtype)
-        mod_lowered = tvm.lower(s, [data, weight, res], simple_mode=True)
-        print("LOWER", mod_lowered)
-        mod = tvm.build(s, [data, weight, res], target=target)
+#     with target:
+#         s, (data, weight, res) = test_sram(data_shape, weight_shape, output_shape, dtype)
+#         mod_lowered = tvm.lower(s, [data, weight, res], simple_mode=True)
+#         print("LOWER", mod_lowered)
+#         mod = tvm.build(s, [data, weight, res], target=target)
 
-    task = autotvm.task.create("test_sram", args=(data_shape, weight_shape, output_shape, dtype), target=target)
-    print("CONFIG",task.config_space)
-    tasks = [task]
+#     task = autotvm.task.create("test_sram", args=(data_shape, weight_shape, output_shape, dtype), target=target)
+#     print("CONFIG",task.config_space)
+#     tasks = [task]
 
-    model_name = "test_sram"
-    log_file = "%s.log" % model_name
-    tuning_option = {"log_filename": log_file,"tuner": "xgb","early_stopping": None,"measure_option": autotvm.measure_option(builder=autotvm.LocalBuilder(),runner=autotvm.LocalRunner(number=1, repeat=10, min_repeat_ms=0, enable_cpu_cache_flush=True),),}
-    from tvm.autotvm.tuner import XGBTuner, GATuner, RandomTuner, GridSearchTuner
-    def run_tuning(tasks, measure_option, tuner="gridsearch", early_stopping=None, log_filename="tuning.log"):
-        for i, task in enumerate(tasks):
-            prefix = "[Task %2d/%2d] " % (i + 1, len(tasks))
-            # create tuner
-            if tuner == "xgb" or tuner == "xgb-rank":
-                tuner_obj = XGBTuner(task, loss_type="rank")
-            elif tuner == "ga":
-                tuner_obj = GATuner(task, pop_size=50)
-            elif tuner == "random":
-                tuner_obj = RandomTuner(task)
-            elif tuner == "gridsearch":
-                tuner_obj = GridSearchTuner(task)
-            else:
-                raise ValueError("Invalid tuner: " + tuner)
-            # do tuning
-            n_trial = len(task.config_space)
-            tuner_obj.tune(n_trial=n_trial,early_stopping=early_stopping,measure_option=measure_option,callbacks=[autotvm.callback.progress_bar(n_trial, prefix=prefix),autotvm.callback.log_to_file(log_filename),],)
+#     model_name = "test_sram"
+#     log_file = "%s.log" % model_name
+#     tuning_option = {"log_filename": log_file,"tuner": "xgb","early_stopping": None,"measure_option": autotvm.measure_option(builder=autotvm.LocalBuilder(),runner=autotvm.LocalRunner(number=1, repeat=10, min_repeat_ms=0, enable_cpu_cache_flush=True),),}
+#     from tvm.autotvm.tuner import XGBTuner, GATuner, RandomTuner, GridSearchTuner
+#     def run_tuning(tasks, measure_option, tuner="gridsearch", early_stopping=None, log_filename="tuning.log"):
+#         for i, task in enumerate(tasks):
+#             prefix = "[Task %2d/%2d] " % (i + 1, len(tasks))
+#             # create tuner
+#             if tuner == "xgb" or tuner == "xgb-rank":
+#                 tuner_obj = XGBTuner(task, loss_type="rank")
+#             elif tuner == "ga":
+#                 tuner_obj = GATuner(task, pop_size=50)
+#             elif tuner == "random":
+#                 tuner_obj = RandomTuner(task)
+#             elif tuner == "gridsearch":
+#                 tuner_obj = GridSearchTuner(task)
+#             else:
+#                 raise ValueError("Invalid tuner: " + tuner)
+#             # do tuning
+#             n_trial = len(task.config_space)
+#             tuner_obj.tune(n_trial=n_trial,early_stopping=early_stopping,measure_option=measure_option,callbacks=[autotvm.callback.progress_bar(n_trial, prefix=prefix),autotvm.callback.log_to_file(log_filename),],)
 
-    # run_tuning(tasks, **tuning_option)
+#     # run_tuning(tasks, **tuning_option)
     
-    calc_size = tvm.tir.analysis.calculate_inout_tensors_bytes(mod_lowered["main"])
-    import numpy as np
-    ref_size = sum(list(map(np.prod, [data_shape, weight_shape, output_shape]))) * 4
-    print("cacl: ", calc_size, "ref: ", ref_size)
-    assert calc_size == ref_size
+#     calc_size = tvm.tir.analysis.calculate_inout_tensors_bytes(mod_lowered["main"])
+#     import numpy as np
+#     ref_size = sum(list(map(np.prod, [data_shape, weight_shape, output_shape]))) * 4
+#     print("cacl: ", calc_size, "ref: ", ref_size)
+#     assert calc_size == ref_size
 
-    # VerifySRAMLimit
+#     # VerifySRAMLimit
 
-    # print("ref", data_shape[0] * weight_shape[0] * output_shape[0] * 32)
+#     # print("ref", data_shape[0] * weight_shape[0] * output_shape[0] * 32)
 
-        # def gpu_verify_pass(**kwargs):
-    #     """Verify the validity of a gpu kernel.
-    #     This pass will check memory usage and number of threads per block.
-    #     """
+#         # def gpu_verify_pass(**kwargs):
+#     #     """Verify the validity of a gpu kernel.
+#     #     This pass will check memory usage and number of threads per block.
+#     #     """
 
-    #     def verify_pass(f, *_):
-    #         count = tvm.tir.analysis.calculate_inout_tensors_bytes(f, kwargs)
-    #         # target
+#     #     def verify_pass(f, *_):
+#     #         count = tvm.tir.analysis.calculate_inout_tensors_bytes(f, kwargs)
+#             # target
 
-    #         if count < 10000:
-    #             raise InstantiationError("Skipped because of invalid gpu kernel")
-    #         return f
+#     #         if count < 10000:
+#     #             raise InstantiationError("Skipped because of invalid gpu kernel")
+#     #         return f
 
-    #     return tvm.tir.transform.prim_func_pass(verify_pass, opt_level=0)
-
-
+#     #     return tvm.tir.transform.prim_func_pass(verify_pass, opt_level=0)
 
 
-    # def get_verify_pass(valid, **kwargs):
-    #     def _fverify(f, *_):
-    #         # valid[0] = tvm.tir.analysis.calculate_inout_tensors_bytes(f, kwargs)
-    #         valid[0] = tvm.tir.analysis.calculate_inout_tensors_bytes(f)
-    #         if valid[0] == 12288:
-    #         # if valid[0] != 12288
-    #             from tvm.autotvm.task.space import InstantiationError
-    #             raise InstantiationError("Skipped because of invalid sram size")
+
+
+#     # def get_verify_pass(valid, **kwargs):
+#     #     def _fverify(f, *_):
+#     #         # valid[0] = tvm.tir.analysis.calculate_inout_tensors_bytes(f, kwargs)
+#     #         valid[0] = tvm.tir.analysis.calculate_inout_tensors_bytes(f)
+#     #         if valid[0] == 12288:
+#     #         # if valid[0] != 12288
+#     #             from tvm.autotvm.task.space import InstantiationError
+#     #             raise InstantiationError("Skipped because of invalid sram size")
             
-    #         return f
+#     #         return f
 
-    #     return tvm.tir.transform.prim_func_pass(_fverify, opt_level=0)
-
-
-    # valid = [None]
-    # with tvm.transform.PassContext(
-    #     config={
-    #         "tir.add_lower_pass": [
-    #             (
-    #                 2,
-    #                 get_verify_pass(
-    #                     valid
-    #                 ),
-    #             )
-    #         ]
-    #     }
-    # ):
-    #     m = tvm.build(s, [data, weight, res], target)
-    #     print(m)
-    # print("valid", valid)
-
-def test_sram_autoscheduler():
-    from tvm import te
-        # @tvm.auto_scheduler.register_workload
-    # def test_sram():
-    #     data = te.placeholder(data_shape, name="data", dtype=dtype)
-    #     weight = te.placeholder(weight_shape, name="weight", dtype=dtype)
-    #     res = te.compute(output_shape, lambda i: data[i] * weight[i], name="res")
-    #     return[data, weight, res]
-    # target = tvm.target.Target("llvm")
-    # task = tvm.auto_scheduler.SearchTask(func=test_sram, args=(), target=target)
+#     #     return tvm.tir.transform.prim_func_pass(_fverify, opt_level=0)
 
 
+#     # valid = [None]
+#     # with tvm.transform.PassContext(
+#     #     config={
+#     #         "tir.add_lower_pass": [
+#     #             (
+#     #                 2,
+#     #                 get_verify_pass(
+#     #                     valid
+#     #                 ),
+#     #             )
+#     #         ]
+#     #     }
+#     # ):
+#     #   m = tvm.build(s, [data, weight, res], target)
+#     #     print(m)
+#     # print("valid", valid)
 
-    @tvm.auto_scheduler.register_workload  # Note the auto_scheduler decorator
-    def matmul_add(N, L, M, dtype):
-        A = te.placeholder((N, L), name="A", dtype=dtype)
-        B = te.placeholder((L, M), name="B", dtype=dtype)
-        C = te.placeholder((N, M), name="C", dtype=dtype)
+# def test_sram_autoscheduler():
+#     from tvm import te
+#         # @tvm.auto_scheduler.register_workload
+#     # def test_sram():
+#     #     data = te.placeholder(data_shape, name="data", dtype=dtype)
+#     #     weight = te.placeholder(weight_shape, name="weight", dtype=dtype)
+#     #     res = te.compute(output_shape, lambda i: data[i] * weight[i], name="res")
+#     #     return[data, weight, res]
+#     target = tvm.target.Target("llvm")
+#     task = tvm.auto_scheduler.SearchTask(func=test_sram, args=(), target=target)
 
-        k = te.reduce_axis((0, L), name="k")
-        matmul = te.compute(
-            (N, M),
-            lambda i, j: te.sum(A[i, k] * B[k, j], axis=k),
-            name="matmul",
-            attrs={"layout_free_placeholders": [B]},  # enable automatic layout transform for tensor B
-        )
-        out = te.compute((N, M), lambda i, j: matmul[i, j] + C[i, j], name="out")
 
-        return [A, B, C, out]
-    target = tvm.target.Target("llvm")
-    # N = L = M = 4
-    N = L = M = 1024 # hangs with limit eq 1024*10
-    task = tvm.auto_scheduler.SearchTask(func=matmul_add, args=(N, L, M, "float32"), target=target)
+
+#     @tvm.auto_scheduler.register_workload  # Note the auto_scheduler decorator
+#     def matmul_add(N, L, M, dtype):
+#         A = te.placeholder((N, L), name="A", dtype=dtype)
+#         B = te.placeholder((L, M), name="B", dtype=dtype)
+#         C = te.placeholder((N, M), name="C", dtype=dtype)
+
+#         k = te.reduce_axis((0, L), name="k")
+#         matmul = te.compute(
+#             (N, M),
+#             lambda i, j: te.sum(A[i, k] * B[k, j], axis=k),
+#             name="matmul",
+#             attrs={"layout_free_placeholders": [B]},  # enable automatic layout transform for tensor B
+#         )
+#         out = te.compute((N, M), lambda i, j: matmul[i, j] + C[i, j], name="out")
+
+#         return [A, B, C, out]
+#     target = tvm.target.Target("llvm")
+#     # N = L = M = 4
+#     N = L = M = 1024 # hangs with limit eq 1024*10
+#     task = tvm.auto_scheduler.SearchTask(func=matmul_add, args=(N, L, M, "float32"), target=target)
     
-    args_ = matmul_add(N, L, M, "float32")
-    sout = te.create_schedule(args_[3].op)
+#     args_ = matmul_add(N, L, M, "float32")
+#     sout = te.create_schedule(args_[3].op)
 
-    print("PRELowered TIR:")
-    print(tvm.lower(sout, args_, simple_mode=True))
+#     print("PRELowered TIR:")
+#     print(tvm.lower(sout, args_, simple_mode=True))
 
 
-    print("Computational DAG:")
-    print(task.compute_dag)
-    log_file = "matmul.json"
-    tune_option = tvm.auto_scheduler.TuningOptions(
-        num_measure_trials=151,
-        # builder=tvm.auto_scheduler.LocalBuilder("default", n_parallel=1),
-        # runner=tvm.auto_scheduler.LocalRunner(timeout=10), n_parallel=1
-        builder=tvm.auto_scheduler.LocalBuilder(n_parallel=1),
-        # runner=tvm.auto_scheduler.LocalRunner(n_parallel=1),
-        measure_callbacks=[tvm.auto_scheduler.RecordToFile(log_file)],
-        verbose=2,
-    )
-    task.tune(tune_option)
-    sch, args = task.apply_best(log_file)
-    print("Lowered TIR:")
-    print(tvm.lower(sch, args, simple_mode=True))
+#     print("Computational DAG:")
+#     print(task.compute_dag)
+#     log_file = "matmul.json"
+#     tune_option = tvm.auto_scheduler.TuningOptions(
+#         num_measure_trials=151,
+#         # builder=tvm.auto_scheduler.LocalBuilder("default", n_parallel=1),
+#         # runner=tvm.auto_scheduler.LocalRunner(timeout=10), n_parallel=1
+#         builder=tvm.auto_scheduler.LocalBuilder(n_parallel=1),
+#         # runner=tvm.auto_scheduler.LocalRunner(n_parallel=1),
+#         measure_callbacks=[tvm.auto_scheduler.RecordToFile(log_file)],
+#         verbose=2,
+#     )
+#     task.tune(tune_option)
+#     sch, args = task.apply_best(log_file)
+#     print("Lowered TIR:")
+#     print(tvm.lower(sch, args, simple_mode=True))
 
 # @tvm.testing.requires_hexagon
 # def test_hexa(hexagon_session: Session)):
 from tvm import topi
 import numpy as np
 import tvm.contrib.hexagon
-def test_hexa():
+
+import tvm.testing
+from tvm import relay, te
+from tvm.contrib.hexagon.session import Session
+from tvm.relay.backend import Executor, Runtime
+
+
+@tvm.testing.requires_hexagon
+def test_hexa(hexagon_session: Session):
     print("test_hexa")
+
+    import tvm.relay as relay
+    import tvm
+
+    # model_path = download_testdata(model_url, "resnet50-v2-7.onnx", module="onnx")
+    import onnx
+    model_path = "/git/srgan_obfuscated.onnx"
+    onnx_model = onnx.load(model_path)
+    input_name = "input"
+    shape_dict = {input_name: (1, 128,128, 3)}
+    mod, params = relay.frontend.from_onnx(onnx_model, shape_dict)
+    from tvm import relay, auto_scheduler
+    # target_hexagon = tvm.target.hexagon("v68")
+    # target = tvm.target.Target(target_hexagon, host=target_hexagon)
+    mod = hexagon_session.load_module(mod)
+    mod = tir.transform.VerifyVTCMLimit(1024)(mod)
+    # x = te.placeholder(shape=(1, 128,128, 3), dtype="float32", name="x")
+    # print(tvm.lower(schedule, [x]))
+    # target_hexagon = tvm.target.hexagon("v68", link_params=True)
+    # func = tvm.build(
+    #     schedule,
+    #     [x_tensor, y_tensor, z_tensor],
+    #     tvm.target.Target(target_hexagon, host=target_hexagon),
+    #     name="dmacpy",
+    # )
+
+    # print("func", type(func), func)
+    # print("mod", type(mod), mod)
+    # mod_lowered = tvm.lower(schedule, [x_tensor, y_tensor, z_tensor])
+
+
+    # target = tvm.target.Target("llvm")
+    # print("extract_tasks")
+    # # tasks, task_weights = tvm.auto_scheduler.extract_tasks(mod["main"], params, target)
+    # print("end extract_tasks")
+    # # print(list(mod.functions.values())[0])
+    # print("tasks", len(tasks))
+    # print(dir(tasks[0]))
+    # for id, task in enumerate(tasks):
+    #     print(id, type(task.compute_dag), '\n', task.compute_dag)
+    #     print()
+    # print(mod["main"])
+
+
     dtype = "uint8"
     in_shape = (1, 56, 56, 32)
 
@@ -252,8 +304,8 @@ def test_hexa():
 
     C = topi.nn.pad(A, [0, 1, 1, 0], [0, 1, 1, 0], pad_value=0)
 
-    target_hexagon = "llvm"
-    # target_hexagon = tvm.target.hexagon("v68")
+    # target_hexagon = "llvm"
+    target_hexagon = tvm.target.hexagon("v68")
     with tvm.target.Target(target_hexagon):
         fschedule = topi.hexagon.schedule_pad
         s = fschedule(C)
@@ -268,65 +320,96 @@ def test_hexa():
     print(func["pad"].handle)
 
 
-def test_texture_scope():
-    @tvm.script.ir_module
-    class PlusOneMultTwo:
-        @T.prim_func
-        def main(a: T.handle, b: T.handle) -> None:
-            T.func_attr({"global_symbol": "main", "tir.noalias": True})
-            # A = T.match_buffer(a, (128, 128))
-            # B = T.match_buffer(b, (128, 128))
-            # for i, j in T.grid(128, 128):
-            #     with T.block("B"):
-            #         vi, vj = T.axis.remap("SS", [i, j])
-            #         B[vi, vj] = A[vi, vj] * 2.0
+# def test_texture_scope():
+#     @tvm.script.ir_module
+#     class PlusOneMultTwo:
+#         @T.prim_func
+#         def main(a: T.handle, b: T.handle) -> None:
+#             T.func_attr({"global_symbol": "main", "tir.noalias": True})
+#             # A = T.match_buffer(a, (128, 128))
+#             # B = T.match_buffer(b, (128, 128))
+#             # for i, j in T.grid(128, 128):
+#             #     with T.block("B"):
+#             #         vi, vj = T.axis.remap("SS", [i, j])
+#             #         B[vi, vj] = A[vi, vj] * 2.0
 
-            A = T.match_buffer(a, (128, 128, 4), dtype="float32", scope="global.texture")
-            B = T.alloc_buffer((128, 128, 4), dtype="float32", scope="global.texture")
-            C = T.match_buffer(b, (128, 128, 4), dtype="float32", scope="global")
-            D = T.alloc_buffer((128, 128, 4), dtype="float32", scope="global")
-            for block_idx in T.thread_binding(0, 128, thread="blockIdx.x"):
-                for thread_idx in T.thread_binding(0, 128, thread="threadIdx.x"):
-                    for k in T.serial(4):
-                        with T.block("B"):
-                            vb, vt, vk = T.axis.remap("SSS", [block_idx, thread_idx, k])
-                            B[vb, vt, vk] = A[vb, vt, vk] + T.float32(1)
-            for block_idx in T.thread_binding(0, 128, thread="blockIdx.x"):
-                for thread_idx in T.thread_binding(0, 128, thread="threadIdx.x"):
-                    for k in T.serial(4):
-                        with T.block("C"):
-                            vb, vt, vk = T.axis.remap("SSS", [block_idx, thread_idx, k])
-                            C[vb, vt, vk] = B[vb, vt, vk] * T.float32(2)
-            for block_idx in T.thread_binding(0, 128, thread="blockIdx.x"):
-                for thread_idx in T.thread_binding(0, 128, thread="threadIdx.x"):
-                    for k in T.serial(4):
-                        with T.block("D"):
-                            vb, vt, vk = T.axis.remap("SSS", [block_idx, thread_idx, k])
-                            D[vb, vt, vk] = C[vb, vt, vk] * T.float32(2)
+#             A = T.match_buffer(a, (128, 128, 4), dtype="float32", scope="global.texture")
+#             B = T.alloc_buffer((128, 128, 4), dtype="float32", scope="global.texture")
+#             C = T.match_buffer(b, (128, 128, 4), dtype="float32", scope="global")
+#             D = T.alloc_buffer((128, 128, 4), dtype="float32", scope="global")
+#             for block_idx in T.thread_binding(0, 128, thread="blockIdx.x"):
+#                 for thread_idx in T.thread_binding(0, 128, thread="threadIdx.x"):
+#                     for k in T.serial(4):
+#                         with T.block("B"):
+#                             vb, vt, vk = T.axis.remap("SSS", [block_idx, thread_idx, k])
+#                             B[vb, vt, vk] = A[vb, vt, vk] + T.float32(1)
+#             for block_idx in T.thread_binding(0, 128, thread="blockIdx.x"):
+#                 for thread_idx in T.thread_binding(0, 128, thread="threadIdx.x"):
+#                     for k in T.serial(4):
+#                         with T.block("C"):
+#                             vb, vt, vk = T.axis.remap("SSS", [block_idx, thread_idx, k])
+#                             C[vb, vt, vk] = B[vb, vt, vk] * T.float32(2)
+#             for block_idx in T.thread_binding(0, 128, thread="blockIdx.x"):
+#                 for thread_idx in T.thread_binding(0, 128, thread="threadIdx.x"):
+#                     for k in T.serial(4):
+#                         with T.block("D"):
+#                             vb, vt, vk = T.axis.remap("SSS", [block_idx, thread_idx, k])
+#                             D[vb, vt, vk] = C[vb, vt, vk] * T.float32(2)
 
-    sch = tir.Schedule(PlusOneMultTwo, debug_mask="all")
+#     sch = tir.Schedule(PlusOneMultTwo, debug_mask="all")
 
-    def schedule_block(block):
-        _, _, inner = sch.get_loops(block)
-        sch.vectorize(inner)
+#     def schedule_block(block):
+#         _, _, inner = sch.get_loops(block)
+#         sch.vectorize(inner)
 
-    schedule_block(sch.get_block("B"))
-    schedule_block(sch.get_block("C"))
+#     schedule_block(sch.get_block("B"))
+#     schedule_block(sch.get_block("C"))
 
-    target = tvm.target.Target("opencl")
-    mod = tvm.build(sch.mod["main"], target=target)
-    mod_lowered = tvm.lower(sch.mod["main"], [], simple_mode=True)
-    print("LOWER", mod_lowered)
+#     target = tvm.target.Target("opencl")
+#     mod = tvm.build(sch.mod["main"], target=target)
+#     mod_lowered = tvm.lower(sch.mod["main"], [], simple_mode=True)
+#     print("LOWER", mod_lowered)
 
-    # print(tvm.lower(sout, args_, simple_mode=True))
-    # print(mod.entry_func)
-    # print(dir(mod.entry_func))
-    calc_size = tvm.tir.analysis.calculate_inout_tensors_bytes(mod_lowered["main"])
-    calc_alloc_size = tvm.tir.analysis.calculate_allocated_bytes(mod_lowered["main"])
-    # calc_alloc_size = tvm.tir.calculate_allocated_bytes(mod_lowered["main"])
-    print("calc_size", calc_size)
-    print("calc_size", calc_alloc_size)
-    print("expt_size", ((128 *  128 * 4) * 8)* 3)
+#     # print(tvm.lower(sout, args_, simple_mode=True))
+#     # print(mod.entry_func)
+#     # print(dir(mod.entry_func))
+#     calc_size = tvm.tir.analysis.calculate_inout_tensors_bytes(mod_lowered["main"])
+#     calc_alloc_size = tvm.tir.analysis.calculate_allocated_bytes(mod_lowered["main"])
+#     # calc_alloc_size = tvm.tir.calculate_allocated_bytes(mod_lowered["main"])
+#     print("calc_size", calc_size)
+#     print("calc_size", calc_alloc_size)
+#     print("expt_size", ((128 *  128 * 4) * 8)* 3)
+
+# @tvm.testing.requires_hexagon
+# def test_add(hexagon_session: Session):
+#     """Test simple add"""
+#     dtype = "int8"
+#     placeholder_a = tvm.te.placeholder((2,), dtype=dtype)
+#     placeholder_b = tvm.te.placeholder((1,), dtype=dtype)
+#     compute_c = tvm.te.compute(
+#         placeholder_a.shape, lambda i: placeholder_a[i] + placeholder_b[0], name="C"
+#     )
+#     sched = tvm.te.create_schedule(compute_c.op)
+
+#     target_hexagon = tvm.target.hexagon("v68", link_params=True)
+#     func = tvm.build(
+#         sched,
+#         [placeholder_a, placeholder_b, compute_c],
+#         tvm.target.Target(target_hexagon, host=target_hexagon),
+#         name="add",
+#     )
+
+#     mod = hexagon_session.load_module(func)
+
+#     a_data = tvm.nd.array(np.array([2, 3], dtype=dtype), device=hexagon_session.device)
+#     assert (a_data.numpy() == np.array([2, 3])).all()
+#     b_data = tvm.nd.array(np.array([4], dtype=dtype), device=hexagon_session.device)
+#     assert (b_data.numpy() == np.array([4])).all()
+#     c_data = tvm.nd.array(np.array([0, 0], dtype=dtype), device=hexagon_session.device)
+#     assert (c_data.numpy() == np.array([0, 0])).all()
+#     mod["add"](a_data, b_data, c_data)
+#     assert (c_data.numpy() == np.array([6, 7])).all()
+
 
 if __name__ == "__main__":
 
@@ -345,7 +428,7 @@ if __name__ == "__main__":
     # from tvm import relay, auto_scheduler
     # target = tvm.target.Target("llvm")
     # print("extract_tasks")
-    # tasks, task_weights = auto_scheduler.extract_tasks(mod["main"], params, target)
+    # tasks, task_weights = tvm.auto_scheduler.extract_tasks(mod["main"], params, target)
     # print("end extract_tasks")
     # # print(list(mod.functions.values())[0])
     # print("tasks", len(tasks))
@@ -355,8 +438,9 @@ if __name__ == "__main__":
     #     print()
     # # print(mod["main"])
     # exit()
-    test_texture_scope()
+    # test_texture_scope()
     # test_hexa()
+    tvm.testing.main()
     # test_sram_autotvm()
     # test_sram_autoscheduler()
 
@@ -366,6 +450,8 @@ if __name__ == "__main__":
 
 
    
+
+
 
 
 

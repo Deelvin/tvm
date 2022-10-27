@@ -62,7 +62,6 @@ std::string GetStorageScope(const Var& var) {
 
 template <typename T>
 void AllocationCalculator<T>::VisitStmt_(const T* op) {
-  auto alloc_size = op->ConstantAllocationSize();
   std::string storage_scope = GetStorageScope(op->buffer_var);
 
   auto search = _current_size.find(storage_scope);
@@ -70,11 +69,13 @@ void AllocationCalculator<T>::VisitStmt_(const T* op) {
       _current_size[storage_scope] = 0;
       _max_size[storage_scope] = 0;
   }
+  auto const_size = op->ConstantAllocationSize();
+  auto size = const_size * op->dtype.bytes() * op->dtype.lanes();
 
-  _current_size[storage_scope] += alloc_size;
+  _current_size[storage_scope] += size;
   _max_size[storage_scope] = std::max(_current_size[storage_scope], _max_size[storage_scope]);
   StmtExprVisitor::VisitStmt(op->body);
-  _current_size[storage_scope] -= alloc_size;
+  _current_size[storage_scope] -= size;
 }
 
 
@@ -87,6 +88,7 @@ TVM_REGISTER_GLOBAL("tir.analysis.calculate_allocated_bytes")
       auto sizes = CalculateAllocatedBytes(func);
       tvm::Map<String, Integer> res;
       for(auto [k, v] : sizes) {
+        std::cout << "ICE allocated summarize " << k << " " << v << std::endl;
         res.Set(String(k), Integer(v));
       }
       return res;

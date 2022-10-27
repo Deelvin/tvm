@@ -131,6 +131,7 @@ def lower(
     if isinstance(inp, PrimFunc):
         return ffi.lower_primfunc(inp, name, simple_mode)
     if isinstance(inp, te.Schedule):
+        print("python lower", flush=True)
         return ffi.lower_schedule(inp, args, name, binds, simple_mode)
     raise ValueError(
         f"Expected input to be an IRModule, PrimFunc or te.Schedule, but got {type(inp)}"
@@ -148,6 +149,7 @@ def build(
     name: Optional[str] = "default_function",
     binds: Optional[Mapping[tensor.Tensor, Buffer]] = None,
 ):
+    print("build driver")
     """Build a function with arguments as signature. Code will be generated
     for devices coupled with target information.
 
@@ -224,7 +226,10 @@ def build(
     if isinstance(inputs, te.Schedule):
         if args is None:
             raise ValueError("args must be given for build from schedule")
-        input_mod = lower(inputs, args, name=name, binds=binds)
+        print("build lower")
+        target = Target.current() if target is None else target
+        with target:
+            input_mod = lower(inputs, args, name=name, binds=binds)
     elif isinstance(inputs, (list, tuple, container.Array)):
         merged_mod = tvm.IRModule({})
         for x in inputs:
@@ -298,7 +303,7 @@ def build(
             to_return = create_llvm_crt_metadata_module([rt_mod_host], target_host, runtime)
     else:
         to_return = rt_mod_host
-
+    # print("annotated_mods", annotated_mods)
     return OperatorModule.from_module(to_return, ir_module_by_target=annotated_mods, name=name)
 
 

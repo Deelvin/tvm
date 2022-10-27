@@ -1352,6 +1352,18 @@ void GetPerStoreFeatureName(int max_n_bufs, std::vector<std::string>* ret) {
   // section total : 3
 }
 
+
+/*! \brief Extract attribute from a target. */ 
+Integer Extract__(const Target& target, const char* name) { // ICE TODO REUSE
+  ICHECK(target.defined());
+  if (Optional<Integer> v = target->GetAttr<Integer>(name)) {
+    return v.value();
+  }
+  LOG(FATAL) << "AttributedError: \"" << name << "\" is not defined in the target";
+  throw;
+}
+
+
 void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, int max_n_bufs,
                                    std::vector<float>* feature, std::atomic<int>* error_ct) {
   auto [sch, tensors] = task->compute_dag.ApplySteps(state->transform_steps);
@@ -1398,18 +1410,14 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
       const auto& optimize = tir::transform::Sequential(pass_list);
       optimize(mod);
     }
-    // if (IsHexaTask(task)) 
-    {
-
-      std::cout << "ICE IsHexaTask VerifySRAMLimit " << std::flush << std::endl;
+    if (IsHexaTask(task)) {
+      std::cout << "ICE auto_scheduler IsHexaTask VerifySRAMLimit "<< std::endl << std::flush;
       auto pass_list = Array<tvm::transform::Pass>();
-      // if (task->target.sram.defined()) {
-        // thread_warp_size_ = Extract(target, "thread_warp_size").IntValue();
-        pass_list.push_back(tir::transform::VerifySRAMLimit(1024*10)); // ICE
-      // }
-        const auto& optimize = tir::transform::Sequential(pass_list);
-        optimize(mod);
-      
+      Target target = task->target;
+      const auto vtcm_capacity = Extract__(target, "vtcm_capacity").IntValue();
+      pass_list.push_back(tir::transform::VerifySRAMLimit(vtcm_capacity)); // ICE
+      const auto& optimize = tir::transform::Sequential(pass_list);
+      optimize(mod);
     }
     const auto& optimize =
         tir::transform::Sequential(Array<tvm::transform::Pass>{tir::transform::Simplify()});

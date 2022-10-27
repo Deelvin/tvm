@@ -51,6 +51,7 @@ TVM_REGISTER_PASS_CONFIG_OPTION("tir.is_entry_func", Bool);
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.add_lower_pass", Array<Array<ObjectRef>>);
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.debug_keep_trivial_loop", Bool);
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.use_async_copy", Bool);
+TVM_REGISTER_PASS_CONFIG_OPTION("tir.vtcm_capacity", Integer);
 
 using runtime::PackedFunc;
 using runtime::TVMArgs;
@@ -151,6 +152,8 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   bool enable_equiv_terms_in_cse_tir =
       pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
 
+
+
   // Get any user-added passes
   Array<Array<ObjectRef>> add_lower_pass =
       pass_ctx->GetConfig<Array<Array<ObjectRef>>>("tir.add_lower_pass", Array<Array<ObjectRef>>())
@@ -223,8 +226,27 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   if (!disable_storage_rewrite) {
     pass_list.push_back(tir::transform::StorageRewrite());
   }
+  Target target = Target::Current(/*allow_not_defined=*/true);
+  std::cout << "target.defined() " << std::boolalpha << target.defined() << std::endl << std::flush;
+  if (target.defined()){
+    std::cout << "target->kind->name " << target->kind->name << std::endl << std::flush;
+
+  }
+
+  if (target.defined() &&  target->kind->name == "hexagon") {
+    // VerifyVTCMLimit must occur before LowerVtcmAlloc
+    const auto vtcm_capacity= Downcast<Integer>(target->attrs.at("vtcm-capacity"))->value;
+    std::cout << "vtcm_capacity added cur target" << vtcm_capacity << std::endl << std::flush;
+    pass_list.push_back(tir::transform::VerifyVTCMLimit(vtcm_capacity));
+  }
+  else {
+    const auto vtcm_capacity = pass_ctx->GetConfig<Integer>("tir.vtcm_capacity", Integer(0)).value()->value;
+    std::cout << "vtcm_capacity added config " << vtcm_capacity << std::endl << std::flush;
+    pass_list.push_back(tir::transform::VerifyVTCMLimit(vtcm_capacity));
+  }
   // LowerVtcmAlloc must occur after any transformations that modify memory allocation locations
   pass_list.push_back(tir::transform::LowerVtcmAlloc());
+  std::cout << "LowerVtcmAlloc added" << std::endl << std::flush;
   bool use_async_copy = pass_ctx->GetConfig<Bool>("tir.use_async_copy", Bool(false)).value();
 
   if (use_async_copy) {
@@ -258,6 +280,7 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
 IRModule LowerWithPassList(IRModule mod, Array<tvm::transform::Pass> pass_list) {
   auto optimize = tvm::transform::Sequential(pass_list);
   mod = optimize(std::move(mod));
+  std::cout << "ICE LowerWithPassList" << std::endl << std::flush;
   return mod;
 }
 
@@ -317,6 +340,7 @@ TVM_REGISTER_GLOBAL("driver.schedule_to_module")
     });
 
 IRModule LowerModule(IRModule mod, bool simple_mode) {
+  std::cout << "LowerModule" << std::endl << std::flush;
   Array<transform::Pass> pass_list = CreatePassList(simple_mode);
   return LowerWithPassList(std::move(mod), pass_list);
 }
@@ -337,6 +361,7 @@ IRModule LowerPrimFunc(tir::PrimFunc func, const std::string& name, bool simple_
   IRModule mod = IRModule(Map<GlobalVar, BaseFunc>({{GlobalVar(name), f}}));
 
   // Get the pass list
+  std::cout << "LowerPrimFunc" << std::endl << std::flush;
   Array<transform::Pass> pass_list = CreatePassList(simple_mode);
   return LowerWithPassList(std::move(mod), pass_list);
 }
@@ -361,6 +386,7 @@ IRModule LowerSchedule(te::Schedule sch, const Array<ObjectRef>& args, const std
                        GlobalVarSupply global_var_supply, bool simple_mode) {
   IRModule mod = ScheduleToModule(std::move(sch), args, name, binds, global_var_supply);
   // Get the legacy TE pass list
+  std::cout << "LowerSchedule" << std::endl << std::flush;
   Array<transform::Pass> pass_list = CreatePassList(simple_mode);
   return LowerWithPassList(mod, pass_list);
 }
@@ -375,6 +401,7 @@ TVM_REGISTER_GLOBAL("driver.lower_schedule")
           c_binds.insert({kv.first, kv.second});
         }
       }
+      std::cout << "driver.lower_schedule" << std::endl << std::flush;
       return LowerSchedule(std::move(sch), args, name, c_binds, GlobalVarSupply(NameSupply("")),
                            simple_mode);
     });

@@ -74,17 +74,60 @@ def intrin_mem_copy(shape, dtype, dst_scope, src_scope):
 
 def verify(hexagon_session: Session, schedule, x_tensor, y_tensor, z_tensor, size):
     """Verify correctness with reference from numpy"""
-    print(tvm.lower(schedule, [x_tensor, y_tensor, z_tensor]))
+    # print(tvm.lower(schedule, [x_tensor, y_tensor, z_tensor]), flush=True)
+    target_hexagon = tvm.target.hexagon("v68", vtcm_capacity=128,link_params=True)
+    # print(target_hexagon)
+    print("vtcm_capacity",target_hexagon.vtcm_capacity)
+    # print("vtcm_capacity",target_hexagon.vtcm_capacity)
+    # print(dir(target_hexagon))
+    # target_hexagon = target.hexagon("v69", num_cores=4)
+    # tvm.target.hexagon("v66", hvx=128)
 
-    target_hexagon = tvm.target.hexagon("v68", link_params=True)
+    # with tvm.target.Target(target_hexagon, host=target_hexagon):
+    #     func = tvm.build(
+    #         schedule,
+    #         [x_tensor, y_tensor, z_tensor],
+    #         tvm.target.Target(target_hexagon, host=target_hexagon),
+    #         name="dmacpy",
+    #     )
+    # with tvm.transform.PassContext(config={"tir.vtcm_capacity": 128}):
+    #     func = tvm.build(
+    #         schedule,
+    #         [x_tensor, y_tensor, z_tensor],
+    #         tvm.target.Target(target_hexagon, host=target_hexagon),
+    #         name="dmacpy",
+    #     )
+
     func = tvm.build(
         schedule,
         [x_tensor, y_tensor, z_tensor],
         tvm.target.Target(target_hexagon, host=target_hexagon),
         name="dmacpy",
     )
-
+    return 
+    # print("func", type(func), func, flush=True)
     mod = hexagon_session.load_module(func)
+    # print("mod", type(mod), mod, flush=True)
+    # mod_lowered = tvm.lower(schedule, [x_tensor, y_tensor, z_tensor])
+    # d = tir.analysis.calculate_allocated_bytes(mod_lowered["main"])
+    # print("data", d, flush=True)
+
+    # def ir_module_has_allocate_nodes(irmod):
+    #     nallocs = 0
+
+    #     def _visit(stmt):
+    #         nonlocal nallocs
+    #         if isinstance(stmt, tvm.tir.Allocate):
+    #             nallocs += 1
+
+    #     tvm.tir.stmt_functor.post_order_visit(irmod["main"].body, _visit)
+    #     print("ICE nallocs: ", nallocs, flush=True)
+    #     return nallocs
+
+    # ir_module_has_allocate_nodes(mod_lowered)
+    
+    # mod = tir.transform.VerifyVTCMLimit(1024)(mod_lowered["main"])
+    # mod = tir.transform.VerifyVTCMLimit(1024)(mod)
     x_array = tvm.nd.array(
         np.random.randint(low=-128, high=127, size=size, dtype=x_tensor.dtype),
         device=hexagon_session.device,
@@ -103,9 +146,138 @@ def verify(hexagon_session: Session, schedule, x_tensor, y_tensor, z_tensor, siz
     np.testing.assert_equal(z_array.numpy(), ref)
 
 
+
+
+# import numpy as np
+# import pytest
+
+# import tvm.testing
+# from tvm import relay
+# from tvm.contrib.hexagon.session import Session
+# from tvm.relay.backend import Executor, Runtime
+
+
+# import onnx  # pylint: disable=import-outside-toplevel
+# # def get_mobilenet():
+# #     """Download and import mobilenet model with ONNX"""
+
+# #     model_url = "https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx"  # pylint: disable=line-too-long
+# #     model_path = tvm.contrib.download.download_testdata(
+# #         model_url, "mobilenetv2-7.onnx", module="onnx"
+# #     )
+# #     return onnx.load(model_path)
+
+
+# @tvm.testing.requires_hexagon
+# def test_hexa(hexagon_session: Session):
+#     # """Test mobilenet with graph executor"""
+#     dtype = "float32"
+#     model_path = "/git/srgan_obfuscated.onnx"
+#     onnx_model = onnx.load(model_path)
+#     # onnx_model = get_mobilenet()
+
+#     target_hexagon = tvm.target.hexagon("v68")
+#     # target_llvm = tvm.target.Target("llvm")
+#     runtime = Runtime("cpp")
+#     executor = Executor("graph", {"link-params": True})
+
+#     data_in = np.random.rand(1, 128,128, 3).astype(dtype=dtype)
+#     # data_in = np.random.rand(1, 3, 224, 224).astype(dtype=dtype)
+#     input_name = "input"
+#     shape_dict = {input_name: data_in.shape}
+#     relay_mod, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
+#     inputs = {input_name: data_in}
+
+#     with tvm.transform.PassContext(opt_level=3):
+#         hexagon_lowered = tvm.relay.build(
+#             relay_mod,
+#             tvm.target.Target(target_hexagon, host=target_hexagon),
+#             runtime=runtime,
+#             executor=executor,
+#             params=params,
+#         )
+#         x = te.placeholder(shape=(1, 128,128, 3), dtype="float32", name="x")
+#         schedule = tir.Schedule(relay_mod, debug_mask="all")
+#         mod_lowered = tvm.lower(schedule.mod, [x])
+#         print(mod_lowered, flush=True)
+#         d = tir.analysis.calculate_allocated_bytes(mod_lowered["main"])
+#         print("data", d)
+
+#         # print(hexagon_lowered)
+
+#         # llvm_lowered = tvm.relay.build(
+#         #     relay_mod,
+#         #     tvm.target.Target(target_llvm, host=target_llvm),
+#         #     runtime=runtime,
+#         #     executor=executor,
+#         #     params=params,
+#         # )
+
+#     # graph_mod = hexagon_session.get_executor_from_factory(hexagon_lowered)
+#     # graph_mod.set_input(**inputs)
+#     # graph_mod.run()
+#     # hexagon_output = graph_mod.get_output(0).numpy()
+
+#     # llvm_graph_mod = tvm.contrib.graph_executor.GraphModule(llvm_lowered["default"](tvm.cpu(0)))
+#     # llvm_graph_mod.set_input(**inputs)
+#     # llvm_graph_mod.run()
+#     # expected_output = llvm_graph_mod.get_output(0).numpy()
+
+#     # tvm.testing.assert_allclose(hexagon_output, expected_output, rtol=1e-4, atol=1e-5)
+
+
+# @tvm.testing.requires_hexagon
+# def test_hexa__(hexagon_session: Session):
+#     print("test_hexa")
+
+#     import tvm.relay as relay
+#     import tvm
+
+#     # model_path = download_testdata(model_url, "resnet50-v2-7.onnx", module="onnx")
+#     import onnx
+#     model_path = "/git/srgan_obfuscated.onnx"
+#     onnx_model = onnx.load(model_path)
+#     input_name = "input"
+#     shape_dict = {input_name: (1, 128,128, 3)}
+#     mod, params = relay.frontend.from_onnx(onnx_model, shape_dict)
+#     from tvm import relay, auto_scheduler
+#     # target_hexagon = tvm.target.hexagon("v68")
+#     # target = tvm.target.Target(target_hexagon, host=target_hexagon)
+#     mod = hexagon_session.load_module(mod)
+#     mod = tir.transform.VerifyVTCMLimit(1024)(mod)
+#     # sch = tir.Schedule(mod, debug_mask="all")
+#     # x = te.placeholder(shape=(1, 128,128, 3), dtype="float32", name="x")
+#     # print(tvm.lower(schedule, [x]))
+#     # target_hexagon = tvm.target.hexagon("v68", link_params=True)
+#     # func = tvm.build(
+#     #     schedule,
+#     #     [x_tensor, y_tensor, z_tensor],
+#     #     tvm.target.Target(target_hexagon, host=target_hexagon),
+#     #     name="dmacpy",
+#     # )
+
+
+
+#     # print("func", type(func), func)
+#     # print("mod", type(mod), mod)
+#     # mod_lowered = tvm.lower(schedule, [x_tensor, y_tensor, z_tensor])
+
+
+#     # target = tvm.target.Target("llvm")
+#     # print("extract_tasks")
+#     # # tasks, task_weights = tvm.auto_scheduler.extract_tasks(mod["main"], params, target)
+#     # print("end extract_tasks")
+#     # # print(list(mod.functions.values())[0])
+#     # print("tasks", len(tasks))
+#     # print(dir(tasks[0]))
+#     # for id, task in enumerate(tasks):
+#     #     print(id, type(task.compute_dag), '\n', task.compute_dag)
+#     #     print()
+#     # print(mod["main"])
+
 @tvm.testing.requires_hexagon
 def test_cache_read_write(hexagon_session: Session):
-    """Test cache_read and cache_write to global.vtcm for hexagon"""
+    """Test cache_read and cache_write to global.vtcm for hexagon""" # ICE
     size = 128
     outer_shape = (size,)
     factor = 16

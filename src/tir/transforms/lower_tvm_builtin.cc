@@ -554,7 +554,7 @@ class BuiltinLower : public StmtExprMutator {
     Stmt body = SeqStmt(
         {IfThenElse(Call(DataType::Bool(1), builtin::isnullptr(), {let->var}), throw_last_error),
          let->body});
-
+    // std::cout<< "ICE before body " << body << std::endl << std::flush;
     DataType dtype =
         let->var->type_annotation.as<PointerTypeNode>()->element_type.as<PrimTypeNode>()->dtype;
 
@@ -583,6 +583,7 @@ class BuiltinLower : public StmtExprMutator {
 
     Stmt free_stmt = IfThenElse(free_op != make_zero(DataType::Int(32)), throw_last_error);
     body = SeqStmt({alloca, free_stmt});
+    // std::cout<< "ICE after body " << body << std::endl << std::flush;
     return body;
   }
 

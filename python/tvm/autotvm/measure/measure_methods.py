@@ -348,9 +348,9 @@ class RPCRunner(Runner):
                 "max_thread_y": max_dims[1],
                 "max_thread_z": max_dims[2],
             }
-        if "hexa" in self.task.target.keys:
-            kwargs["check_hexa"] = { "sram":100000 }
-            # kwargs["check_hexa"] = { "sram":self.task.target.sram_capacity }
+        # if "hexa" in self.task.target.keys:
+        #     kwargs["check_hexa"] = { "sram":100000 }
+            # kwargs["check_hexa"] = { "sram":self.task.target.vtcm_capacity }
 
         return kwargs
 
