@@ -233,6 +233,7 @@ def get_per_store_features_from_states(
         state_objects = [s.state_object for s in states]
     elif isinstance(states[0], StateObject):
         state_objects = states
+    print("ICE _ffi_api.GetPerStoreFeaturesFromStates", flush=True)
     byte_arr = _ffi_api.GetPerStoreFeaturesFromStates(
         state_objects, task, max_n_bufs or DEFAULT_MAX_N_BUFS
     )

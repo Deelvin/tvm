@@ -111,7 +111,7 @@ Integer Extract(const Target& target, const char* name) {
 }
 
 /*! \brief Verify the correctness of the generated GPU code. */
-class VerifyGPUCodeNode : public PostprocNode {
+class VerifyGPUCodeNode : public PostprocNode { // ICE
  public:
   Map<String, PrimExpr> target_constraints_{nullptr};
   int thread_warp_size_ = -1;

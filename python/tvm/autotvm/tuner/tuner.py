@@ -51,6 +51,7 @@ class Tuner(object):
         self.best_measure_pair = None
         self.best_iter = 0
         self.error_ct_threshold = 150
+        print("ICEpy error_ct_threshold", self.error_ct_threshold , flush=True)
 
         # time to leave
         self.ttl = None
@@ -144,6 +145,7 @@ class Tuner(object):
                 else:
                     flops = 0
                     error_ct += 1
+                    print("ICEpy error_ct", error_ct, flush=True)
                     tb, error = res.costs
                     if isinstance(error, str):
                         errors.append(tb + "\n" + error)
@@ -226,4 +228,5 @@ class Tuner(object):
         ----------
         threshold: New threshold value
         """
+        print("ICEpy set threshold", threshold, flush=True)
         self.error_ct_threshold = threshold

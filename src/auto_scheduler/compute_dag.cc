@@ -35,6 +35,10 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/topi/transform.h>
 
+#include <tvm/driver/driver_api.h>
+#include <tvm/te/operation.h>
+#include <tvm/te/tensor.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <queue>
@@ -1158,9 +1162,16 @@ bool HasLayoutFreeTensors(const ComputeDAG& dag) {
   return false;
 }
 
+// #include <tvm/driver/driver_api.h>
+// #include <tvm/te/operation.h>
+// #include <tvm/te/tensor.h>
+
+
+
 std::pair<te::Schedule, Array<te::Tensor>> ComputeDAG::ApplySteps(
     const Array<Step>& transform_steps, Array<te::Stage>* stages, StageToAxesMap* stage_to_axes,
     LayoutRewriteOption layout_rewrite) const {
+  // std::cout << "ICE ComputeDAG::ApplySteps" << std::endl;
   if (layout_rewrite != LayoutRewriteOption::NoRewrite && HasLayoutFreeTensors(*this) &&
       !transform_steps.empty()) {
     Array<Step> steps = transform_steps;
@@ -1199,7 +1210,24 @@ std::pair<te::Schedule, Array<te::Tensor>> ComputeDAG::ApplySteps(
   for (const auto& step : transform_steps) {
     StepApplyToSchedule(step, stages, stage_to_axes, &schedule, transform_steps);
   }
+  // std::cout << "ICE schedule " << schedule. << std::endl;
 
+
+
+  // auto target = Target("llvm");
+  // te::Schedule sch = schedule;
+  // const Array<te::Tensor>& args = operator->()->tensors;
+  // const std::string& name = "func";
+  // std::unordered_map<te::Tensor, Buffer> binds;
+
+  // tvm::GlobalVarSupply global_var_supply = tvm::GlobalVarSupply(tvm::NameSupply(""));
+  // bool simple_mode = true;
+
+  // auto lowered = tvm::LowerSchedule(sch, args, name, binds, global_var_supply, simple_mode);
+  // auto module = tvm::build(lowered, target, Target());
+  
+  // std::cout << "ICE schedule_lowered\n " << lowered << std::flush << std::endl;
+  // std::cout << "ICE schedule_module " << module->GetSource() << std::endl;
   return std::make_pair(schedule, operator->()->tensors);
 }
 

@@ -158,6 +158,7 @@ SketchPolicy::SketchPolicy(SearchTask task, CostModel program_cost_model,
 
 State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_iter,
                                ProgramMeasurer measurer) {
+  std::cout << "ICE SketchPolicyNode::Search n_trials: " << n_trials << std::endl;
   num_measure_per_iter_ = num_measure_per_iter;
 
   if (n_trials <= 1) {
@@ -177,6 +178,7 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
     Array<MeasureInput> inputs;
     Array<MeasureResult> results;
     while (ct < n_trials) {
+      std::cout << "ICE ct " << ct << std::endl;  
       if (!inputs.empty()) {
         auto t_begin = std::chrono::high_resolution_clock::now();
 
@@ -186,7 +188,7 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
 
         PrintTimeElapsed(t_begin, "training", verbose);
       }
-
+      std::cout << "ICE Search SearchOneRound" << ct << std::endl;  
       // Search one round to get promising states
       PrintTitle("Search", verbose);
       best_states = SearchOneRound(num_random * 3, &random_states);
@@ -484,7 +486,7 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
   return out_states;
 }
 
-Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_population,
+Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_population, // ICE
                                                   int out_size) {
   Array<State> best_states;
   auto tic_begin = std::chrono::high_resolution_clock::now();

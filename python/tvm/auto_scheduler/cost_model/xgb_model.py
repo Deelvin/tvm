@@ -229,6 +229,7 @@ class XGBModel(PythonBasedModel):
         scores: List[float]
             The predicted scores for all states
         """
+        print("ICE predict", flush=True)
         features = get_per_store_features_from_states(states, task)
         if self.bst is not None and len(self.inputs) > self.num_warmup_sample:
             dtest, pack_ids = feature_to_pack_sum_xgbmatrix(features)
@@ -280,6 +281,7 @@ class XGBModel(PythonBasedModel):
         To implement this format, we also store int as float, so we can store all numbers
         into a single float array.
         """
+        print("ICE predict_stages", flush=True)
         features = get_per_store_features_from_states(states, task)
         if self.bst is not None and len(self.inputs) > self.num_warmup_sample:
             dtest, pack_ids = feature_to_pack_sum_xgbmatrix(features)
