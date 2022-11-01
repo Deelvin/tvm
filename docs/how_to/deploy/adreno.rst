@@ -15,8 +15,8 @@ deliver high-performance graphics and a rich user experience with low
 power consumption.
 
 This guide will demonstrate :ref:`the benefits of using textures with Adreno<Advantages of the Textures>`,
-:ref:`how to build TVM with OpenCL-SDK <Building TVM for Adreno>` (needed by Adreno devices) and TVM RPC
-enabled. It will also provide :ref:`example code <Build and deploy model for Adreno>` to better understand the differences with compiling and deploying models
+:ref:`how to build TVM with OpenCL-SDK<Building TVM for Adreno>` (needed by Adreno devices) and TVM RPC
+enabled. It will also provide :ref:`example code<Build and deploy model for Adreno>` to better understand the differences with compiling and deploying models
 on Adreno devices.
 
 Advantages of the Textures
@@ -71,9 +71,11 @@ with Android TVM RPC, refer to this guide: `Deploy the Pretrained Model on Andro
 For us to begin with, Android NDK, Android Debug Bridge and OpenCL-SDK must
 be installed and Android part of TVM must be builded.
 
-Read documentation about *Android NDK installation* here: https://developer.android.com/ndk \
+Read documentation about *Android NDK installation* here: https://developer.android.com/ndk
+
 To get access to adb tools you can see *Android Debug Bridge installation* here:
-https://developer.android.com/studio/command-line/adb \  
+https://developer.android.com/studio/command-line/adb
+
 For *OpenCL-SDK installation* please refer to official github repository: https://github.com/KhronosGroup/OpenCL-SDK.git
 
 You can also build the android part of TVM locally. From the root
@@ -102,8 +104,9 @@ For the complete step-py-step process of compiling and deploying models on
 Adreno, including selection of precision, running the inference of the
 model, getting the predictions, and measuring the performance please refer to this tutorial: `How To Deploy model on Adreno <https://tvm.apache.org/docs/how_to/deploy_models/deploy_model_on_adreno.html>`_
 
-| |Android deployment pipeline|
-| *Fig.2 Deployment pipeline on Adreno devices*
+|Android deployment pipeline|
+
+*Fig.2 Deployment pipeline on Adreno devices*
 
 Adreno target
 ~~~~~~~~~~~~~
@@ -183,15 +186,61 @@ The kernels generated this way is actually working with 2d arrays, leveraging te
 
 Precisions
 ~~~~~~~~~~
+The right choice of precision for a specific task can greatly increase the efficiency of the solution,
+shifting the initial balance of precision and speed to the side that is a priority for the problem.
 
-We can also set different precision, choosing from *float16*,
-*float16_acc32* (Mixed Precision), *float32*. Choosing lower precision may positively
-affect the performance of the model, but it may also have a decrease in the accuracy of the model.
-In some tasks we may sacrifice accuracy in favor of speed, and in some tasks we may prefer mixed precision,
-obtaining some kind of balance.
+We can choose from *float16*, *float16_acc32* (Mixed Precision), *float32* (standard).
 
-First of all, to be able to convert precisions in general, we need to
-register conversion to mixed precision
+**Float16**
+
+To leverage the GPU hardware capabilities and utilize benefits of half precision computation and memory management,
+we can convert original model having floating points operation to model operating with half precision.
+Choosing lower precision will positively affect the performance of the model, but it may also have a decrease in the accuracy of the model.
+To do the conversion you need to write a simple conversion function and specify the *dtype* value of "float16" before calling the function:
+
+.. code:: python
+
+   def  convert_to_dtype(mod, dtype):
+      # downcast to float16
+      if  dtype == "float16":
+         global  conv2d_acc = "float16"
+         from  tvm.ir  import  IRModule
+         mod = IRModule.from_expr(mod)
+         seq = tvm.transform.Sequential(
+            [
+                  relay.transform.InferType(),
+            ]
+         )
+         with  tvm.transform.PassContext(opt_level=3):
+            mod = seq(mod)
+      return  mod
+
+   dtype="float16"
+   mod = convert_to_dtype(mod["main"], dtype)
+
+We then can compile our model in any convinient way
+
+.. code:: python
+
+   with  tvm.transform.PassContext(opt_level=3):
+       lib = relay.build(
+           mod, target_host=target_host, target=target, params=params
+       )
+
+**float16_acc32 (Mixed Precision)**
+
+ToMixedPrecision pass traverse over the network and split network to clusters of ops dealing with float or float16 data types.
+The clusters are defined by three types of operations:
+* Operations always be converted into float16 data type
+* Operations which can be converted if they follow by converted cluster
+* Operations never be converted to the float16 data type  
+This list is defined in the ToMixedPrecision implementation here 
+`relay/transform/mixed_precision.py <https://github.com/apache/tvm/blob/main/python/tvm/relay/transform/mixed_precision.py#L34>`_ 
+and can be overridden by user
+
+In some cases we want to have accumulation type in data type with bigger type of bits that input data type.
+This is supported, for example, for conv2d and dense operations. To override accumulation type you need to register
+function with @register_mixed_precision_conversion decorator to modify parameters of ToMixedPrecision conversion
 
 .. code:: python
 
@@ -222,9 +271,9 @@ register conversion to mixed precision
            mixed_precision_type,
        ]
 
-We then need to create a Relay graph from desired model in any convinient way
-and obtain **mod** (which is IR representation of the model), after which we can convert it to
-required **dtype** and then assemble our model sequentialy
+Now we need to modify the conversion function by adding some logical "forks" and ToMixedPrecision() call,
+then create a Relay graph from desired model in any convinient way and obtain **mod** (which is IR representation of the model),
+after which we can convert it to the required **dtype** and then assemble our model sequentialy
 
 .. code:: python
 
@@ -262,5 +311,5 @@ From this point we can compile our model as normal
            mod, target_host=target_host, target=target, params=params
        )
 
-.. |High-level overview of the Adreno A5x architecture for OpenCL| image:: images/architecture.png
-.. |Android deployment pipeline| image:: images/deployment_pipeline.jpg
+.. |High-level overview of the Adreno A5x architecture for OpenCL| image:: images/adreno_architecture.png
+.. |Android deployment pipeline| image:: images/android_deployment_pipeline.jpg

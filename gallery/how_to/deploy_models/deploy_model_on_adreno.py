@@ -3,15 +3,17 @@ Deploy the Pretrained Model on Adreno
 =======================================
 **Author**: Daniil Barinov
 
-This article is a step-by-step tutorial to deploy pretrained MXNet VGG16 model on Adreno (on different precisions).
+This article is a step-by-step tutorial to deploy pretrained Pytorch ResNet-18 model on Adreno (on different precisions).
 
-For us to begin with, MXNet package must be installed.
+For us to begin with, PyTorch must be installed.
+TorchVision is also required since we will be using it as our model zoo.
 
 A quick solution is to install it via pip:
 
 .. code-block:: bash
 
-  pip install mxnet
+  pip install torch
+  pip install torchvision
 
 Besides that, you should have TVM builded for Android.
 See the following instructions on how to build it.
@@ -94,25 +96,62 @@ Let's push them to the device and run TVM RPC Server.
 #    android      1      1     0
 #    ----------------------------------
 
+######################################################################
+# Load a test image
+# -----------------
+# As an example we would use classical cat image from ImageNet
+
+from PIL import Image
+from tvm.contrib.download import download_testdata
+from matplotlib import pyplot as plt
+import numpy as np
+
+img_url = "https://github.com/dmlc/mxnet.js/blob/main/data/cat.png?raw=true"
+img_path = download_testdata(img_url, "cat.png", module="data")
+img = Image.open(img_path).resize((224, 224))
+plt.imshow(img)
+plt.show()
+
+# Preprocess the image and convert to tensor
+from torchvision import transforms
+
+my_preprocess = transforms.Compose(
+    [
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
+)
+img = my_preprocess(img)
+img = np.expand_dims(img, 0)
 
 ######################################################################
-# Load pretrained MXNet model
+# Load pretrained Pytorch model
 # ---------------------------
-# Create a Relay graph from a MXNet VGG16 model
+# Create a Relay graph from a Pytorch ResNet-18 model
 import os
-import numpy as np
-import mxnet.gluon as gluon
+import torch
+import torchvision
 import tvm
+from tvm import te
 from tvm import relay, rpc
 from tvm.contrib import utils, ndk
 from tvm.contrib import graph_executor
 
-name = "vgg16"
-model = gluon.model_zoo.vision.get_model(name, pretrained=True)
-input_name = "data"
-input_shape = (1, 3, 224, 224)
-shape_dict = {input_name: input_shape}
-mod, params = relay.frontend.from_mxnet(model, shape_dict)
+model_name = "resnet18"
+model = getattr(torchvision.models, model_name)(pretrained=True)
+model = model.eval()
+
+# We grab the TorchScripted model via tracing
+input_shape = [1, 3, 224, 224]
+input_data = torch.randn(input_shape)
+scripted_model = torch.jit.trace(model, input_data).eval()
+
+# Input name can be arbitrary
+input_name = "input0"
+shape_list = [(input_name, img.shape)]
+mod, params = relay.frontend.from_pytorch(scripted_model, shape_list)
 
 ######################################################################
 # Precisions
@@ -173,41 +212,16 @@ print(mod)
 # You can also use "float16" or "float32" precisions as other dtype options.
 
 ######################################################################
-# Load a test image
-# -----------------
-# As an example we would use classical cat image from ImageNet
-
-from  PIL  import  Image
-from  tvm.contrib.download  import  download_testdata
-from matplotlib import pyplot as plt
-
-img_url = "https://github.com/dmlc/mxnet.js/blob/main/data/cat.png?raw=true"
-img_path = download_testdata(img_url, "cat.png", module="data")
-img = Image.open(img_path)
-
-plt.imshow(img)
-plt.show()
-
-# Image preprocessing:
-
-img = img.resize(shape_dict[input_name][2:])
-img = np.array(img) - np.array([123.0, 117.0, 104.0])
-img /= np.array([58.395, 57.12, 57.375])
-img = img.transpose((2, 0, 1))
-img = img[np.newaxis, :]
-
-######################################################################
 # Compile the model with relay
 # ----------------------------
 # Specify Adreno target before compiling to generate texture 
 # leveraging kernels and get all the benefits of textures 
 
-target="opencl -device=adreno"
-target_host="llvm -mtriple=arm64-linux-android"
+target = tvm.target.Target("opencl -device=adreno", host="llvm -mtriple=arm64-linux-android")
 
 with  tvm.transform.PassContext(opt_level=3):
 	lib = relay.build(
-		mod, target_host=target_host, target=target, params=params
+		mod, target=target, params=params
 	)
 
 ######################################################################
