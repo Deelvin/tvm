@@ -54,7 +54,7 @@ export ANDROID_SERIAL_NUMBER=${device_serial}
 # pytest tests/python/contrib/test_hexagon/test_cache_read_write.py::test_cache_read_write
 
 pytest tests/python/contrib/test_hexagon/test_meta_schedule.py::test_ice_hexagon
-pytest tests/python/contrib/test_hexagon/test_meta_schedule.py::test_vrmpy_srgan
+# pytest tests/python/contrib/test_hexagon/test_meta_schedule.py::test_vrmpy_srgan
 # pytest tests/python/contrib/test_hexagon/test_meta_schedule.py::test_vrmpy_dense_sram_limited
 
 

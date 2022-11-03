@@ -498,7 +498,7 @@ class LocalRunner(RPCRunner):
         return server, tracker
 
 
-def _build_func_common(measure_input, runtime=None, check_gpu=None, build_option=None, check_hexa=None, check_hexa=None):
+def _build_func_common(measure_input, runtime=None, check_gpu=None, build_option=None, check_hexa=None):
     """Common part for building a configuration"""
     target, task, config = measure_input
     target, task.target_host = Target.canon_target_and_host(target, task.target_host)

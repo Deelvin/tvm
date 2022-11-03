@@ -118,15 +118,23 @@ std::vector<State> MultiLevelTilingNode::ApplySubRules(std::vector<State> states
 }
 
 std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
+  std::cout << "MultiLevelTilingNode::AddWriteReuse" << std::endl << std::flush;
+
   const ReuseConfig& config = this->reuse_write_;
   if (config.req == ReuseType::kNoReuse) {
     return {std::move(state)};
   }
   std::vector<int> levels = config.levels;
+  std::cout << "MultiLevelTilingNode::AddWriteReuse levels" << std::endl << std::flush;
+  for (auto l: levels) {
+    std::cout << "  " << l << std::endl << std::flush;
+  }
+
   ReuseType req = config.req;
   if (Optional<Array<Integer>> ann = tir::GetAnn<Array<Integer>>(
           state->sch->GetSRef(state->block_rv), "meta_schedule.write_cache_level")) {
     req = ReuseType::kMustReuse;
+     
     levels.clear();
     std::transform(ann.value().begin(), ann.value().end(), std::back_inserter(levels),
                    [](auto&& v) { return v.IntValue(); });
@@ -134,6 +142,7 @@ std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
   std::vector<State> results;
   if (req == ReuseType::kMayReuse) {
     // Case 1. If the write cache is already there, we don't need to add another.
+    std::cout << "MultiLevelTilingNode::AddWriteReuse Case 1. If the write cache is already there, we don't need to add anothe" << std::endl << std::flush;
     Array<BlockRV> consumer_rvs = state->sch->GetConsumers(state->block_rv);
     if (consumer_rvs.size() == 1 && IsWriteCache(state->sch->GetSRef(consumer_rvs[0]))) {
       for (int level : levels) {
@@ -147,12 +156,14 @@ std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
       return results;
     } else {
       // Case 2. No write cache is added
+      std::cout << "MultiLevelTilingNode::AddWriteReuse Case 2. No write cache is added" << std::endl << std::flush;
       State new_state = state->Copy();
       results.emplace_back(std::move(new_state));
     }
   }
 
   // Case 3. Add one write cache
+  std::cout << "MultiLevelTilingNode::AddWriteReuse Case 3. Add one write cache" << std::endl << std::flush;
   BlockRV write_cache =
       state->sch->CacheWrite(/*block_rv=*/state->block_rv, /*read_buffer_index=*/0,
                              /*storage_scope=*/config.scope);

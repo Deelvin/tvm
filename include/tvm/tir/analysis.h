@@ -317,9 +317,9 @@ TVM_DLL Pass VerifySRAMLimit(size_t size_limit);
 TVM_DLL Pass VerifyVTCMLimit(size_t limit);
 
 
-TVM_DLL Pass VerifySRAMLimit(size_t size_limit);
+// TVM_DLL Pass VerifySRAMLimit(size_t size_limit);
 
-TVM_DLL Pass VerifyVTCMLimit(size_t limit);
+// TVM_DLL Pass VerifyVTCMLimit(size_t limit);
 
 /*!
  * \brief Statically check TIR code for out of bounds array access.

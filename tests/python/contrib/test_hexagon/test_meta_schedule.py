@@ -545,7 +545,7 @@ def apply_vtcm_cache_read_write(sch):
 
 from tvm.tir import PrimFunc, Schedule
 # from . import default_config
-from tvm.meta_schedule import default_config
+# from tvm.meta_schedule import default_config
 
 
 # def main(a: T.handle, b: T.handle) -> None:
@@ -662,6 +662,48 @@ def test_vrmpy_srgan(hexagon_launcher):
             # space=ms.space_generator.ScheduleFn(schedule_dense_for_tune),
             builder=get_hexagon_local_builder(),
             runner=get_hexagon_rpc_runner(hexagon_launcher, number=10),
+            space=ms.space_generator.PostOrderApply(
+                sch_rules=[
+                ms.schedule_rule.MultiLevelTilingWideVector(
+                    structure="SRSRS",
+                    # structure="SSRSRS",
+                    vector_length_in_bits=256,
+                    # vector_length_in_bits=1024,
+                    # max_innermost_factor=256,
+                    # max_innermost_factor=64,
+                    # reuse_read=None,
+                    # reuse_write=None,
+                    reuse_read=ms.schedule_rule.ReuseType(
+                        req="must",
+                        # levels=[4],
+                        levels=[1,2,3,4],
+                        scope="global.vtcm",
+                    ),
+                    reuse_write=ms.schedule_rule.ReuseType(
+                        req="may",
+                        # req="must",
+                        levels=[4],
+                        scope="global.vtcm",
+                    ),
+                )
+                # ,
+                # ms.schedule_rule.AutoInline(
+                #     into_producer=False,
+                #     into_consumer=True,
+                #     inline_const_tensor=True,
+                #     disallow_if_then_else=True,
+                #     require_injective=True,
+                #     require_ordered=True,
+                #     disallow_op=["tir.exp"],
+                # ),
+                # ms.schedule_rule.ParallelizeVectorizeUnroll(
+                #     max_jobs_per_core=16,
+                #     max_vectorize_extent=128,
+                #     unroll_max_steps=[0, 16, 64, 512],
+                #     unroll_explicit=True,
+                # ),
+            ],
+            )
         )
         # mod = workload
         # mod = default_config.mod(mod)
@@ -723,13 +765,63 @@ def test_vrmpy_dense_sram_limited(hexagon_launcher):
                         sch.cache_write(block, 0, "global.vtcm")
                     # return schedule_dense(sch, block, None, True)
 
+                actual = ms.TuneContext(
+                    mod=workload,
+                    target=Target(target_hexagon, host=target_hexagon),
+                    space_generator=ms.space_generator.PostOrderApply(
+                        sch_rules=[
+                        ms.schedule_rule.MultiLevelTilingWideVector(
+                            structure="SRSRS",
+                            # structure="SSRSRS",
+                            vector_length_in_bits=256,
+                            # vector_length_in_bits=1024,
+                            # max_innermost_factor=256,
+                            # max_innermost_factor=64,
+                            # reuse_read=None,
+                            # reuse_write=None,
+                            # reuse_read=ms.schedule_rule.ReuseType(
+                            #     req="must",
+                            #     # levels=[4],
+                            #     levels=[2],
+                            #     scope="global.vtcm",
+                            # ),
+                            reuse_write=ms.schedule_rule.ReuseType(
+                                req="must",
+                                # req="must",
+                                levels=[2],
+                                scope="global.vtcm",
+                            ),
+                        )
+                        # ,
+                        # ms.schedule_rule.AutoInline(
+                        #     into_producer=False,
+                        #     into_consumer=True,
+                        #     inline_const_tensor=True,
+                        #     disallow_if_then_else=True,
+                        #     require_injective=True,
+                        #     require_ordered=True,
+                        #     disallow_op=["tir.exp"],
+                        # ),
+                        # ms.schedule_rule.ParallelizeVectorizeUnroll(
+                        #     max_jobs_per_core=16,
+                        #     max_vectorize_extent=128,
+                        #     unroll_max_steps=[0, 16, 64, 512],
+                        #     unroll_explicit=True,
+                        # ),
+                    ]
+                    ),
+                    rand_state=i,
+                    task_name="test",
+                ).generate_design_space()
+
                 sch, database = ms.tune_tir(
                     mod=workload,
                     target=target,
                     config=config,
                     work_dir=work_dir,
                     database=ms.database.JSONDatabase("/git/tvm/my_r.json", "/git/tvm/my_w.json"),
-                    space=ms.space_generator.ScheduleFn(schedule_dense_for_tune),
+                    space=actual,
+                    # space=ms.space_generator.ScheduleFn(schedule_dense_for_tune),
                     builder=get_hexagon_local_builder(),
                     runner=get_hexagon_rpc_runner(hexagon_launcher, number=10),
                 )
@@ -778,19 +870,94 @@ from tvm.target import Target
 from tvm.tir.schedule import Schedule, Trace
 from tvm.meta_schedule.testing import te_workload
 
+from tvm.meta_schedule.testing.space_generation import (
+    check_sketches,
+    generate_design_space,
+)
+
 def test_ice_hexagon():
-    target_hexagon = tvm.target.hexagon("v69", num_cores=4)
+    target_hexagon = tvm.target.hexagon("v69", num_cores=4, vtcm_capacity=128)
     mod = te.create_prim_func(te_workload.matmul(n=4, m=4, k=512))
-    # mod = te.create_prim_func(te_workload.matmul(n=2, m=2, k=2))
-    for i in range(20):
+
+
+    # model_path = "/git/srgan_obfuscated.onnx"
+    # onnx_model = onnx.load(model_path)
+    # input_name = "input"
+    # shape_dict = {input_name: (1, 128,128, 3)}
+    # mod, params = relay.frontend.from_onnx(onnx_model, shape_dict)
+
+    # extracted_tasks = tvm.autotvm.task.relay_integration.extract_from_program(mod, params, target_hexagon, target_host=target_hexagon)
+
+    # extracted_tasks=tvm.meta_schedule.relay_integration.extract_tasks(mod, Target(target_hexagon, host=target_hexagon), params)
+    # target_hexagon = tvm.target.hexagon("v68")
+    # target = tvm.target.Target(target_hexagon, host=target_hexagon)
+    # mod = hexagon_launcher.load_module(mod)
+
+
+
+    for i in range(1):
+
+        # actual = generate_design_space(
+        #     kind="cuda",
+        #     mod=mod,
+        #     target=Target(target_hexagon, host=target_hexagon),
+        #     types=None,
+        #     # rand_state=i,
+        #     sch_rules=[
+        #        ms.schedule_rule.MultiLevelTilingWideVector(
+        #             structure="SRSRS",
+        #             # structure="SSRSRS",
+        #             vector_length_in_bits=256,
+        #             # vector_length_in_bits=1024,
+        #             # max_innermost_factor=256,
+        #             # max_innermost_factor=64,
+        #             # reuse_read=None,
+        #             # reuse_write=None,
+        #             reuse_read=ms.schedule_rule.ReuseType(
+        #                 req="must",
+        #                 # levels=[4],
+        #                 levels=[1,2,3,4],
+        #                 scope="global.vtcm",
+        #             ),
+        #             reuse_write=ms.schedule_rule.ReuseType(
+        #                 req="may",
+        #                 # req="must",
+        #                 levels=[4],
+        #                 scope="global.vtcm",
+        #             ),
+        #         )
+        #         # ,
+        #         # ms.schedule_rule.AutoInline(
+        #         #     into_producer=False,
+        #         #     into_consumer=True,
+        #         #     inline_const_tensor=True,
+        #         #     disallow_if_then_else=True,
+        #         #     require_injective=True,
+        #         #     require_ordered=True,
+        #         #     disallow_op=["tir.exp"],
+        #         # ),
+        #         # ms.schedule_rule.ParallelizeVectorizeUnroll(
+        #         #     max_jobs_per_core=16,
+        #         #     max_vectorize_extent=128,
+        #         #     unroll_max_steps=[0, 16, 64, 512],
+        #         #     unroll_explicit=True,
+        #         # ),
+        #     ],
+        # )
+
+        # mod_lowered = tvm.lower(mod, [1, 128,128, 3], Target(target_hexagon, host=target_hexagon), simple_mode=False)
+        # print(mod_lowered)
+        # print(dir(extracted_tasks[0].mod))
+        # print(extracted_tasks[0].mod.script())
         actual = ms.TuneContext(
             mod=mod,
+            # mod=mod_lowered,
             target=Target(target_hexagon, host=target_hexagon),
-            space_generator=ms.space_generator.PostOrderApply(),
-            rand_state=i,
-            sch_rules=[
+            space_generator=ms.space_generator.PostOrderApply(
+                sch_rules=[
                 ms.schedule_rule.MultiLevelTilingWideVector(
                     structure="SRSRS",
+                    # structure="SRSRS",
                     # structure="SSRSRS",
                     vector_length_in_bits=256,
                     # vector_length_in_bits=1024,
@@ -798,19 +965,21 @@ def test_ice_hexagon():
                     # max_innermost_factor=64,
                     # reuse_read=None,
                     # reuse_write=None,
-                    reuse_read=ms.schedule_rule.ReuseType(
-                        req="must",
-                        # levels=[4],
-                        levels=[1,2,3,4],
-                        scope="global.vtcm",
-                    ),
+                    # reuse_read=ms.schedule_rule.ReuseType(
+                    #     req="must",
+                    #     levels=[4],
+                    #     levels=[2],
+                    #     scope="global.vtcm",
+                    # ),
                     reuse_write=ms.schedule_rule.ReuseType(
                         req="may",
                         # req="must",
-                        levels=[4],
+                        levels=[2],
                         scope="global.vtcm",
                     ),
-                )
+                ),
+                # ms.schedule_rule.AddRFactor(max_jobs_per_core=16, max_innermost_factor=64),
+                
                 # ,
                 # ms.schedule_rule.AutoInline(
                 #     into_producer=False,
@@ -827,7 +996,9 @@ def test_ice_hexagon():
                 #     unroll_max_steps=[0, 16, 64, 512],
                 #     unroll_explicit=True,
                 # ),
-            ],
+            ]
+            ),
+            rand_state=i,
             task_name="test",
         ).generate_design_space()
 

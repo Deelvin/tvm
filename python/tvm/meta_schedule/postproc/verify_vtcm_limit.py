@@ -21,11 +21,11 @@ from .. import _ffi_api
 from .postproc import Postproc
 
 
-@register_object("meta_schedule.VerifyVTCMLimit")
-class VerifyVTCMLimit(Postproc):
-    """A postprocessor that verifies if the GPU code is correct"""
+# @register_object("meta_schedule.VerifyVTCMLimit")
+# class VerifyVTCMLimit(Postproc):
+#     """A postprocessor that verifies if the GPU code is correct"""
 
-    def __init__(self) -> None:
-        self.__init_handle_by_constructor__(
-            _ffi_api.PostprocVerifyVTCMLimit,  # type: ignore # pylint: disable=no-member
-        )
+#     def __init__(self) -> None:
+#         self.__init_handle_by_constructor__(
+#             _ffi_api.PostprocVerifyVTCMLimit,  # type: ignore # pylint: disable=no-member
+#         )

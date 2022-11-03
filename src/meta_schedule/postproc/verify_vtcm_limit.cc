@@ -228,16 +228,16 @@ class VerifyVTCMLimitNode : public PostprocNode { // ICE
   }
 
   static constexpr const char* _type_key = "meta_schedule.VerifyVTCMLimit";
-  TVM_DECLARE_FINAL_OBJECT_INFO(VerifyVTCMLimitNode, PostprocNode);
+  // TVM_DECLARE_FINAL_OBJECT_INFO(VerifyVTCMLimitNode, PostprocNode);
 };
 
-Postproc Postproc::VerifyVTCMLimit() {
-  ObjectPtr<VerifyVTCMLimitNode> n = make_object<VerifyVTCMLimitNode>();
-  return Postproc(n);
-}
+// Postproc Postproc::VerifyVTCMLimit() {
+//   ObjectPtr<VerifyVTCMLimitNode> n = make_object<VerifyVTCMLimitNode>();
+//   return Postproc(n);
+// }
 
-TVM_REGISTER_NODE_TYPE(VerifyVTCMLimitNode);
-TVM_REGISTER_GLOBAL("meta_schedule.PostprocVerifyVTCMLimit").set_body_typed(Postproc::VerifyVTCMLimit);
+// // TVM_REGISTER_NODE_TYPE(VerifyVTCMLimitNode);
+// TVM_REGISTER_GLOBAL("meta_schedule.PostprocVerifyVTCMLimit").set_body_typed(Postproc::VerifyVTCMLimit);
 
 }  // namespace meta_schedule
 }  // namespace tvm
