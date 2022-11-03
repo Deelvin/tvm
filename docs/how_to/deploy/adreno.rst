@@ -15,14 +15,14 @@ deliver high-performance graphics and a rich user experience with low
 power consumption.
 
 This guide will demonstrate :ref:`the benefits of using textures with Adreno<Advantages of the Textures>`,
-:ref:`how to build TVM with OpenCL-SDK<Building TVM for Adreno>` (needed by Adreno devices) and TVM RPC
-enabled. It will also provide :ref:`example code<Build and deploy model for Adreno>` to better understand the differences with compiling and deploying models
-on Adreno devices.
+how to :ref:`build TVM with OpenCL-SDK<Building TVM for Adreno>` (needed by Adreno devices) and TVM RPC
+enabled. It will also provide :ref:`example code<Build and deploy model for Adreno>` to better understand the differences in compiling and deploying models
+for Adreno devices.
 
 Advantages of the Textures
 --------------------------
 
-One of the advantages of Adreno is its clever handling of textures. At
+One of the Adreno's advantages is clever handling of textures. At
 the moment, TVM is able to benefit from this by having texture support
 for Adreno. The graph below shows the Adreno A5x architecture.
 
@@ -30,9 +30,11 @@ for Adreno. The graph below shows the Adreno A5x architecture.
 
 *Fig. 1 High-level overview of the Adreno A5x architecture for OpenCL*
 
+*source:* `OpenCL Optimization and Best Practices for Qualcomm Adreno GPUs <https://dl.acm.org/doi/10.1145/3204919.3204935>`_
+
 Reasons of using textures:
 
--  TP has a dedicated L1 cache, which is read-only cache and stores data
+-  Texture processor (TP) has a dedicated L1 cache, which is read-only cache and stores data
    fetched from level-2 (L2) cache for texture operations (primary
    reason)
 
@@ -66,17 +68,12 @@ Server <https://github.com/apache/tvm/tree/main/apps/cpp_rpc>`_.
 Alternatively, to build a TVM via docker using OpenCL-Headers and set-up
 with Android TVM RPC, refer to this guide: `Deploy the Pretrained Model on Android <https://tvm.apache.org/docs/how_to/deploy_models/deploy_model_on_android.html>`_.
 
-**Prerequisites**: Android NDK, Android Debug Bridge (adb), OpenCL-SDK
+**Prerequisites**: Android NDK, Android Debug Bridge and OpenCL-SDK must
+be installed and Android part of TVM must be built:
 
-For us to begin with, Android NDK, Android Debug Bridge and OpenCL-SDK must
-be installed and Android part of TVM must be builded.
-
-Read documentation about *Android NDK installation* here: https://developer.android.com/ndk
-
-To get access to adb tools you can see *Android Debug Bridge installation* here:
-https://developer.android.com/studio/command-line/adb
-
-For *OpenCL-SDK installation* please refer to official github repository: https://github.com/KhronosGroup/OpenCL-SDK.git
+- Read documentation about *Android NDK installation* here: https://developer.android.com/ndk
+- To get access to adb tools you can see *Android Debug Bridge installation* here: https://developer.android.com/studio/command-line/adb
+- For *OpenCL-SDK installation* please refer to official github repository: https://github.com/KhronosGroup/OpenCL-SDK.git
 
 You can also build the android part of TVM locally. From the root
 folder of TVM:
@@ -96,7 +93,7 @@ Build and deploy model for Adreno
 ---------------------------------
 
 In this section we will focus on target, needed to compile and deploy models for Adreno, demonstrate
-the generation of kernels with and without textures and, in addition, the
+the differences in generated kernels with and without textures and, in addition, the
 possibility of choosing a different precision for model compilation will
 be considered.
 
@@ -107,6 +104,10 @@ model, getting the predictions, and measuring the performance please refer to th
 |Android deployment pipeline|
 
 *Fig.2 Deployment pipeline on Adreno devices*
+
+The figure above demonstrates a generalized pipeline for deploying and running neural network models on android devices.
+As can be seen from the figure, the compiled model has a set_input() and a run() methods,
+which *prepare the inputs* for inference and *execute the inference* on the remote device using the Graph Executor runtime module.
 
 Adreno target
 ~~~~~~~~~~~~~
@@ -183,6 +184,9 @@ The kernels generated this way is actually working with 2d arrays, leveraging te
 
    __kernel void tvmgen_default_fused_nn_conv2d_kernel0(__write_only image2d_t pad_temp_global_texture, __read_only image2d_t p0) {
    // body..
+
+*image2d_t* is a built-in OpenCL types that represents two-dimensional image object and provides several additional functions.
+When we use *image2d_t* we read *4 elements at one time*, and it helps to utilize hardware in a more efficient way.
 
 Precisions
 ~~~~~~~~~~

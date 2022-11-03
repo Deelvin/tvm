@@ -27,7 +27,7 @@ Let's push them to the device and run TVM RPC Server.
 
 #################################################################
 # TVM RPC Server    
-# -----------------
+# --------------
 # To get the hash of the device use:
 #
 # .. code-block:: bash
