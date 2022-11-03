@@ -63,7 +63,7 @@ class TestArgMaxSlice:
     def transformed_expected_output_np(self, expected_output_np, output_layout):
         return transform_numpy(expected_output_np, "nhw", output_layout)
 
-    @tvm.testing.requires_hexagon
+    @tvm.testing.requires_hexagon # ICE
     def test_argmax_slice(
         self,
         input_shape,

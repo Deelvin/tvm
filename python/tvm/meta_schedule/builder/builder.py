@@ -126,6 +126,7 @@ class Builder(Object):
         build_results : List[BuilderResult]
             The results of building the given inputs.
         """
+        print("Builder::build", flush=True)
         return _ffi_api.BuilderBuild(self, build_inputs)  # type: ignore # pylint: disable=no-member
 
     @staticmethod

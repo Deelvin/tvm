@@ -260,7 +260,7 @@ print(tvm.lower(s, [data, weight, res], simple_mode=True))
 # Finally we annotate the load/store loop outer axes with the DMA copy pragma
 # to perform bulk memory transfers on VTA.
 
-# Set scope of SRAM buffers
+# Set scope of SRAM buffers # ICE
 s[data_buf].set_scope(env.inp_scope)
 s[weight_buf].set_scope(env.wgt_scope)
 s[res_gemm].set_scope(env.acc_scope)

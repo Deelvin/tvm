@@ -444,6 +444,7 @@ class TECompilerImpl : public TECompilerNode {
       }
       auto func_name = value->cached_func->prim_fn_var->name_hint;
       VLOG(1) << "scheduling";
+      std::cout << "LowerSchedule backend" << std::endl << std::flush;
       IRModule scheduled_module = tvm::LowerSchedule(value->cached_func->schedule, all_args,
                                                      func_name, binds, global_var_supply);
       scheduled_module->Update(tir::transform::BindParams(all_consts)(scheduled_module));

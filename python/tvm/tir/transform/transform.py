@@ -610,6 +610,16 @@ def VerifyMemory():
     """
     return _ffi_api.VerifyMemory()  # type: ignore
 
+# tir.transform.VerifyVTCMLimit
+def VerifyVTCMLimit(limit: int):
+    """Verify if func contains illegal host side direct memory access.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.VerifyVTCMLimit(limit)  # type: ignore
 
 # pylint: disable=no-else-return,inconsistent-return-statements
 def HoistIfThenElse(variant: Optional[str] = None):

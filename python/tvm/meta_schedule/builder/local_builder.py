@@ -148,6 +148,7 @@ class LocalBuilder(PyBuilder):
         self._sanity_check()
 
     def build(self, build_inputs: List[BuilderInput]) -> List[BuilderResult]:
+        print("LocalBuilder::build", flush=True)
         results: List[BuilderResult] = []
         map_result: MapResult
 
@@ -184,6 +185,7 @@ class LocalBuilder(PyBuilder):
                     )
                 )
             elif map_result.status == StatusKind.EXCEPTION:
+                print("EXCEPTION", map_result.value, flush=True)
                 results.append(
                     BuilderResult(
                         None,

@@ -496,5 +496,346 @@ def test_dense_relay_auto_schedule(hexagon_launcher):
         assert np.mean(np.abs(ref - out)) < 0.1
 
 
+
+
+# docker run -d --privileged -v /dev/bus/usb:/dev/bus/usb --name ic_ice tvm.ci_hexagon
+
+
+# docker run --rm -ti --net container:ic_ice sorccu/adb adb devices
+# docker run --rm -i --net container:ic_ice ubuntu nc localhost 5037 <<<000chost:devices
+
+# def memcopy_operator(size):
+#     @T.prim_func
+#     def operator(a: T.handle, a_v: T.handle) -> None:
+#         A = T.match_buffer(a, size, dtype="int8", align=128, scope="global")
+#         A_global_vtcm = T.match_buffer(a_v, size, dtype="int8", align=128, scope="global.vtcm")
+#         for ax0 in T.serial(size):
+#             with T.block("A_global.vtcm"):
+#                 v0 = T.axis.spatial(size, ax0)
+#                 T.reads(A[v0])
+#                 T.writes(A_global_vtcm[v0])
+#                 A_global_vtcm[v0] = A[v0]
+
+#     return operator
+
+
+def apply_vrmpy_parallelization(sch):
+    block = sch.get_block("C")
+    b = sch.get_loops(block)
+    bo, _ = sch.split(b[0], factors=[4, None])
+    sch.parallel(bo)
+    return sch
+
+
+def apply_vtcm_cache_read_write(sch):
+    block = sch.get_block("compute")
+    sch.cache_read(block, 0, "global.vtcm")
+    sch.cache_read(block, 1, "global.vtcm")
+    # sch.cache_read(block, 3, "global.vtcm")
+    sch.cache_write(block, 0, "global.vtcm")
+    # sch.cache_write(block, 1, "global.vtcm")
+
+    # block = sch.get_block("update")
+    # sch.cache_read(block, 0, "global.vtcm")
+    # sch.cache_read(block, 1, "global.vtcm")
+    # # sch.cache_read(block, 3, "global.vtcm")
+    # sch.cache_write(block, 0, "global.vtcm")
+    return sch
+
+
+from tvm.tir import PrimFunc, Schedule
+# from . import default_config
+from tvm.meta_schedule import default_config
+
+
+# def main(a: T.handle, b: T.handle) -> None:
+# T.func_attr({"global_symbol": "main", "tir.noalias": True})
+# A = T.match_buffer(a, (128, 128, 4), dtype="float32", scope="global.texture")
+# B = T.alloc_buffer((128, 128, 4), dtype="float32", scope="global.texture")
+# C = T.match_buffer(b, (128, 128, 4), dtype="float32", scope="global.texture")
+
+@T.prim_func
+def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
+    A = T.match_buffer(a, [128, 128], scope="global")
+    A_V = T.alloc_buffer([128, 128], dtype="float32", scope="global.vtcm")
+    B = T.match_buffer(b, [128, 128], scope="global")
+    B_V = T.alloc_buffer([128, 128], dtype="float32", scope="global.vtcm")
+    C = T.match_buffer(c, [128, 128], scope="global")
+    C_V = T.alloc_buffer([128, 128], dtype="float32", scope="global.vtcm")
+    
+    for i, j in T.grid(128, 128):
+        with T.block("A_V.vtcm"):
+            A_V[i, j] = A[i, j]
+    for i, j in T.grid(128, 128):
+        with T.block("B_V.vtcm"):
+            B_V[i, j] = B[i, j]
+
+    for i, j, k in T.grid(128, 128, 128):
+        with T.block("update"):
+            vi, vj, vk = T.axis.remap("SSR", [i, j, k])
+            with T.init():
+                C_V[vi, vj] = 0.0
+            C_V[vi, vj] = C_V[vi, vj] + A_V[vi, vk] * B_V[vj, vk]
+    
+    for i, j in T.grid(128, 128):
+        with T.block("C_V.vtcm"):
+            C[i, j] = C_V[i, j]
+
+
+
+
+
+
+
+
+
+
+
+# @tvm.testing.requires_hexagon
+# def test_vrmpy_srgan(hexagon_launcher):
+#     target_hexagon = tvm.target.hexagon("v68", vtcm_capacity=128,)
+#     target = tvm.target.Target(target_hexagon, host=target_hexagon)
+#     model_path = "/git/srgan_obfuscated.onnx"
+#     onnx_model = onnx.load(model_path)
+#     input_name = "input"
+#     shape_dict = {input_name: (1, 128,128, 3)}
+#     mod, params = relay.frontend.from_onnx(onnx_model, shape_dict)
+#     workload = mod
+
+#     with tempfile.TemporaryDirectory() as work_dir:
+#         config = ms.TuneConfig(
+#             strategy="replay_trace",
+#             num_trials_per_iter=8,
+#             max_trials_per_task=8,
+#             max_trials_global=100500,
+            
+#         )
+#         sch = ms.tune_relay(
+#             mod=workload,
+#             target=target,
+#             config=config,
+#             work_dir=work_dir,
+#             database=ms.database.JSONDatabase("/git/tvm/my_r.json", "/git/tvm/my_w.json"),
+#             builder=get_hexagon_local_builder(),
+#             runner=get_hexagon_rpc_runner(hexagon_launcher, number=10),
+#         )
+
+import tvm
+import tvm.relay as relay
+import onnx
+from tvm import relay, auto_scheduler
+
+@tvm.testing.requires_hexagon
+def test_vrmpy_srgan(hexagon_launcher):
+    print("test_vrmpy_srgan")
+    target_hexagon = tvm.target.hexagon("v68", vtcm_capacity=0,)
+    # target_hexagon = tvm.target.hexagon("v68", vtcm_capacity=128,)
+    target = tvm.target.Target(target_hexagon, host=target_hexagon)
+
+    # model_path = download_testdata(model_url, "resnet50-v2-7.onnx", module="onnx")
+    model_path = "/git/srgan_obfuscated.onnx"
+    onnx_model = onnx.load(model_path)
+    input_name = "input"
+    shape_dict = {input_name: (1, 128,128, 3)}
+    mod, params = relay.frontend.from_onnx(onnx_model, shape_dict)
+    # target_hexagon = tvm.target.hexagon("v68")
+    # target = tvm.target.Target(target_hexagon, host=target_hexagon)
+    # mod = hexagon_launcher.load_module(mod)
+    workload = mod
+
+    with tempfile.TemporaryDirectory() as work_dir:
+        config = ms.TuneConfig(
+            strategy="replay_trace",
+            num_trials_per_iter=8,
+            max_trials_per_task=8,
+            max_trials_global=100500,
+            
+        )
+        sch = ms.tune_relay(
+        # sch, database = ms.tune_relay(
+        # sch, database = ms.tune_tir(
+            mod=workload,
+            target=target,
+            config=config,
+            work_dir=work_dir,
+            database=ms.database.JSONDatabase("/git/tvm/my_r.json", "/git/tvm/my_w.json"),
+            # space=ms.space_generator.ScheduleFn(schedule_dense_for_tune),
+            builder=get_hexagon_local_builder(),
+            runner=get_hexagon_rpc_runner(hexagon_launcher, number=10),
+        )
+        # mod = workload
+        # mod = default_config.mod(mod)
+        # assert database.has_workload(mod)
+        # bests = database.get_top_k(database.commit_workload(mod), top_k=8)
+        # sch = Schedule(mod)
+        # for i in range(len(bests)):
+        #     bests[i].trace.apply_to_schedule(sch, remove_postproc=False)
+        #     # print(bests[i].trace.as_python()) 
+        #     # print(sch.mod["main"].script())
+        print(type(sch))   
+        print(dir(sch))   
+        # rt_mod = session.get_executor_from_factory(lib)
+        # dev = tvm.cuda()
+        # tvm.contrib.graph_executor.GraphModule(lib["default"](dev))
+        # print(sch["main"].script())   
+        # print(sch.mod["main"].script())   
+        # print(type(sch.mod["main"]))   
+        # d = tvm.tir.analysis.calculate_allocated_bytes(sch.mod["main"])
+        # print("calculate_allocated_bytes", d)
+    print("end test_vrmpy_srgan")
+
+@tvm.testing.requires_hexagon
+def test_vrmpy_dense_sram_limited(hexagon_launcher):
+    # if hexagon_launcher._serial_number == "simulator":
+    #     pytest.skip(msg="Tuning on simulator not supported.")
+
+    do_tune = True
+    target_hexagon = tvm.target.hexagon("v68", vtcm_capacity=128,)
+    target = tvm.target.Target(target_hexagon, host=target_hexagon)
+    # target_hexagon = tvm.target.hexagon("v68", vtcm_capacity=128,link_params=True)
+
+    M, N, K = 128, 768, 768
+    # matmul
+    # workload = te.create_prim_func(dense(M, N, K))
+    workload = matmul
+    with tvm.transform.PassContext(config={"tir.vtcm_capacity": 128}):
+
+        if not do_tune:
+            ir_module = tvm.IRModule({"main": workload})
+            sch = tvm.tir.Schedule(ir_module)
+            # block = sch.get_block("compute")
+            # schedule_dense(sch, block, M, do_tune)
+        else:
+            with tempfile.TemporaryDirectory() as work_dir:
+                config = ms.TuneConfig(
+                    strategy="replay_trace",
+                    num_trials_per_iter=8,
+                    max_trials_per_task=8,
+                    max_trials_global=8,
+                    
+                )
+
+                def schedule_dense_for_tune(sch):
+                        block = sch.get_block("update")
+                        sch.cache_read(block, 0, "global.vtcm")
+                        sch.cache_read(block, 1, "global.vtcm")
+                        # sch.cache_read(block, 3, "global.vtcm")
+                        sch.cache_write(block, 0, "global.vtcm")
+                    # return schedule_dense(sch, block, None, True)
+
+                sch, database = ms.tune_tir(
+                    mod=workload,
+                    target=target,
+                    config=config,
+                    work_dir=work_dir,
+                    database=ms.database.JSONDatabase("/git/tvm/my_r.json", "/git/tvm/my_w.json"),
+                    space=ms.space_generator.ScheduleFn(schedule_dense_for_tune),
+                    builder=get_hexagon_local_builder(),
+                    runner=get_hexagon_rpc_runner(hexagon_launcher, number=10),
+                )
+                # mod = workload
+                # mod = default_config.mod(mod)
+                # assert database.has_workload(mod)
+                # bests = database.get_top_k(database.commit_workload(mod), top_k=8)
+                # sch = Schedule(mod)
+                # for i in range(len(bests)):
+                #     bests[i].trace.apply_to_schedule(sch, remove_postproc=False)
+                #     # print(bests[i].trace.as_python()) 
+                #     # print(sch.mod["main"].script())
+                print(sch.mod["main"].script())   
+                print(type(sch.mod["main"]))   
+                d = tvm.tir.analysis.calculate_allocated_bytes(sch.mod["main"])
+                print("calculate_allocated_bytes", d)
+
+    # with hexagon_launcher.start_session() as session:
+    #     verify_dense(sch, target, M, N, K, session)
+
+"""
+
+class Database(Object):
+   def get_top_k(self, workload: Workload, top_k: int) -> List[TuningRecord]:
+   def get_all_tuning_records(self) -> List[TuningRecord]:
+   
+assert database.has_workload(mod)
+bests = database.get_top_k(database.commit_workload(mod), top_k=1)
+
+sch = Schedule(mod)
+bests[0].trace.apply_to_schedule(sch, remove_postproc=False)
+
+print(bests[0].trace.as_python()) 
+print(sch.mod["main"].script())
+
+return sch
+
+database=ms.database.JSONDatabase("my_r.json", "my_w.json"),
+
+"""
+import tvm
+from tvm import meta_schedule as ms
+from tvm.ir import IRModule
+from tvm.meta_schedule.testing.conv2d_winograd_cpu import conv2d_winograd_cpu
+from tvm.target import Target
+from tvm.tir.schedule import Schedule, Trace
+from tvm.meta_schedule.testing import te_workload
+
+def test_ice_hexagon():
+    target_hexagon = tvm.target.hexagon("v69", num_cores=4)
+    mod = te.create_prim_func(te_workload.matmul(n=4, m=4, k=512))
+    # mod = te.create_prim_func(te_workload.matmul(n=2, m=2, k=2))
+    for i in range(20):
+        actual = ms.TuneContext(
+            mod=mod,
+            target=Target(target_hexagon, host=target_hexagon),
+            space_generator=ms.space_generator.PostOrderApply(),
+            rand_state=i,
+            sch_rules=[
+                ms.schedule_rule.MultiLevelTilingWideVector(
+                    structure="SRSRS",
+                    # structure="SSRSRS",
+                    vector_length_in_bits=256,
+                    # vector_length_in_bits=1024,
+                    # max_innermost_factor=256,
+                    # max_innermost_factor=64,
+                    # reuse_read=None,
+                    # reuse_write=None,
+                    reuse_read=ms.schedule_rule.ReuseType(
+                        req="must",
+                        # levels=[4],
+                        levels=[1,2,3,4],
+                        scope="global.vtcm",
+                    ),
+                    reuse_write=ms.schedule_rule.ReuseType(
+                        req="may",
+                        # req="must",
+                        levels=[4],
+                        scope="global.vtcm",
+                    ),
+                )
+                # ,
+                # ms.schedule_rule.AutoInline(
+                #     into_producer=False,
+                #     into_consumer=True,
+                #     inline_const_tensor=True,
+                #     disallow_if_then_else=True,
+                #     require_injective=True,
+                #     require_ordered=True,
+                #     disallow_op=["tir.exp"],
+                # ),
+                # ms.schedule_rule.ParallelizeVectorizeUnroll(
+                #     max_jobs_per_core=16,
+                #     max_vectorize_extent=128,
+                #     unroll_max_steps=[0, 16, 64, 512],
+                #     unroll_explicit=True,
+                # ),
+            ],
+            task_name="test",
+        ).generate_design_space()
+
+
+        with open("{}.txt".format(i), "w") as f:
+            f.write(str(actual[0].mod))
+            # print(actual[0].mod)
+
+
 if __name__ == "__main__":
     tvm.testing.main()

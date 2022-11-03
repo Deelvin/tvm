@@ -200,6 +200,36 @@ def calculate_constant_bytes(func: PrimFunc, constant_byte_alignment: int) -> in
     """
     return _ffi_api.calculate_constant_bytes(func, constant_byte_alignment)  # type: ignore
 
+def calculate_inout_tensors_bytes(func: PrimFunc) -> int:
+    """Calculate the input and output tensors size in bytes inside the TIR PrimFunc.
+
+    Parameters
+    ----------
+    func: tvm.tir.PrimFunc
+        The function to be detected.
+
+    Returns
+    -------
+    result : int
+        Tensors size in bytes.
+    """
+    return _ffi_api.calculate_inout_tensors_bytes(func)  # type: ignore
+
+def calculate_allocated_bytes(func: PrimFunc) -> Dict[str, int]:
+    """Calculate allocated memory per memory scope required by TIR PrimFuncs.
+
+    Parameters
+    ----------
+    func: tvm.tir.PrimFunc
+        The function to be detected.
+
+    Returns
+    -------
+    result : Dict[String, int]
+        Allocated memory size per scope in bytes.
+    """
+    return _ffi_api.calculate_allocated_bytes(func)  # type: ignore
+
 
 def detect_buffer_access_lca(func: PrimFunc) -> Dict[Buffer, Stmt]:
     """Detect the lowest common ancestor(LCA) of buffer access, including both high-level

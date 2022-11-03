@@ -181,6 +181,16 @@ TVM_DLL bool VerifyGPUCode(const PrimFunc& func, Map<String, PrimExpr> constrain
  *           - second: write regions
  *           - third: opaque regions
  */
+
+size_t CalculateIntOutTensorsBytes(const PrimFunc& func);
+
+std::map<std::string, size_t> CalculateAllocatedBytes(const PrimFunc& func);
+
+
+size_t CalculateIntOutTensorsBytes(const PrimFunc& func);
+
+std::map<std::string, size_t> CalculateAllocatedBytes(const PrimFunc& func);
+
 TVM_DLL Array<Array<BufferRegion>> GetBlockAccessRegion(const Block& block,
                                                         const Map<Var, Buffer>& buffer_var_map);
 
@@ -199,7 +209,14 @@ TVM_DLL Array<Array<BufferRegion>> GetBlockReadWriteRegion(const Block& block,
  * \brief Calculate the expresion complexity based on number of symbols it contains.
  * \param expr The expr to be calculated.
  */
-TVM_DLL size_t CalculateExprComplexity(const PrimExpr& expr);
+TVM_DLL size_t CalculateExprComplexity(const PrimExpr& expr); // ICE
+
+/*!
+ * \brief Calculate the constants size in bytes needed by the TIR allocates inside the TIR PrimFunc
+ * \param func The TIR PrimFunc for which the constants size to be calculated
+ * \param constant_byte_alignment The byte alignment required for each constant allocated
+ */
+TVM_DLL size_t CalculateConstantBytes(const PrimFunc& func, const Integer& constant_byte_alignment);
 
 /*!
  * \brief Calculate the constants size in bytes needed by the TIR allocates inside the TIR PrimFunc
@@ -293,6 +310,16 @@ TVM_DLL Pass VerifyMemory();
  * \sa tvm::tir::VerifyGPUCode
  */
 TVM_DLL Pass VerifyGPUCode(Map<String, PrimExpr> constraints);
+
+
+TVM_DLL Pass VerifySRAMLimit(size_t size_limit);
+
+TVM_DLL Pass VerifyVTCMLimit(size_t limit);
+
+
+TVM_DLL Pass VerifySRAMLimit(size_t size_limit);
+
+TVM_DLL Pass VerifyVTCMLimit(size_t limit);
 
 /*!
  * \brief Statically check TIR code for out of bounds array access.

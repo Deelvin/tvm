@@ -90,6 +90,7 @@ Array<Postproc> Postproc::DefaultHexagon() {
       Postproc::RewriteParallelVectorizeUnroll(),
       Postproc::RewriteReductionBlock(),
       Postproc::RewriteLayout(),
+      Postproc::VerifyVTCMLimit(),
   };
 }
 

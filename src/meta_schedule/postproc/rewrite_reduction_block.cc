@@ -126,6 +126,7 @@ class RewriteReductionBlockNode : public PostprocNode {
 };
 
 bool RewriteReductionBlockNode::Apply(const tir::Schedule& sch) {
+  std::cout << "RewriteReductionBlockNode::Apply" << std::endl << std::flush;
   for (;;) {
     std::vector<std::pair<tir::StmtSRef, String>> results =
         tir::ReductionBlockFinder::Find(sch->state());

@@ -111,7 +111,7 @@ Integer Extract(const Target& target, const char* name) {
 }
 
 /*! \brief Verify the correctness of the generated GPU code. */
-class VerifyGPUCodeNode : public PostprocNode {
+class VerifyGPUCodeNode : public PostprocNode { // ICE
  public:
   Map<String, PrimExpr> target_constraints_{nullptr};
   int thread_warp_size_ = -1;
@@ -184,7 +184,7 @@ class VerifyGPUCodeNode : public PostprocNode {
             f = WithAttr(std::move(f), "tir.noalias", Bool(true));
           }
           IRModule mod = IRModule(Map<GlobalVar, BaseFunc>({{GlobalVar(g_var->name_hint), f}}));
-          lowered = tvm::transform::Sequential(pass_list)(std::move(mod));
+          lowered = tvm::transform::Sequential(pass_list)(std::move(mod)); // ICE CHECK 
         } catch (const dmlc::Error& e) {
           return false;
         }

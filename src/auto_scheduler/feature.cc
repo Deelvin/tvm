@@ -1355,10 +1355,22 @@ void GetPerStoreFeatureName(int max_n_bufs, std::vector<std::string>* ret) {
   // section total : 3
 }
 
+
+/*! \brief Extract attribute from a target. */ 
+Integer Extract__(const Target& target, const char* name) { // ICE TODO REUSE
+  ICHECK(target.defined());
+  if (Optional<Integer> v = target->GetAttr<Integer>(name)) {
+    return v.value();
+  }
+  LOG(FATAL) << "AttributedError: \"" << name << "\" is not defined in the target";
+  throw;
+}
+
+
 void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, int max_n_bufs,
                                    std::vector<float>* feature, std::atomic<int>* error_ct) {
   auto [sch, tensors] = task->compute_dag.ApplySteps(state->transform_steps);
-
+  std::cout << "ICE GetPerStoreFeaturesWorkerFunc" << std::endl << std::flush;
   // When inlining, replace const matrices with const values.
   // Produces wrong IR, but good enough for feature extraction, and
   // can improve the speed of feature extraction/search.  Must be
@@ -1397,7 +1409,16 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
           {"max_vector_bytes", task->hardware_params->vector_unit_bytes},
           {"max_vthread", task->hardware_params->max_vthread_extent},
       };
-      pass_list.push_back(tir::transform::VerifyGPUCode(gpu_params));
+      pass_list.push_back(tir::transform::VerifyGPUCode(gpu_params)); // ICE
+      const auto& optimize = tir::transform::Sequential(pass_list);
+      optimize(mod);
+    }
+    if (IsHexaTask(task)) {
+      std::cout << "ICE auto_scheduler IsHexaTask VerifySRAMLimit "<< std::endl << std::flush;
+      auto pass_list = Array<tvm::transform::Pass>();
+      Target target = task->target;
+      const auto vtcm_capacity = Extract__(target, "vtcm_capacity").IntValue();
+      pass_list.push_back(tir::transform::VerifySRAMLimit(vtcm_capacity)); // ICE
       const auto& optimize = tir::transform::Sequential(pass_list);
       optimize(mod);
     }
@@ -1407,13 +1428,18 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
     PrimFunc prim_func = Downcast<PrimFunc>(mod->Lookup(name));
     GetPerStoreFeature(prim_func, task->hardware_params->cache_line_bytes, max_n_bufs, feature);
   } catch (Error& e) {
+    // std::cout << "ICE ERROR:" << e.what() << std::endl;
     (*error_ct)++;
+    std::cout << "ICE ERROR:" << (*error_ct) << std::endl << std::flush;
+    // std::cout << "ICE ERROR:" << (*error_ct) << " max_error:" << node->max_continuous_error << std::flush << std::endl;
+    
   }
 }
 
 void GetPerStoreFeaturesFromStates(const Array<State>& states, const SearchTask& task,
                                    int skip_first_n_feature_extraction, int max_n_bufs,
                                    std::vector<std::vector<float>>* features) {
+                                    std::cout << "ICE GetPerStoreFeaturesFromStates" << std::flush << std::endl;
   // extract features
   features->assign(states.size(), std::vector<float>());
 
@@ -1424,11 +1450,17 @@ void GetPerStoreFeaturesFromStates(const Array<State>& states, const SearchTask&
                           GetPerStoreFeaturesWorkerFunc(task, states[i], max_n_bufs,
                                                         &(*features)[i], &error_ct);
                         });
+    if (error_ct > 0) {
+    std::cout << "ICE Encountered " << error_ct << std::endl << std::flush;
+    std::cerr << "ICE Encountered " << error_ct
+              << " errors during feature extraction. which are safely ignored." << std::endl;
+  }
 }
 
 void GetPerStoreFeaturesFromStates(const Array<State>& states, const std::vector<SearchTask>& tasks,
                                    int skip_first_n_feature_extraction, int max_n_bufs,
                                    std::vector<std::vector<float>>* features) {
+                                    std::cout << "ICE GetPerStoreFeaturesFromStates" << std::flush << std::endl;
   // extract features
   features->assign(states.size(), std::vector<float>());
 
@@ -1439,6 +1471,11 @@ void GetPerStoreFeaturesFromStates(const Array<State>& states, const std::vector
                           GetPerStoreFeaturesWorkerFunc(tasks[i], states[i], max_n_bufs,
                                                         &(*features)[i], &error_ct);
                         });
+  if (error_ct > 0) {
+    std::cout << "ICE Encountered " << error_ct << std::endl << std::flush;
+    std::cerr << "ICE Encountered  " << error_ct
+              << " errors during feature extraction. which are safely ignored." << std::endl;
+  }
 }
 
 void GetPerStoreFeaturesFromFile(const std::string& filename, int max_lines, int max_n_bufs,
@@ -1504,7 +1541,7 @@ void GetPerStoreFeaturesFromFile(const std::string& filename, int max_lines, int
   for (size_t i = 0; i < normalized_throughputs->size(); ++i) {
     (*normalized_throughputs)[i] = min_costs[(*task_ids)[i]] / (*normalized_throughputs)[i];
   }
-
+  std::cout << "ICE GetPerStoreFeaturesFromFile" << std::flush << std::endl;
   GetPerStoreFeaturesFromStates(states, tasks, 0, max_n_bufs, features);
 }
 
@@ -1579,7 +1616,7 @@ void GetPerStoreFeaturesFromMeasurePairs(const Array<MeasureInput>& inputs,
   for (size_t i = 0; i < normalized_throughputs->size(); ++i) {
     (*normalized_throughputs)[i] = min_costs[(*task_ids)[i]] / (*normalized_throughputs)[i];
   }
-
+  std::cout << "ICE GetPerStoreFeaturesFromMeasurePairs" << std::flush << std::endl;
   GetPerStoreFeaturesFromStates(states, tasks, skip_first_n_feature_extraction, max_n_bufs,
                                 features);
 }
@@ -1672,10 +1709,10 @@ TVM_REGISTER_GLOBAL("auto_scheduler.GetPerStoreFeaturesFromFile")
       std::vector<std::vector<float>> features;
       std::vector<float> normalized_throughputs;
       std::vector<int> task_ids;
-
+      std::cout << "ICE auto_scheduler.GetPerStoreFeaturesFromFile" <<std::flush <<  std::endl;
       GetPerStoreFeaturesFromFile(filename, max_lines, max_n_bufs, &features,
                                   &normalized_throughputs, &task_ids);
-
+      
       std::vector<char> byte_data;
       *ret = SerializeFeatures(std::move(features), std::move(normalized_throughputs),
                                std::move(task_ids), &byte_data);
@@ -1691,7 +1728,7 @@ TVM_REGISTER_GLOBAL("auto_scheduler.GetPerStoreFeaturesFromMeasurePairs")
       std::vector<std::vector<float>> features;
       std::vector<float> normalized_throughputs;
       std::vector<int> task_ids;
-
+      std::cout << "ICE auto_scheduler.GetPerStoreFeaturesFromMeasurePairs" << std::flush << std::endl;
       GetPerStoreFeaturesFromMeasurePairs(inputs, results, skip_first_n_feature_extraction,
                                           max_n_bufs, &features, &normalized_throughputs,
                                           &task_ids);
@@ -1710,7 +1747,7 @@ TVM_REGISTER_GLOBAL("auto_scheduler.GetPerStoreFeaturesFromStates")
       std::vector<std::vector<float>> features;
       std::vector<float> normalized_throughputs;
       std::vector<int> task_ids;
-
+      std::cout << "ICE auto_scheduler.GetPerStoreFeaturesFromStates" << std::flush << std::endl;
       GetPerStoreFeaturesFromStates(states, task, 0, max_n_bufs, &features);
 
       std::vector<char> byte_data;
