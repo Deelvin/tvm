@@ -22,7 +22,7 @@ for Adreno devices.
 Advantages of the Textures
 --------------------------
 
-One of the Adreno's advantages is clever handling of textures. At
+One of the Adreno's advantages is the clever handling of textures. At
 the moment, TVM is able to benefit from this by having texture support
 for Adreno. The graph below shows the Adreno A5x architecture.
 
@@ -38,18 +38,10 @@ Reasons of using textures:
    fetched from level-2 (L2) cache for texture operations (primary
    reason)
 
--  Handling of image boundaries is built-in.
+-  The handling of image boundaries is built-in.
 
 -  Supports numerous image format and data type combinations with
    support for automatic format conversions
-
-In addition, Adreno GPUs support up to 32 total textures in a
-single render pass, i.e., up to 16 textures in the fragment shader and
-up to 16 textures at a time for the vertex shader.
-This simultaneous use of more than one texture on a polygon is called *Multiple texturing* or *multitexturing*.
-
-Effective use of multiple textures significantly reduces overdraw, saves
-ALU cost for fragment shaders, and avoids unnecessary vertex transforms.
 
 Overall, with textures, it is possible to achieve a significant performance boost
 compared to OpenCL buffer based solutions.
@@ -87,7 +79,7 @@ folder of TVM:
 
 where **N** is the number of cores available on your *CPU*.
 
-At this stage you have builded TVM for Adreno.
+At this stage you have built TVM for Adreno.
 
 Build and deploy model for Adreno
 ---------------------------------
@@ -112,7 +104,7 @@ which *prepare the inputs* for inference and *execute the inference* on the remo
 Adreno target
 ~~~~~~~~~~~~~
 
-Normally, when compiling models on Android using OpenCL, the
+Normally, when compiling models for Android using OpenCL, the
 corresponding target is used
 
 .. code:: python
@@ -126,7 +118,7 @@ use the following target to generate texture leveraging kernels
 
    target="opencl -device=adreno"
 
-Let's write simple model with one convolutional (conv2d) layer and take a look at generated kernels for these
+Let's write a simple model with one convolutional (conv2d) layer and take a look at generated kernels for these
 two targets
 
 .. code:: python
@@ -190,15 +182,15 @@ When we use *image2d_t* we read *4 elements at one time*, and it helps to utiliz
 
 Precisions
 ~~~~~~~~~~
-The right choice of precision for a specific task can greatly increase the efficiency of the solution,
+The right choice of precision for a specific workload can greatly increase the efficiency of the solution,
 shifting the initial balance of precision and speed to the side that is a priority for the problem.
 
 We can choose from *float16*, *float16_acc32* (Mixed Precision), *float32* (standard).
 
 **Float16**
 
-To leverage the GPU hardware capabilities and utilize benefits of half precision computation and memory management,
-we can convert original model having floating points operation to model operating with half precision.
+To leverage the GPU hardware capabilities and utilize the benefits of half precision computation and memory management,
+we can convert an original model having floating points operation to a model operating with half precision.
 Choosing lower precision will positively affect the performance of the model, but it may also have a decrease in the accuracy of the model.
 To do the conversion you need to write a simple conversion function and specify the *dtype* value of "float16" before calling the function:
 
@@ -242,7 +234,7 @@ This list is defined in the ToMixedPrecision implementation here
 `relay/transform/mixed_precision.py <https://github.com/apache/tvm/blob/main/python/tvm/relay/transform/mixed_precision.py#L34>`_ 
 and can be overridden by user
 
-In some cases we want to have accumulation type in data type with bigger type of bits that input data type.
+In some cases, we want higher precision in accumulation than the input data.
 This is supported, for example, for conv2d and dense operations. To override accumulation type you need to register
 function with @register_mixed_precision_conversion decorator to modify parameters of ToMixedPrecision conversion
 
@@ -306,7 +298,7 @@ The "ToMixedPrecision" method is a pass to convert an FP32 relay graph into an F
 FP16 or FP32 accumulation dtypes). Doing this transformation is useful for reducing model size
 as it halves the expected size of the weights (FP16_acc16 case).
 
-From this point we can compile our model as normal
+From this point onwards, we can compile our model as normal
 
 .. code:: python
 
