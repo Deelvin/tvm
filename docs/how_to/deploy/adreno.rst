@@ -205,6 +205,7 @@ To do the conversion you need to write a simple conversion function and specify 
          seq = tvm.transform.Sequential(
             [
                   relay.transform.InferType(),
+                  relay.transform.ToMixedPrecision()
             ]
          )
          with  tvm.transform.PassContext(opt_level=3):
@@ -286,8 +287,10 @@ after which we can convert it to the required **dtype** and then assemble our mo
                    relay.transform.ToMixedPrecision()
                ]
            )
-           with  tvm.transform.PassContext(opt_level=3):
-               mod = seq(mod)
+           with tvm.transform.PassContext(
+                config={"relay.ToMixedPrecision.keep_orig_output_dtype": True},
+                opt_level=3):
+            mod = seq(mod)
        return  mod
 
    dtype="float16_acc32"
