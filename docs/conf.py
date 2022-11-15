@@ -89,6 +89,7 @@ release = version
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "sphinx.ext.autosectionlabel",
     "sphinx.ext.intersphinx",
     "sphinx.ext.napoleon",
     "sphinx.ext.mathjax",
@@ -318,6 +319,7 @@ within_subsection_order = {
         "micro_ethosu.py",
         "micro_tvmc.py",
         "micro_aot.py",
+        "micro_pytorch.py",
     ],
 }
 
