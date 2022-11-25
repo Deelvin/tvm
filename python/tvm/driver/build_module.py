@@ -97,6 +97,7 @@ def lower(
     name: str = "main",
     binds: Optional[Mapping[tensor.Tensor, Buffer]] = None,
     simple_mode: bool = False,
+    target: Optional[Union[str, Target]] = None,
 ) -> IRModule:
     """Lowering step before build into target.
 
@@ -121,17 +122,23 @@ def lower(
         Whether only output simple and compact statement, this will skip
         LoopPartition, api wrapper generation and Unrolling.
 
+    target : Optional[Union[str, Target]]
+        The target to provide additional characteristics. Defaults to not defined.
+
     Returns
     -------
     m : IRModule
        The result IRModule
     """
+    if target is not None:
+        if not isinstance(target, Target):
+            target = Target(target)
     if isinstance(inp, IRModule):
-        return ffi.lower_module(inp, simple_mode)
+        return ffi.lower_module(inp, simple_mode, target)
     if isinstance(inp, PrimFunc):
-        return ffi.lower_primfunc(inp, name, simple_mode)
+        return ffi.lower_primfunc(inp, name, simple_mode, target)
     if isinstance(inp, te.Schedule):
-        return ffi.lower_schedule(inp, args, name, binds, simple_mode)
+        return ffi.lower_schedule(inp, args, name, binds, simple_mode, target)
     raise ValueError(
         f"Expected input to be an IRModule, PrimFunc or te.Schedule, but got {type(inp)}"
     )
@@ -221,19 +228,22 @@ def build(
     ----
     See the note on :any:`tvm.target` on target string format.
     """
+    target = Target.current() if target is None else target
+    target = target if target else "llvm"
+
     if isinstance(inputs, te.Schedule):
         if args is None:
             raise ValueError("args must be given for build from schedule")
-        input_mod = lower(inputs, args, name=name, binds=binds)
+        input_mod = lower(inputs, args, name=name, binds=binds, target=target)
     elif isinstance(inputs, (list, tuple, container.Array)):
         merged_mod = tvm.IRModule({})
         for x in inputs:
-            merged_mod.update(lower(x))
+            merged_mod.update(lower(x, target=target))
         input_mod = merged_mod
     elif isinstance(inputs, PrimFunc):
-        input_mod = lower(inputs, name=name)
+        input_mod = lower(inputs, name=name, target=target)
     elif isinstance(inputs, tvm.IRModule):
-        input_mod = lower(inputs)
+        input_mod = lower(inputs, target=target)
     elif not isinstance(inputs, (dict, container.Map)):
         raise ValueError(
             f"Inputs must be te.Schedule, IRModule, PrimFunc, "
@@ -242,8 +252,6 @@ def build(
         )
 
     if not isinstance(inputs, (dict, container.Map)):
-        target = Target.current() if target is None else target
-        target = target if target else "llvm"
         target_input_mod = {target: input_mod}
     else:
         target_input_mod = inputs

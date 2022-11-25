@@ -54,6 +54,7 @@ TVM_REGISTER_PASS_CONFIG_OPTION("tir.use_async_copy", Bool);
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.merge_async_commit_queue_scope", Bool);
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.instrument_lwp", Bool);
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.dma_bypass_cache", Bool);
+TVM_REGISTER_PASS_CONFIG_OPTION("tir.vtcm_capacity", Integer);
 
 using tvm::Array;
 using tvm::transform::Pass;
@@ -139,7 +140,14 @@ TVM_REGISTER_GLOBAL("driver.get_binds")
       return out_arr;
     });
 
-Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
+int64_t GetVTCMCapacity(Target target, const transform::PassContext& pass_ctx) {
+  if (!target.defined()) target = Target::Current(/*allow_not_defined=*/true);
+  if (target.defined() && target->kind->name == "hexagon")
+    return Downcast<Integer>(target->attrs.at("vtcm-capacity"))->value;
+  return pass_ctx->GetConfig<Integer>("tir.vtcm_capacity", Integer(0)).value()->value;
+}
+
+Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition, const Target& target) {
   transform::PassContext pass_ctx = transform::PassContext::Current();
 
   bool disable_vectorize = pass_ctx->GetConfig<Bool>("tir.disable_vectorize", Bool(false)).value();
@@ -225,6 +233,8 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   if (!disable_storage_rewrite) {
     pass_list.push_back(tir::transform::StorageRewrite());
   }
+  // VerifyVTCMLimit must occur before LowerVtcmAlloc
+  pass_list.push_back(tir::transform::VerifyVTCMLimit(GetVTCMCapacity(target, pass_ctx)));
   // LowerVtcmAlloc must occur after any transformations that modify memory allocation locations
   pass_list.push_back(tir::transform::LowerVtcmAlloc());
   bool use_async_copy = pass_ctx->GetConfig<Bool>("tir.use_async_copy", Bool(false)).value();
@@ -326,16 +336,18 @@ TVM_REGISTER_GLOBAL("driver.schedule_to_module")
       return mod;
     });
 
-IRModule LowerModule(IRModule mod, bool simple_mode) {
-  Array<transform::Pass> pass_list = CreatePassList(simple_mode);
+IRModule LowerModule(IRModule mod, bool simple_mode, Target target) {
+  Array<transform::Pass> pass_list = CreatePassList(simple_mode, target);
   return LowerWithPassList(std::move(mod), pass_list);
 }
 
-TVM_REGISTER_GLOBAL("driver.lower_module").set_body_typed([](IRModule mod, bool simple_mode) {
-  return LowerModule(std::move(mod), simple_mode);
-});
+TVM_REGISTER_GLOBAL("driver.lower_module")
+    .set_body_typed([](IRModule mod, bool simple_mode, const Target& target) {
+      return LowerModule(std::move(mod), simple_mode, target);
+    });
 
-IRModule LowerPrimFunc(tir::PrimFunc func, const std::string& name, bool simple_mode) {
+IRModule LowerPrimFunc(tir::PrimFunc func, const std::string& name, bool simple_mode,
+                       Target target) {
   transform::PassContext pass_ctx = transform::PassContext::Current();
   tir::PrimFunc f = WithAttr(std::move(func), "global_symbol", runtime::String(name));
 
@@ -347,37 +359,40 @@ IRModule LowerPrimFunc(tir::PrimFunc func, const std::string& name, bool simple_
   IRModule mod = IRModule(Map<GlobalVar, BaseFunc>({{GlobalVar(name), f}}));
 
   // Get the pass list
-  Array<transform::Pass> pass_list = CreatePassList(simple_mode);
+  Array<transform::Pass> pass_list = CreatePassList(simple_mode, target);
   return LowerWithPassList(std::move(mod), pass_list);
 }
 
 TVM_REGISTER_GLOBAL("driver.lower_primfunc")
-    .set_body_typed([](te::PrimFunc func, const String& name, bool simple_mode) {
-      return LowerPrimFunc(std::move(func), name, simple_mode);
+    .set_body_typed([](te::PrimFunc func, const String& name, bool simple_mode,
+                       const Target& target) {
+      return LowerPrimFunc(std::move(func), name, simple_mode, target);
     });
 
 IRModule LowerSchedule(te::Schedule sch, const Array<te::Tensor>& args, const std::string& name,
                        const std::unordered_map<te::Tensor, tir::Buffer>& binds,
-                       GlobalVarSupply global_var_supply, bool simple_mode) {
+                       GlobalVarSupply global_var_supply, bool simple_mode, Target target) {
   Array<ObjectRef> ref_args;
   for (ObjectRef x : args) {
     ref_args.push_back(x);
   }
-  return LowerSchedule(std::move(sch), ref_args, name, binds, global_var_supply, simple_mode);
+  return LowerSchedule(std::move(sch), ref_args, name, binds, global_var_supply, simple_mode,
+                       target);
 }
 
 IRModule LowerSchedule(te::Schedule sch, const Array<ObjectRef>& args, const std::string& name,
                        const std::unordered_map<te::Tensor, tir::Buffer>& binds,
-                       GlobalVarSupply global_var_supply, bool simple_mode) {
+                       GlobalVarSupply global_var_supply, bool simple_mode, Target target) {
   IRModule mod = ScheduleToModule(std::move(sch), args, name, binds, global_var_supply);
   // Get the legacy TE pass list
-  Array<transform::Pass> pass_list = CreatePassList(simple_mode);
+  Array<transform::Pass> pass_list = CreatePassList(simple_mode, target);
   return LowerWithPassList(mod, pass_list);
 }
 
 TVM_REGISTER_GLOBAL("driver.lower_schedule")
     .set_body_typed([](te::Schedule sch, const Array<ObjectRef>& args, const String& name,
-                       const Map<te::Tensor, tir::Buffer>& binds, bool simple_mode) {
+                       const Map<te::Tensor, tir::Buffer>& binds, bool simple_mode,
+                       const Target& target) {
       std::unordered_map<te::Tensor, tir::Buffer> c_binds;
       // Check to make sure binds is not null before doing the conversion;
       if (binds.get() != nullptr) {
@@ -386,7 +401,7 @@ TVM_REGISTER_GLOBAL("driver.lower_schedule")
         }
       }
       return LowerSchedule(std::move(sch), args, name, c_binds, GlobalVarSupply(NameSupply("")),
-                           simple_mode);
+                           simple_mode, target);
     });
 
 /**

@@ -78,9 +78,10 @@ TVM_DLL transform::Sequential HostModulePassManager(IRModule mixed_mod, Target t
  * \brief Lower an IRModule (optimize with it with the pass list defined in CreatePassList)
  * \param mod The IRmodule to lower
  * \param simple_mode Disables the loop partition pass. Defaults to false.
+ * \param target The device target to provide additional characteristics. Defaults to not defined.
  * \return The result module.
  */
-TVM_DLL IRModule LowerModule(IRModule mod, bool simple_mode = false);
+TVM_DLL IRModule LowerModule(IRModule mod, bool simple_mode = false, Target target = {});
 
 /*!
  * \brief Lower a primfunc and name (convert to IRModule, and optimize it with the pass list
@@ -88,10 +89,11 @@ TVM_DLL IRModule LowerModule(IRModule mod, bool simple_mode = false);
  * \param func The PrimFunc to lower
  * \param name The name of the lowered function.
  * \param simple_mode Disables the loop partition pass. Defaults to false.
+ * \param target The device target to provide additional characteristics. Defaults to not defined.
  * \return The result module.
  */
 TVM_DLL IRModule LowerPrimFunc(tvm::tir::PrimFunc func, const std::string& name,
-                               bool simple_mode = false);
+                               bool simple_mode = false, Target target = {});
 
 /*!
  * \brief Build an IRModule given a TE schedule, args and binds. This function also applies
@@ -102,13 +104,15 @@ TVM_DLL IRModule LowerPrimFunc(tvm::tir::PrimFunc func, const std::string& name,
  * \param binds Buffer assignments.
  * \param global_var_supply The GlobalVarSupply to be used in the module.
  * \param simple_mode Disables the loop partition pass. Defaults to false.
+ * \param target The device target to provide additional characteristics. Defaults to not defined.
  * \return The result module.
  */
 
 TVM_DLL IRModule LowerSchedule(te::Schedule sch, const Array<te::Tensor>& args,
                                const std::string& name,
                                const std::unordered_map<te::Tensor, tir::Buffer>& binds,
-                               GlobalVarSupply global_var_supply, bool simple_mode = false);
+                               GlobalVarSupply global_var_supply, bool simple_mode = false,
+                               Target target = {});
 
 /*!
  * \brief Build an IRModule given a TE schedule, args and binds. This function also applies
@@ -119,12 +123,14 @@ TVM_DLL IRModule LowerSchedule(te::Schedule sch, const Array<te::Tensor>& args,
  * \param binds Buffer assignments.
  * \param global_var_supply The GlobalVarSupply to be used in the module.
  * \param simple_mode Disables the loop partition pass. Defaults to false.
+ * \param target The device target to provide additional characteristics. Defaults to not defined.
  * \return The result module.
  */
 TVM_DLL IRModule LowerSchedule(te::Schedule sch, const Array<ObjectRef>& args,
                                const std::string& name,
                                const std::unordered_map<te::Tensor, tir::Buffer>& binds,
-                               GlobalVarSupply global_var_supply, bool simple_mode = false);
+                               GlobalVarSupply global_var_supply, bool simple_mode = false,
+                               Target target = {});
 
 /*!
  * \brief Create an IRModule out of a TE Schedule. It does not apply lowering passes. If you want

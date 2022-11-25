@@ -44,6 +44,7 @@ def tune_tir(
     work_dir: str,
     max_trials_global: int,
     *,
+    max_trials_per_task: Optional[int] = None,
     num_trials_per_iter: int = 64,
     builder: Builder.BuilderType = "local",
     runner: Runner.RunnerType = "local",
@@ -69,6 +70,8 @@ def tune_tir(
         The working directory.
     max_trials_global : int
         The maximum number of trials to run globally.
+    max_trials_per_task : Optional[int]
+        The maximum number of trials to run for each task
     num_trials_per_iter : int
         The number of trials to run per iteration
     builder : Builder.BuilderType
@@ -117,7 +120,7 @@ def tune_tir(
         task_weights=[1.0],
         work_dir=work_dir,
         max_trials_global=max_trials_global,
-        max_trials_per_task=max_trials_global,
+        max_trials_per_task=max_trials_per_task,
         num_trials_per_iter=num_trials_per_iter,
         builder=builder,
         runner=runner,

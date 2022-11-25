@@ -396,8 +396,9 @@ class TECompilerImpl : public TECompilerNode {
 
     if (value->cached_func->prim_func.defined()) {
       VLOG(1) << "Lowering PrimFunc";
-      IRModule lowered = tvm::LowerPrimFunc(value->cached_func->prim_func.value(),
-                                            value->cached_func->prim_fn_var->name_hint, false);
+      IRModule lowered =
+          tvm::LowerPrimFunc(value->cached_func->prim_func.value(),
+                             value->cached_func->prim_fn_var->name_hint, false, key->target);
       ICHECK_EQ(lowered->functions.size(), 1);
       for (const auto& kv : lowered->functions) {
         value->cached_func->funcs->Add(value->cached_func->prim_fn_var, kv.second);
@@ -444,8 +445,8 @@ class TECompilerImpl : public TECompilerNode {
       }
       auto func_name = value->cached_func->prim_fn_var->name_hint;
       VLOG(1) << "scheduling";
-      IRModule scheduled_module = tvm::LowerSchedule(value->cached_func->schedule, all_args,
-                                                     func_name, binds, global_var_supply);
+      IRModule scheduled_module = tvm::LowerSchedule(
+          value->cached_func->schedule, all_args, func_name, binds, global_var_supply, false, {});
       scheduled_module->Update(tir::transform::BindParams(all_consts)(scheduled_module));
       for (const auto& kv : scheduled_module->functions) {
         GlobalVar global_var = kv.first;
