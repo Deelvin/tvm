@@ -65,3 +65,5 @@ def test_llvm_add_pipeline():
         tvm.testing.assert_allclose(c.numpy(), a.numpy() + b.numpy())
 
     check_llvm()
+
+test_llvm_add_pipeline()

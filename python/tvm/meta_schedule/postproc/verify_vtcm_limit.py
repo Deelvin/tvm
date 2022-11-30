@@ -26,6 +26,7 @@ class VerifyVTCMLimit(Postproc):
     """A postprocessor that verifies if the size of the allocated vtcm memory satisfies the limit"""
 
     def __init__(self) -> None:
+        print("ICE python meta_schedule.VerifyVTCMLimi", flush=True)
         self.__init_handle_by_constructor__(
             _ffi_api.PostprocVerifyVTCMLimit,  # type: ignore # pylint: disable=no-member
         )

@@ -50,10 +50,13 @@ class AllocationCalculator : public StmtExprVisitor {
 
 template <typename T>
 tvm::Map<String, Integer> AllocationCalculator<T>::operator()(const PrimFunc& func) {
+  std::cout << "operator()" << std::endl << std::flush;
+  // std::cout << "operator()\n" << func << std::endl << std::flush;
   this->VisitStmt(func->body);
   tvm::Map<String, Integer> res;
   for (auto [k, v] : _max_size) {
     res.Set(String(k), Integer(v));
+    std::cout << "scope: " << k << ", allocated: " << v << std::endl << std::flush;
   }
   return res;
 }
@@ -80,6 +83,7 @@ void AllocationCalculator<T>::VisitStmt_(const T* op) {
 }
 
 tvm::Map<String, Integer> CalculateAllocatedBytes(const PrimFunc& func) {
+  std::cout << "ICE CalculateAllocatedBytes" << std::endl << std::flush;
   return AllocationCalculator<AllocateNode>()(func);
 }
 
@@ -91,12 +95,20 @@ namespace transform {
 
 Pass VerifyVTCMLimit(const Integer& limit) {
   auto pass_func = [=](IRModule mod, PassContext ctx) {
+    std::cout << "ICE VerifyVTCMLimit" << std::endl << std::flush;
     for (auto kv : mod->functions) {
       if (auto* n = kv.second.as<PrimFuncNode>()) {
         auto func = GetRef<PrimFunc>(n);
         auto sizes = CalculateAllocatedBytes(func);
         const auto vtcm_allocated = sizes.Get("global.vtcm").value_or(0);
+        std::cout << "The global.vtcm memory allocation limit has been "
+                     "exceeded(allocated: "
+                  << vtcm_allocated << ", limit: " << limit << ").\n"
+                  << "In function\n"
+                  << func << std::endl
+                  << std::flush;
         if (limit.IntValue() > 0 && vtcm_allocated.IntValue() > limit.IntValue()) {
+          std::cout << "ICE ICE VerifyVTCMLimit false" << std::endl << std::flush;
           LOG(FATAL) << "RuntimeError: The global.vtcm memory allocation limit has been "
                         "exceeded(allocated: "
                      << vtcm_allocated << ", limit: " << limit << ").\n"

@@ -184,49 +184,213 @@ def verify_dense(sch, target, m_size, n_size, k_size, hexagon_session):
     print("%f ms, %f GOPS" % (time_ms, gflops / (time_ms / 1e3)))
 
 
-@tvm.testing.requires_hexagon
+# @T.prim_func
+# def matmul_mix_scope(a: T.handle, b: T.handle, c: T.handle) -> None:
+#     A = T.match_buffer(a, [128, 128], scope="global")
+#     B = T.match_buffer(b, [128, 128], scope="global")
+#     C = T.match_buffer(c, [128, 128], scope="global")
+#     A_allocated = T.alloc_buffer([128, 128], dtype="float32", scope="global.texture")
+#     B_allocated = T.alloc_buffer([128, 128], dtype="float32", scope="global.texture")
+#     C_allocated = T.alloc_buffer([128, 128], dtype="float32", scope="global")
+
+#     for i, j in T.grid(128, 128):
+#         with T.block("A.allocated"):
+#             A_allocated[i, j] = A[i, j]
+#     for i, j in T.grid(128, 128):
+#         with T.block("B.allocated"):
+#             B_allocated[i, j] = B[i, j]
+
+#     for i, j, k in T.grid(128, 128, 128):
+#         with T.block("update"):
+#             vi, vj, vk = T.axis.remap("SSR", [i, j, k])
+#             with T.init():
+#                 C_allocated[vi, vj] = 0.0
+#             C_allocated[vi, vj] = C[vi, vj] + A_allocated[vi, vk] * B_allocated[vj, vk]
+
+#     for i, j in T.grid(128, 128):
+#         with T.block("C"):
+#             C[i, j] = C_allocated[i, j]
+from tvm import auto_scheduler
+class CustomMeasureCallback(auto_scheduler.measure.PythonBasedMeasureCallback):
+    """A simple Python-based callback for testing."""
+
+    def callback(self, policy, inputs, results):
+        print("ICE policy", policy)
+        # assert isinstance(policy, auto_scheduler.search_policy.SearchPolicy)
+        for inp, res in zip(inputs, results):
+            print("ICE inp", inp)
+            print("ICE res", res)
+            # assert isinstance(inp, auto_scheduler.MeasureInput)
+            # assert isinstance(res, auto_scheduler.MeasureResult)
+
+@tvm.testing.requires_hexagon 
 def test_vrmpy_dense(hexagon_launcher):
     """Test vector reduce muliply dense."""
+    print("ICE META")
     if hexagon_launcher.is_simulator():
         pytest.skip(msg="Tuning on simulator not supported.")
 
     do_tune = True
 
     m_size, n_size, k_size = 128, 768, 768
+    # workload = matmul_mix_scope
     workload = te.create_prim_func(dense_compute(m_size, n_size, k_size))
 
     if not do_tune:
         ir_module = tvm.IRModule({"main": workload})
-        sch = tvm.tir.Schedule(ir_module)
-        block = sch.get_block("compute")
-        schedule_dense(sch, block, m_size, do_tune)
+        # sch = tvm.tir.Schedule(ir_module)
+        # block = sch.get_block("compute")
+        # schedule_dense(sch, block, m_size, do_tune)
     else:
         with tempfile.TemporaryDirectory() as work_dir:
 
-            def schedule_dense_for_tune(sch):
-                block = sch.get_block("compute")
-                return schedule_dense(sch, block, None, True)
-
-            target = get_hexagon_target("v69")
+            # def schedule_dense_for_tune(sch):
+            #     block = sch.get_block("compute")
+            #     return schedule_dense(sch, block, None, True)
+            # max_trials_global=1,
+            target = get_hexagon_target("v69", vtcm_capacity=0)
             database = ms.tir_integration.tune_tir(
+                seed=2,
                 mod=workload,
                 target=target,
                 work_dir=work_dir,
-                max_trials_global=8,
-                space=ms.space_generator.ScheduleFn(
-                    schedule_dense_for_tune,
-                    sch_rules=[],
-                    postprocs=[],
+                # num_trials_per_iter
+                # max_trials_per_task=10,
+                # max_trials_global=8,
+                max_trials_global=2,
+                database = ms.database.JSONDatabase("my_r.json", "my_w.json"),
+
+                # measure_callbacks=[CustomMeasureCallback(), ms.measure_callback.AddToDatabase()],
+                space=ms.space_generator.PostOrderApply(
+                    sch_rules=[
+                        ms.schedule_rule.MultiLevelTilingWideVector(
+                            structure="SRSRS",
+                            vector_length_in_bits=256,
+                            max_innermost_factor=64,
+ 
+                            reuse_read=ms.schedule_rule.ReuseType(
+                                req="must",
+                                levels=[1,2,3,4],
+                                scope="global.vtcm",
+                            ),
+                            reuse_write=ms.schedule_rule.ReuseType(
+                                req="must",
+                                levels=[1,2,3,4],
+                                scope="global.vtcm",
+                            ),
+                        )
+                    ],
+                    # postprocs=[],
                     mutator_probs={},
                 ),
+                # space=ms.space_generator.ScheduleFn(
+                #     # schedule_dense_for_tune,
+                #     sch_rules=[
+                #         ms.schedule_rule.MultiLevelTilingWideVector(
+                #             structure="SRSRS",
+                #             vector_length_in_bits=256,
+                #             max_innermost_factor=64,
+ 
+                #             reuse_read=ms.schedule_rule.ReuseType(
+                #                 req="must",
+                #                 levels=[1,2,3,4],
+                #                 scope="global.vtcm",
+                #             ),
+                #             reuse_write=ms.schedule_rule.ReuseType(
+                #                 req="must",
+                #                 levels=[1,2,3,4],
+                #                 scope="global.vtcm",
+                #             ),
+                #         )
+                #     ],
+                #     postprocs=[],
+                #     mutator_probs={},
+                # ),
                 strategy="replay-trace",
                 builder=get_hexagon_local_builder(),
                 runner=get_hexagon_rpc_runner(hexagon_launcher, number=10),
             )
+            print("database", database)
+            print("database", dir(database))
             sch = ms.tir_integration.compile_tir(database, workload, target)
+            # target = get_hexagon_target("v68", vtcm_capacity=vtcm_capacity)
+            # print(tvm.lower(sch.mod["main"], target=target))
+            # records = database.get_top_k(database.commit_workload(tvm.IRModule({"main": workload})), max_trials_global)
+            records = database.get_all_tuning_records()
+            schs = []
+            for record in records:
+                if record is not None:
+                    print(record.run_secs)
+                    # try:
+                    # print(record.trace.as_python())
+                    from tvm.tir import Schedule
+                    sch = Schedule(record.workload.mod)
+                    # sch.mod
+                    record.trace.apply_to_schedule(sch, remove_postproc=False)
+                        # bests[0].trace.as_python()
+                    schs.append(sch)
+                    # except:
+                    #     print("skip", record)
+                    
 
-    with hexagon_launcher.create_session() as session:
-        verify_dense(sch, get_hexagon_target("v68"), m_size, n_size, k_size, session)
+            for sch in schs:
+                print("ICE database", tvm.lower(sch.mod, target=target))
+
+            print("database get_all_tuning_records")
+            # (logger,) = get_loggers_from_work_dir(work_dir, ["main"])
+            # (seed,) = fork_seed(2, n=1)
+            # for r in database.get_all_tuning_records():
+            #     print(r.run_secs)
+            #     l = r
+            #     # print(r.as_json())
+            
+            # model = CostModel.create("xgb")
+            # res = model.predict(
+            #     TuneContext(
+            #         mod=workload,
+            #         target=target,
+            #         space_generator=ms.space_generator.PostOrderApply(
+            #         sch_rules=[
+            #             ms.schedule_rule.MultiLevelTilingWideVector(
+            #                 structure="SRSRS",
+            #                 vector_length_in_bits=256,
+            #                 max_innermost_factor=64,
+ 
+            #                 reuse_read=ms.schedule_rule.ReuseType(
+            #                     req="must",
+            #                     levels=[1,2,3,4],
+            #                     scope="global.vtcm",
+            #                 ),
+            #                 reuse_write=ms.schedule_rule.ReuseType(
+            #                     req="must",
+            #                     levels=[1,2,3,4],
+            #                     scope="global.vtcm",
+            #                 ),
+            #             )
+            #         ],
+            #         # postprocs=[],
+            #         mutator_probs={},
+            #     ),
+            #         strategy="replay-trace",
+            #         task_name=task_name,
+            #         logger=logger,
+            #         rand_state=seed,
+            #         num_threads="physical",
+            #     ).clone()
+            # , [l.as_measure_candidate()]
+            # )  # change state
+            # print("res", res)
+            # path = os.path.join(tempfile.mkdtemp(), "test_output_meta_schedule_random_model.npy")
+            # model.save(path)
+            # res1 = model.predict(TuneContext(), [MeasureCandidate(Schedule(Matmul), []) for i in range(70)])
+            # model.load(path)
+            # res2 = model.predict(TuneContext(), [MeasureCandidate(Schedule(Matmul), []) for i in range(70)])
+            # shutil.rmtree(os.path.dirname(path))
+            # assert (res1 == res2).all()
+            # lower(sch)
+
+    # with hexagon_launcher.create_session() as session:
+    #     verify_dense(sch, get_hexagon_target("v68"), m_size, n_size, k_size, session)
 
 
 # This is an example of a schedule found by vrmpy auto tensorization.

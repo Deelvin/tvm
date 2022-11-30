@@ -35,12 +35,14 @@ class VerifyVTCMLimitNode : public PostprocNode {
   }
 
   bool Verify(const IRModule& mod) const {
+    std::cout << "ICE VerifyVTCMLimitNode::Verify" << std::endl << std::flush;
     for (const auto& kv : mod->functions) {
       if (auto* n = kv.second.as<tir::PrimFuncNode>()) {
         auto func = GetRef<tir::PrimFunc>(n);
         auto sizes = CalculateAllocatedBytes(func);
         const auto vtcm_allocated = sizes.Get("global.vtcm").value_or(0);
         if (vtcm_capacity > 0 && vtcm_allocated.IntValue() > vtcm_capacity) {
+          std::cout << "ICE VerifyVTCMLimitNode::Verify false" << std::endl << std::flush;
           return false;
         }
       }
@@ -49,6 +51,7 @@ class VerifyVTCMLimitNode : public PostprocNode {
   }
 
   bool Apply(const tir::Schedule& sch) final {
+    std::cout << "ICE VerifyVTCMLimitNode" << std::endl << std::flush;
     IRModule mod = sch->mod();
     for (const auto& kv : mod->functions) {
       const GlobalVar& g_var = kv.first;
@@ -57,6 +60,9 @@ class VerifyVTCMLimitNode : public PostprocNode {
         IRModule lowered{nullptr};
         try {
           auto pass_list = Array<tvm::transform::Pass>();
+          // pass_list.push_back(tir::transform::LowerInitBlock());
+          // pass_list.push_back(tir::transform::ConvertBlocksToOpaque());
+          // pass_list.push_back(tir::transform::LowerOpaqueBlock());
           // Convert Function to IRModule
           transform::PassContext pass_ctx = transform::PassContext::Current();
           tir::PrimFunc f = WithAttr(GetRef<tir::PrimFunc>(prim_func), "global_symbol",

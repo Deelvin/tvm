@@ -884,6 +884,7 @@ def vtcm_verify_pass(**kwargs):
     """
 
     def verify_pass(f, *_):
+        print("ICE vtcm_verify_pass", flush=True)
         sizes = tvm.tir.analysis.calculate_allocated_bytes(f)
         vtcm_capacity = kwargs.get("vtcm_capacity", 0)
         vtcm_allocated = sizes.get("global.vtcm", 0)

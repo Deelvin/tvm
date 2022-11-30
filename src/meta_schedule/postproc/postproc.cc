@@ -94,9 +94,9 @@ Array<Postproc> Postproc::DefaultCUDATensorCore() {
 
 Array<Postproc> Postproc::DefaultHexagon() {
   return Array<Postproc>{
-      Postproc::DisallowDynamicLoop(),   Postproc::RewriteParallelVectorizeUnroll(),
+      Postproc::DisallowDynamicLoop(), Postproc::RewriteParallelVectorizeUnroll(),
       Postproc::RewriteReductionBlock(), Postproc::RewriteLayout(),
-      Postproc::VerifyVTCMLimit(),
+      // Postproc::VerifyVTCMLimit(),
   };
 }
 

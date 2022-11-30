@@ -472,6 +472,7 @@ runtime::Module TIRToRuntime(const Map<Target, IRModule>& inputs_arg,
     if (it.second.defined()) {
       const Target& target = it.first;
       const IRModule& ir_module = it.second;
+      std::cout << "ICE TIRToRuntime" << std::endl;
       auto pair = SplitMixedModule(ir_module, target, target_host);
       auto& host_mod = pair.first;
       auto& device_mod = pair.second;

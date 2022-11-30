@@ -79,6 +79,7 @@ def test_vtcm_limit(vtcm_capacity, limited):
         return False
 
     target = get_hexagon_target("v68", vtcm_capacity=vtcm_capacity)
+    
 
     assert (
         _raises_exception(lambda: tvm.lower(sch.mod["main"], target=target)) == limited
@@ -93,7 +94,7 @@ def test_vtcm_limit(vtcm_capacity, limited):
         assert (
             _raises_exception(lambda: tvm.lower(sch.mod["main"])) == limited
         ), "VTCM memory allocation limiter does not work correctly "
-
+    print(target.vtcm_capacity)
 
 if __name__ == "__main__":
     tvm.testing.main()
