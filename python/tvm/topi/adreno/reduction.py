@@ -26,12 +26,24 @@ from ..cuda.reduction import schedule_reduce_impl
 
 def _schedule_reduce_adreno(op, sch, is_idx_reduce=False):
     sch_output = sch.outputs[0].output(0)
+    use_rfactor = False
     if not is_idx_reduce:
-        if op in sch.outputs:
-            whole_rop_output = sch.cache_write(sch_output, "local")
+        rdomain = 1
+        whole_rop_output = op.output(0)
+        for i in range(len(sch[whole_rop_output].op.reduce_axis)):
+            rdomain = rdomain * sch[whole_rop_output].op.reduce_axis[i].dom.extent
+        if rdomain > 40:
+            use_rfactor = True
+            # shared goves better perf, but works only for rfactor flow
+            scope = "shared"
         else:
-            whole_rop_output = op.output(0)
-            sch[whole_rop_output].set_scope("local")
+            # in case of direct scheduling, shared is failed to be compiled
+            scope = "local"
+        if op in sch.outputs:
+            whole_rop_output = sch.cache_write(sch_output, scope)
+        else:
+            # no change for whole_rop_output def, but need to set proper scope
+            sch[whole_rop_output].set_scope(scope)
     else:
         temp_idx_input = op.input_tensors[0].op.output(0)
         temp_val_input = op.input_tensors[0].op.output(1)
@@ -54,30 +66,55 @@ def _schedule_reduce_adreno(op, sch, is_idx_reduce=False):
 
     ftc = numpy.prod(shape)
     a = fused_outer
+
+    if not is_idx_reduce:
+        if use_rfactor:
+            # below values were selected empirically assuming that we should have some work in each
+            # thread (currently from 25-49) and number of threads not exceeding some threshold that
+            # was selected as 256 from performance point of view after experiments on Adreno 660
+            max_threads = rdomain // 25 if rdomain > 25 else 1
+            max_threads = 256 if max_threads > 256 else max_threads
+            num_thread = get_div(rdomain, max_threads)
+
+            fused_reduce = sch[whole_rop_output].fuse(*sch[whole_rop_output].op.reduce_axis)
+            thread_y = te.thread_axis((0, num_thread), "threadIdx.y")
+            _, ki = sch[whole_rop_output].split(fused_reduce, factor=num_thread)
+            data_out_rf = sch.rfactor(whole_rop_output, ki)
+            sch[data_out_rf].compute_at(sch[whole_rop_output], sch[whole_rop_output].op.reduce_axis[0])
+            sch[whole_rop_output].bind(sch[whole_rop_output].op.reduce_axis[0], thread_y)
+            
     if div4:
         if latest4:
             b = sch[sch_output].op.axis[-1]
         else:
             a, b = sch[sch_output].split(fused_outer, factor=4)
         sch[sch_output].vectorize(b)
-        if is_idx_reduce:
-            sch[temp_idx_input].compute_at(sch[sch_output], b)
-            sch[temp_val_input].compute_at(sch[sch_output], b)
-        else:
-            sch[whole_rop_output].compute_at(sch[sch_output], b)
+        if not use_rfactor:
+            if is_idx_reduce:
+                sch[temp_idx_input].compute_at(sch[sch_output], b)
+                sch[temp_val_input].compute_at(sch[sch_output], b)
+            else:
+                sch[whole_rop_output].compute_at(sch[sch_output], b)
 
-    num_thread = get_div(ftc, 128)
+    if not use_rfactor:
+        num_thread = get_div(ftc, 128)
+        bx, outer_in = sch[sch_output].split(a, factor=num_thread)
+        sch[sch_output].bind(bx, te.thread_axis("blockIdx.x"))
+        sch[sch_output].bind(outer_in, te.thread_axis("threadIdx.x"))
 
-    bx, outer_in = sch[sch_output].split(a, factor=num_thread)
-    sch[sch_output].bind(bx, te.thread_axis("blockIdx.x"))
-    sch[sch_output].bind(outer_in, te.thread_axis("threadIdx.x"))
-
-    if not div4:
-        if is_idx_reduce:
-            sch[temp_idx_input].compute_at(sch[sch_output], outer_in)
-            sch[temp_val_input].compute_at(sch[sch_output], outer_in)
-        else:
-            sch[whole_rop_output].compute_at(sch[sch_output], outer_in)
-
+        if not div4:
+            if is_idx_reduce:
+                sch[temp_idx_input].compute_at(sch[sch_output], outer_in)
+                sch[temp_val_input].compute_at(sch[sch_output], outer_in)
+            else:
+                sch[whole_rop_output].compute_at(sch[sch_output], outer_in)
+    else:
+        sch[sch_output].bind(a, te.thread_axis("blockIdx.x"))
+        if not div4 or use_rfactor:
+            if is_idx_reduce:
+                sch[temp_idx_input].compute_at(sch[sch_output], a)
+                sch[temp_val_input].compute_at(sch[sch_output], a)
+            else:
+                sch[whole_rop_output].compute_at(sch[sch_output], a)
 def schedule_reduce(outs):
     return schedule_reduce_impl(outs, _schedule_reduce_adreno, schedule_injective_from_existing, True)

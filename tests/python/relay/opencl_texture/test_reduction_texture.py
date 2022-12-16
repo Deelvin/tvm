@@ -134,5 +134,48 @@ def test_reduction_max_b4(remote, target, dtype):
 
     build_run_compare(remote, mod, {}, {"data": input_shape}, {"data": dtype}, target)
 
+
+@tvm.testing.requires_opencl
+@tvm.testing.parametrize_targets("opencl -device=adreno")
+def test_mean_global_pooling(remote, target, dtype):
+    """
+    Use case of blocked NCHW4c global pooling with big spatial valies
+    """
+    input_shape = (1, 160, 160, 32)
+    A = relay.var("data", shape=input_shape, dtype=dtype)
+    mean = relay.mean(A, axis=[1,2], keepdims=True)
+    mod = relay.Function([A], mean)
+
+    build_run_compare(remote, mod, {}, {"data": input_shape}, {"data": dtype}, target)
+
+
+@tvm.testing.requires_opencl
+@tvm.testing.parametrize_targets("opencl -device=adreno")
+def test_mean_global_pooling_block4(remote, target, dtype):
+    """
+    Use case of blocked NCHW4c global pooling with big spatial valies
+    """
+    input_shape = (1, 160, 160, 8, 4)
+    A = relay.var("data", shape=input_shape, dtype=dtype)
+    mean = relay.mean(A, axis=[1,2], keepdims=True)
+    mod = relay.Function([A], mean)
+
+    build_run_compare(remote, mod, {}, {"data": input_shape}, {"data": dtype}, target)
+
+
+@tvm.testing.requires_opencl
+@tvm.testing.parametrize_targets("opencl -device=adreno")
+def test_max_global_pooling_block4(remote, target, dtype):
+    """
+    Use case of blocked NCHW4c global pooling with big spatial valies
+    """
+    input_shape = (1, 160, 160, 8, 4)
+    A = relay.var("data", shape=input_shape, dtype=dtype)
+    mean = relay.max(A, axis=[1,2], keepdims=True)
+    mod = relay.Function([A], mean)
+
+    build_run_compare(remote, mod, {}, {"data": input_shape}, {"data": dtype}, target)
+
+
 if __name__ == "__main__":
     tvm.testing.main()
