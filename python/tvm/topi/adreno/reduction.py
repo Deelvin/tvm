@@ -54,19 +54,12 @@ def _schedule_reduce_adreno(op, sch, is_idx_reduce=False):
 
     ftc = numpy.prod(shape)
     a = fused_outer
-    if latest4:
-        b = sch[sch_output].op.axis[-1]
-        sch[sch_output].vectorize(b)
-        if is_idx_reduce:
-            sch[temp_idx_input].compute_at(sch[sch_output], b)
-            sch[temp_val_input].compute_at(sch[sch_output], b)
+    if div4:
+        if latest4:
+            b = sch[sch_output].op.axis[-1]
         else:
-            sch[whole_rop_output].compute_at(sch[sch_output], b)
-    elif div4:
-        a, b = sch[sch_output].split(fused_outer, factor=4)
-
+            a, b = sch[sch_output].split(fused_outer, factor=4)
         sch[sch_output].vectorize(b)
-        ftc = ftc / 4
         if is_idx_reduce:
             sch[temp_idx_input].compute_at(sch[sch_output], b)
             sch[temp_val_input].compute_at(sch[sch_output], b)
