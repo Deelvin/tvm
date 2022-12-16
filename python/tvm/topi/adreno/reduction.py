@@ -32,7 +32,7 @@ def _schedule_reduce_adreno(op, sch, is_idx_reduce=False):
         whole_rop_output = op.output(0)
         for i in range(len(sch[whole_rop_output].op.reduce_axis)):
             rdomain = rdomain * sch[whole_rop_output].op.reduce_axis[i].dom.extent
-        if rdomain > 40:
+        if rdomain > 50:
             use_rfactor = True
             # shared goves better perf, but works only for rfactor flow
             scope = "shared"
@@ -72,7 +72,7 @@ def _schedule_reduce_adreno(op, sch, is_idx_reduce=False):
             # below values were selected empirically assuming that we should have some work in each
             # thread (currently from 25-49) and number of threads not exceeding some threshold that
             # was selected as 256 from performance point of view after experiments on Adreno 660
-            max_threads = rdomain // 25 if rdomain > 25 else 1
+            max_threads = rdomain.value // 25 if rdomain > 25 else 1
             max_threads = 256 if max_threads > 256 else max_threads
             num_thread = get_div(rdomain, max_threads)
 
