@@ -25,45 +25,66 @@ from ..cuda.reduction import schedule_reduce_impl
 
 
 def _schedule_reduce_adreno(op, sch, is_idx_reduce=False):
-    if is_idx_reduce:
-        real_output = op.output(0)
+    sch_output = sch.outputs[0].output(0)
+    if not is_idx_reduce:
+        if op in sch.outputs:
+            whole_rop_output = sch.cache_write(sch_output, "local")
+        else:
+            whole_rop_output = op.output(0)
+            sch[whole_rop_output].set_scope("local")
+    else:
         temp_idx_input = op.input_tensors[0].op.output(0)
         temp_val_input = op.input_tensors[0].op.output(1)
-    else:
-        real_output = op.output(0)
-    shape = get_const_tuple(real_output.shape)
+        sch[temp_idx_input].set_scope("local")
+        sch[temp_val_input].set_scope("local")
+
+    shape = get_const_tuple(sch_output.shape)
     latest4 = shape[-1] == 4
     div4 = numpy.prod(shape) % 4 == 0
 
     # Fuse and split the axis
     if latest4:
-        fused_outer = sch[real_output].fuse(
-            *[sch[real_output].op.axis[i] for i in range(len(sch[real_output].op.axis) - 1)]
+        fused_outer = sch[sch_output].fuse(
+            *[sch[sch_output].op.axis[i] for i in range(len(sch[sch_output].op.axis) - 1)]
         )
     else:
-        fused_outer = sch[real_output].fuse(
-            *[sch[real_output].op.axis[i] for i in range(len(sch[real_output].op.axis))]
+        fused_outer = sch[sch_output].fuse(
+            *[sch[sch_output].op.axis[i] for i in range(len(sch[sch_output].op.axis))]
         )
 
     ftc = numpy.prod(shape)
     a = fused_outer
     if latest4:
-        sch[real_output].vectorize(sch[real_output].op.axis[-1])
-    elif div4 and not is_idx_reduce:
-        a, b = sch[real_output].split(fused_outer, factor=4)
-        sch[real_output].vectorize(b)
+        b = sch[sch_output].op.axis[-1]
+        sch[sch_output].vectorize(b)
+        if is_idx_reduce:
+            sch[temp_idx_input].compute_at(sch[sch_output], b)
+            sch[temp_val_input].compute_at(sch[sch_output], b)
+        else:
+            sch[whole_rop_output].compute_at(sch[sch_output], b)
+    elif div4:
+        a, b = sch[sch_output].split(fused_outer, factor=4)
+
+        sch[sch_output].vectorize(b)
         ftc = ftc / 4
+        if is_idx_reduce:
+            sch[temp_idx_input].compute_at(sch[sch_output], b)
+            sch[temp_val_input].compute_at(sch[sch_output], b)
+        else:
+            sch[whole_rop_output].compute_at(sch[sch_output], b)
 
     num_thread = get_div(ftc, 128)
 
-    bx, outer_in = sch[real_output].split(a, factor=num_thread)
+    bx, outer_in = sch[sch_output].split(a, factor=num_thread)
+    sch[sch_output].bind(bx, te.thread_axis("blockIdx.x"))
+    sch[sch_output].bind(outer_in, te.thread_axis("threadIdx.x"))
 
-    sch[real_output].bind(bx, te.thread_axis("blockIdx.x"))
-    sch[real_output].bind(outer_in, te.thread_axis("threadIdx.y"))
-    if is_idx_reduce:
-        sch[temp_idx_input].compute_at(sch[real_output], outer_in)
-        sch[temp_val_input].compute_at(sch[real_output], outer_in)
-
+    if not div4:
+        if is_idx_reduce:
+            sch[temp_idx_input].compute_at(sch[sch_output], outer_in)
+            sch[temp_val_input].compute_at(sch[sch_output], outer_in)
+        else:
+            sch[whole_rop_output].compute_at(sch[sch_output], outer_in)
 
 def schedule_reduce(outs):
-    return schedule_reduce_impl(outs, _schedule_reduce_adreno, schedule_injective_from_existing)
+    return schedule_reduce_impl(outs, _schedule_reduce_adreno, schedule_injective_from_existing, True)
