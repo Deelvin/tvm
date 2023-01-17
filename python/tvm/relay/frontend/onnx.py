@@ -5451,6 +5451,28 @@ class GridSample(OnnxOpConverter):
         )
 
 
+class Bernoulli(OnnxOpConverter):
+    """Operator converter for Bernoulli"""
+
+    @classmethod
+    def _impl_v15(cls, inputs, attr, params):
+        # The data type for the elements of the output tensor. if not specified, we will use the data type of the input tensor
+        dtype = attr.get("dtype", None)
+        if dtype is None:
+            dtype = infer_type(inputs[0]).checked_type.dtype
+        else:
+            dtype = get_type(dtype)
+
+        seed = attr.get("seed", None)
+        if seed is None:
+            seed = np.random.randint(1e6)
+        else:
+            seed = int(seed)
+
+        key = _random.threefry_key(seed)
+        return _op.random.bernoulli(key, inputs[0], dtype=dtype)
+
+
 class RandomNormal(OnnxOpConverter):
     """Operator converter for random_normal"""
 
@@ -6217,6 +6239,7 @@ def _get_convert_map(opset):
         "QLinearGlobalAveragePool": QLinearGlobalAveragePool.get_converter(opset),
         "QLinearLeakyRelu": QLinearLeakyRelu.get_converter(opset),
         # Random number generation.
+        "Bernoulli": Bernoulli.get_converter(opset),
         "RandomNormal": RandomNormal.get_converter(opset),
         "RandomNormalLike": RandomNormalLike.get_converter(opset),
         "RandomUniform": RandomUniform.get_converter(opset),
