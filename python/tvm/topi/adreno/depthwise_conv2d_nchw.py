@@ -221,7 +221,7 @@ def schedule_depthwise_conv2d_NCHWc_KCRSk(cfg, s, output):
         <= 32
         and 32
         <= (entity["tile_fc"].size[2] * entity["tile_y"].size[2] * entity["tile_x"].size[2])
-        < 1024
+        < 256
     )
 
     if cfg.is_fallback:

@@ -218,7 +218,7 @@ def schedule_depthwise_conv2d_NHWC_HWOI(cfg, s, output):
         <= 32
         and 32
         <= (entity["tile_fc"].size[2] * entity["tile_y"].size[2] * entity["tile_x"].size[2])
-        < 1024
+        < 256
     )
     if cfg.is_fallback:
         get_default_conv2d_config(cfg, conv.shape[3], conv.shape[1], conv.shape[2])

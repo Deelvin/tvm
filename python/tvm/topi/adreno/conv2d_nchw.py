@@ -267,7 +267,7 @@ def schedule_conv2d_NCHWc_KCRSk(cfg, s, output):
         <= 24
         and 32
         <= (entity["tile_fc"].size[2] * entity["tile_y"].size[2] * entity["tile_x"].size[2])
-        < 1024
+        < 256
     )
     if cfg.is_fallback:
         get_default_conv2d_config(cfg, conv.shape[1], conv.shape[2], conv.shape[3])

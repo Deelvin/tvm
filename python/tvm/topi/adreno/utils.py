@@ -540,7 +540,7 @@ def bind_data_copy(stage, axis_to_vectorize=None):
             fused = stage.fuse(*stage.op.axis)
             ftc = ftc / vthread
             # 1024 is a maximum work group size on the most Adreno GPU
-            num_thread = get_div(ftc, 1024 // vthread)
+            num_thread = get_div(ftc, 256 // vthread)
             a, b = stage.split(fused, factor=num_thread)
             a, c = stage.split(a, factor=vthread)
             stage.bind(c, te.thread_axis("vthread"))
@@ -637,12 +637,12 @@ def get_default_conv2d_config(cfg, fc, y, x):
             break
     ty = 1
     for n in range(16, 0, -1):
-        if y % n == 0 and tfc * n <= 512:
+        if y % n == 0 and tfc * n <= 256:
             ty = n
             break
     tx = 1
     for n in range(16, 0, -1):
-        if x % n == 0 and tfc * ty * n <= 512:
+        if x % n == 0 and tfc * ty * n <= 256:
             tx = n
             break
 

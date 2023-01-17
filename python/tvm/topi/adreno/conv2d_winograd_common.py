@@ -441,7 +441,7 @@ def schedule_conv2d_winograd(cfg, s, output, pre_computed):
     )
     cfg.define_split("tile_rc", rcc, num_outputs=2)
     cfg.multi_filter(
-        filter=lambda entity: 32 <= (entity["tile_y"].size[2] * entity["tile_x"].size[2]) < 1024
+        filter=lambda entity: 32 <= (entity["tile_y"].size[2] * entity["tile_x"].size[2]) < 256
     )
     ##### space definition end #####
 
