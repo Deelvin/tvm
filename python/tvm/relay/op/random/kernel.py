@@ -133,6 +133,47 @@ def threefry_split(key):
     return _make.threefry_split(key)
 
 
+def bernoulli(key, data, dtype="int32"):
+    """Draws binary random numbers (0 or 1) from a Bernoulli distribution.
+
+    Input tensor contains probability for Bernoulli distribution.
+    Output tensor has the same shape as the input one.
+
+    Example
+    -------
+
+    .. code-block:: python
+
+        key = threefry_key(0)
+        random_values = bernoulli(key, data)
+
+    Parameters
+    ----------
+    key : relay.Expr
+        key that uniquely determines the random values. Multiple uses with the
+        same generator will generate the same random values. This generator should be
+        treated as an opaque pointer. You can create one from calling
+        :py:func:`threefry_key`, :py:func:`threefry_split`, or
+        :py:func:`threefry_generate`. **Do not use this generator again after calling
+        this function.**
+
+    data : tvm.Tensor
+        Input tensor containing probabilities p (a value in the range [0,1])
+        to be used for drawing the binary random number, where an output of 1
+        is produced with probability p and an output of 0 is produced with probability (1-p)
+
+    dtype : str
+        Desired outputs type of random numbers.
+
+    Returns
+    -------
+    random_values : relay.Expr
+        The generated Bernoulli distributed 0, 1 numbers.
+    """
+
+    return _make.bernoulli(key, data, dtype)
+
+
 def uniform(key, shape, dtype="float32", low=0.0, high=1.0):
     """Draw samples from a uniform distribution.
 
