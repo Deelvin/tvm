@@ -85,6 +85,54 @@ RELAY_REGISTER_OP("random.threefry_split")
     .add_argument("key", "Tensor", "Input Threefry key")
     .add_type_rel("ThreefrySplit", ThreefrySplitRel);
 
+TVM_REGISTER_NODE_TYPE(BernoulliAttrs);
+
+bool BernoulliRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
+                const TypeReporter& reporter) {
+  const BernoulliAttrs* param = attrs.as<BernoulliAttrs>();
+  ICHECK_EQ(types.size(), 3) << "Bernoulli should have two inputs and one output";
+
+  std::vector<IndexExpr> oshape;
+  for (auto& x : param->out_shape) {
+    oshape.push_back(x);
+  }
+  DataType dis_dtype = param->dis_dtype;
+  // we are supporting float32 and float64 at the moment.
+  if (!(dis_dtype.is_float() && (dis_dtype.bits() == 32 || dis_dtype.bits() == 64))) {
+    reporter->GetDiagCtx().EmitFatal(Diagnostic::Error(reporter->GetSpan())
+                                     << "We only support generating uniform random value of "
+                                     << "type float32 or float64, got " << dis_dtype << ".");
+    return false;
+  }
+  DataType out_dtype = param->out_dtype;
+  reporter->Assign(types[0], ThreefryKeyType());
+  reporter->Assign(types[1], TensorType(oshape, dis_dtype));
+  // generate returns an array of random values
+  reporter->Assign(types[2], TensorType(oshape, out_dtype));
+  return true;
+}
+
+Expr MakeBernoulli(Expr key, Expr data, DataType dis_dtype, Array<Integer> out_shape,
+                   DataType out_dtype) {
+  auto attrs = make_object<BernoulliAttrs>();
+  attrs->out_shape = out_shape;
+  attrs->dis_dtype = dis_dtype;
+  attrs->out_dtype = out_dtype;
+  static const Op& op = Op::Get("random.bernoulli");
+  return Call(op, {key, data}, Attrs(attrs), {});
+}
+
+TVM_REGISTER_GLOBAL("relay.op.random._make.bernoulli").set_body_typed(MakeBernoulli);
+
+RELAY_REGISTER_OP("random.bernoulli")
+    .describe(
+        R"doc(Generate an array of random numbers under Bernoulli distribution.)doc" TVM_ADD_FILELINE)
+    .set_num_inputs(2)
+    .set_attrs_type<BernoulliAttrs>()
+    .add_argument("key", "Tensor", "Input Threefry key")
+    .add_argument("data", "Tensor", "Input tensor with probabilities of the Bernoulli distribution")
+    .add_type_rel("Bernoulli", BernoulliRel);
+
 TVM_REGISTER_NODE_TYPE(UniformAttrs);
 
 bool UniformRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
