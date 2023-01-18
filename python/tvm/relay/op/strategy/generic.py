@@ -1858,12 +1858,22 @@ def sliding_window_strategy(attrs, inputs, out_type, target):
     return strategy
 
 
+# bernoulli
+def wrap_compute_bernoulli(topi_compute):
+    """Wrap bernoulli topi compute"""
+
+    def _compute_bernoulli(attrs, inputs, _):
+        return list(topi_compute(inputs[0], inputs[1], attrs.out_shape, attrs.dis_dtype, attrs.out_dtype))
+
+    return _compute_bernoulli
+
+
 @override_native_generic_func("bernoulli_strategy")
-def normal_strategy(attrs, inputs, out_type, target):
+def bernoulli_strategy(attrs, inputs, out_type, target):
     """Bernoulli generic strategy"""
     strategy = _op.OpStrategy()
     strategy.add_implementation(
-        wrap_compute_uniform(topi.random.bernoulli),
+        wrap_compute_bernoulli(topi.random.bernoulli),
         wrap_topi_schedule(topi.generic.schedule_extern),
         name="bernoulli.generic",
     )
