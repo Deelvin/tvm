@@ -6668,20 +6668,20 @@ def test_random_bernoulli(target, dev):
     """test_random_bernoulli"""
 
     def verify_bernoulli_with_ort(
-            shape,
-            in_dtype="float32",
-            out_dtype="int32",
-            seed=None,
-            out_shape=None,
-            target=None,
-            dev=None,
-            use_vm=False,
-            opset=None,
-            freeze_params=False,
-            rtol=0.1,
-            atol=0.1,
-            opt_level=1,
-            convert_config=None,
+        shape,
+        in_dtype="float32",
+        out_dtype="int32",
+        seed=None,
+        out_shape=None,
+        target=None,
+        dev=None,
+        use_vm=False,
+        opset=None,
+        freeze_params=False,
+        rtol=0.1,
+        atol=0.1,
+        opt_level=1,
+        convert_config=None,
     ):
         def get_bernoulli_model(shape, in_dtype="float32", out_dtype="int32", seed=None):
             onnx_itype = mapping.NP_TYPE_TO_TENSOR_TYPE[np.dtype(in_dtype)]
