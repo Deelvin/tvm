@@ -88,7 +88,7 @@ RELAY_REGISTER_OP("random.threefry_split")
 TVM_REGISTER_NODE_TYPE(BernoulliAttrs);
 
 bool BernoulliRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
-                const TypeReporter& reporter) {
+                  const TypeReporter& reporter) {
   const BernoulliAttrs* param = attrs.as<BernoulliAttrs>();
   ICHECK_EQ(types.size(), 3) << "Bernoulli should have two inputs and one output";
 
