@@ -481,6 +481,41 @@ def threefry_test_wrapping(target, device):
     return out_ary.numpy()[0] == 0
 
 
+def bernoulli(gen, data, dis_dtype, out_shape):
+    """Draws binary random numbers (0 or 1) from a Bernoulli distribution
+
+    Parameters
+    ----------
+    gen : ThreefryKey
+        Generator state. Can be create with :py:func:`tvm.relay.threefry_key`. This should not be
+        reused in another function, otherwise random numbers will be repeated.
+
+    data : tvm.te.Tensor
+        Input tensor with probabilities of Bernoulli distribution.
+
+    dis_dtype : str
+        The dtype of intermediate uniformly distributed values.
+
+    out_shape : Sequence[int]
+        Output shape of the random numbers.
+
+    Returns
+    -------
+    out : Tensor[out_shape]
+        Tensor of random numbers with shape `out_shape`.
+    """
+    out_shape = list(out_shape)
+    _, uniform_values = uniform(
+        gen,
+        tvm.tir.const(0.0, dis_dtype),
+        tvm.tir.const(1.0, dis_dtype),
+        out_shape,
+        dis_dtype,
+    )
+
+    return tvm.topi.less_equal(uniform_values, data)
+
+
 def uniform(gen, low, high, out_shape, out_dtype):
     """Draw samples from a uniform distribution.
 
