@@ -480,6 +480,7 @@ def threefry_test_wrapping(target, device):
     tvm.build(s, [f], target=target)(out_ary)
     return out_ary.numpy()[0] == 0
 
+
 def get_standart_uniform_values(gen, out_shape, out_dtype):
     """Draw samples from a uniform [0, 1) distribution.
 
@@ -534,6 +535,7 @@ def get_standart_uniform_values(gen, out_shape, out_dtype):
     )
 
     return new_gen, standard_uniform_values
+
 
 def bernoulli(gen, data, dis_dtype, out_shape):
     """Draws binary random numbers (0 or 1) from a Bernoulli distribution
