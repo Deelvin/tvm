@@ -133,7 +133,7 @@ def threefry_split(key):
     return _make.threefry_split(key)
 
 
-def bernoulli(key, data, shape, dtype="float32"):
+def bernoulli(key, data, shape, dtype="int32"):
     """Draws binary random numbers (0 or 1) from a Bernoulli distribution.
 
     Input tensor contains probability for Bernoulli distribution.
@@ -166,7 +166,7 @@ def bernoulli(key, data, shape, dtype="float32"):
         Desired outputs shape of random numbers.
 
     dtype : str
-        Input data type for intermediate uniformly distributed random numbers.
+        Desired outputs type of random numbers.
 
     Returns
     -------

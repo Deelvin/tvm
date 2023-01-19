@@ -5459,9 +5459,8 @@ class Bernoulli(OnnxOpConverter):
         # The data type for the elements of the output tensor.
         # If not specified, we will use the data type of the input tensor
         out_dtype = attr.get("dtype", None)
-        in_dtype = infer_type(inputs[0]).checked_type.dtype
         if out_dtype is None:
-            out_dtype = in_dtype
+            out_dtype = infer_type(inputs[0]).checked_type.dtype
         else:
             out_dtype = get_type(out_dtype)
 
@@ -5472,9 +5471,7 @@ class Bernoulli(OnnxOpConverter):
             seed = int(seed)
 
         key = _random.threefry_key(seed)
-        return _op.random.bernoulli(key, inputs[0], infer_shape(inputs[0]), dtype=in_dtype).astype(
-            out_dtype
-        )
+        return _op.random.bernoulli(key, inputs[0], infer_shape(inputs[0]), dtype=out_dtype)
 
 
 class RandomNormal(OnnxOpConverter):

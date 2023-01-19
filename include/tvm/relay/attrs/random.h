@@ -39,14 +39,10 @@ struct ThreefryGenerateAttrs : public tvm::AttrsNode<ThreefryGenerateAttrs> {
 
 struct BernoulliAttrs : public tvm::AttrsNode<BernoulliAttrs> {
   Array<Integer> out_shape;
-  DataType dis_dtype;
   DataType out_dtype;
 
   TVM_DECLARE_ATTRS(BernoulliAttrs, "relay.attrs.BernoulliAttrs") {
     TVM_ATTR_FIELD(out_shape).describe("Shape of random numbers to generate");
-    TVM_ATTR_FIELD(dis_dtype)
-        .set_default(NullValue<DataType>())
-        .describe("Data type of the intermediate uniformly distributed numbers");
     TVM_ATTR_FIELD(out_dtype)
         .set_default(NullValue<DataType>())
         .describe("Data type of the generated numbers");
