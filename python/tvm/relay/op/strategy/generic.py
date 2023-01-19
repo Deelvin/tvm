@@ -1863,9 +1863,7 @@ def wrap_compute_bernoulli(topi_compute):
     """Wrap bernoulli topi compute"""
 
     def _compute_bernoulli(attrs, inputs, _):
-        return list(
-            topi_compute(inputs[0], inputs[1], inputs[1].dtype, attrs.out_shape)
-        )
+        return list(topi_compute(inputs[0], inputs[1], inputs[1].dtype, attrs.out_shape))
 
     return _compute_bernoulli
 

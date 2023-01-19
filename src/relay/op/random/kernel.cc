@@ -119,8 +119,7 @@ bool BernoulliRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
   return true;
 }
 
-Expr MakeBernoulli(Expr key, Expr data, Array<Integer> out_shape,
-                   DataType out_dtype) {
+Expr MakeBernoulli(Expr key, Expr data, Array<Integer> out_shape, DataType out_dtype) {
   auto attrs = make_object<BernoulliAttrs>();
   attrs->out_shape = out_shape;
   attrs->out_dtype = out_dtype;
