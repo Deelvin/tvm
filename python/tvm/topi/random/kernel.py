@@ -537,7 +537,7 @@ def get_standart_uniform_values(gen, out_shape, out_dtype):
     return new_gen, standard_uniform_values
 
 
-def bernoulli(gen, data, dis_dtype, out_shape):
+def bernoulli(gen, data, dis_dtype, out_shape, out_dtype):
     """Draws binary random numbers (0 or 1) from a Bernoulli distribution
 
     Parameters
@@ -555,14 +555,17 @@ def bernoulli(gen, data, dis_dtype, out_shape):
     out_shape : Sequence[int]
         Output shape of the random numbers.
 
+    out_dtype : str
+        The desired type of output random numbers.
+
     Returns
     -------
-    out : Tensor[out_shape]
-        Tensor of random numbers with shape `out_shape`.
+    out : Tensor[out_shape, out_dtype]
+        Tensor of random numbers with shape `out_shape` and type `out_dtype`.
     """
     _, uniform_values = get_standart_uniform_values(gen, out_shape, dis_dtype)
 
-    return tvm.topi.less_equal(uniform_values, data)
+    return tvm.topi.cast(tvm.topi.less_equal(uniform_values, data), out_dtype)
 
 
 def uniform(gen, low, high, out_shape, out_dtype):

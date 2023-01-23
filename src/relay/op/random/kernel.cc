@@ -103,7 +103,7 @@ bool BernoulliRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
                                      << "but got " << PrettyPrint(types[0]));
     return false;
   }
-  DataType dis_dtype = data->dtype;
+  DataType dis_dtype = param->dis_dtype;
   // we are supporting float32 and float64 at the moment.
   if (!(dis_dtype.is_float() && (dis_dtype.bits() == 32 || dis_dtype.bits() == 64))) {
     reporter->GetDiagCtx().EmitFatal(Diagnostic::Error(reporter->GetSpan())
@@ -119,8 +119,9 @@ bool BernoulliRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
   return true;
 }
 
-Expr MakeBernoulli(Expr key, Expr data, Array<Integer> out_shape, DataType out_dtype) {
+Expr MakeBernoulli(Expr key, Expr data, DataType dis_dtype, Array<Integer> out_shape, DataType out_dtype) {
   auto attrs = make_object<BernoulliAttrs>();
+  attrs->dis_dtype = dis_dtype;
   attrs->out_shape = out_shape;
   attrs->out_dtype = out_dtype;
   static const Op& op = Op::Get("random.bernoulli");
