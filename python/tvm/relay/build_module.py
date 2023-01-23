@@ -158,6 +158,7 @@ class BuildModule(object):
 
         mod_name = mangle_module_name(mod_name)
 
+        print("BuildModule: _build")
         self._build(
             mod,
             target,
@@ -171,8 +172,11 @@ class BuildModule(object):
         autotvm.GLOBAL_SCOPE.silent = old_autotvm_silent
 
         # Get artifacts
+        print("BuildModule: get_module")
         mod = self.get_module()
+        print("BuildModule: get_params")
         params = self.get_params()
+        print("BuildModule: get_graph_json")
         executor_config = self.get_graph_json() if executor.name == "graph" else None
 
         return executor_config, mod, params
@@ -339,6 +343,7 @@ def build(
         raise ValueError("Type of input parameter mod must be tvm.IRModule")
 
     if isinstance(ir_mod, _function.Function):
+        print("GE: MOD IS FUNC")
         if params:
             ir_mod = bind_params_by_name(ir_mod, params)
         ir_mod = IRModule.from_expr(ir_mod)
@@ -348,12 +353,14 @@ def build(
             DeprecationWarning,
         )
 
+    print("GE: GET RAW TARGETS")
     raw_targets = Target.canon_multi_target_and_host(Target.target_or_current(target), target_host)
     assert len(raw_targets) > 0
     target_host = raw_targets[0].host
 
     # If current dispatch context is fallback context (the default root context),
     # then load pre-tuned parameters from TopHub
+    print("GE: GET TOPHUB CONTEXT")
     if isinstance(autotvm.DispatchContext.current, autotvm.FallbackContext):
         tophub_context = autotvm.tophub.context(list(raw_targets))
     else:
@@ -361,6 +368,7 @@ def build(
 
     with tophub_context:
         bld_mod = BuildModule()
+        print("GE: BUILD")
         graph_json, runtime_mod, params = bld_mod.build(
             mod=ir_mod,
             target=raw_targets,
@@ -371,6 +379,7 @@ def build(
             constant_memory_pools=constant_memory_pools,
             mod_name=mod_name,
         )
+        print("GE: GET METADATA")
         func_metadata = bld_mod.get_function_metadata()
         devices = bld_mod.get_devices()
         lowered_ir_mods = bld_mod.get_irmodule()
@@ -391,6 +400,7 @@ def build(
                 devices,
             )
         elif executor.name == "graph":
+            print("GE: GET EXEC FACTORY")
             executor_factory = _executor_factory.GraphExecutorFactoryModule(
                 ir_mod,
                 raw_targets,

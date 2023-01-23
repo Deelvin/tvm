@@ -297,13 +297,20 @@ class RelayBuildModule : public runtime::ModuleNode {
              const WorkspaceMemoryPools& workspace_memory_pools,
              const ConstantMemoryPools& constant_memory_pools, const String mod_name) {
     VLOG_CONTEXT << "Build";
+    std::cout << "\tSet executor\n";
     executor_ = executor;
+    std::cout << "\tSet runtime\n";
     runtime_ = runtime;
+    std::cout << "\tSet workspace_memory_pools\n";
     workspace_memory_pools_ = workspace_memory_pools;
+    std::cout << "\tSet constant_memory_pools\n";
     constant_memory_pools_ = constant_memory_pools;
+    std::cout << "\tSet compile config:";
     config_ = CompilationConfig(PassContext::Current(), raw_targets);
     VLOG(1) << "Using compilation config:" << std::endl << config_;
+    std::cout << config_ << "\n\tBuildRelay\n";
     BuildRelay(std::move(mod), mod_name);
+    std::cout << "\tBUILD FINISH\n";
   }
 
  protected:
@@ -411,14 +418,18 @@ class RelayBuildModule : public runtime::ModuleNode {
    */
   void BuildRelay(IRModule relay_module, const String& mod_name) {
     // Relay IRModule -> IRModule optimizations.
+    std::cout << "\t\tGet module\n";
     IRModule module = WithAttrs(
         relay_module, {{tvm::attr::kExecutor, executor_}, {tvm::attr::kRuntime, runtime_}});
+    std::cout << "\t\tGet relay_module\n";
     relay_module = OptimizeImpl(std::move(module));
 
     // Get the updated function and new IRModule to build.
     // Instead of recreating the IRModule, we should look at the differences between this and the
     // incoming IRModule to see if we can just pass (IRModule, Function) to the code generator.
+    std::cout << "\t\tDowncast func\n";
     Function func = Downcast<Function>(relay_module->Lookup("main"));
+    std::cout << "\t\tGet func_module\n";
     IRModule func_module = WithAttrs(IRModule::FromExpr(func),
                                      {{tvm::attr::kExecutor, executor_},
                                       {tvm::attr::kRuntime, runtime_},
@@ -426,12 +437,18 @@ class RelayBuildModule : public runtime::ModuleNode {
                                       {tvm::attr::kConstantMemoryPools, constant_memory_pools_}});
 
     // Generate code for the updated function.
+    std::cout << "\t\tMakeExecutorCodegen\n";
     executor_codegen_ = MakeExecutorCodegen(executor_->name);
+    std::cout << "\t\tInit\n";
     executor_codegen_->Init(nullptr, config_->primitive_targets);
+    std::cout << "\t\tCodegen\n";
     executor_codegen_->Codegen(func_module, func, mod_name);
+    std::cout << "\t\tUpdateOutput\n";
     executor_codegen_->UpdateOutput(&ret_);
+    std::cout << "\t\tGetParams\n";
     ret_.params = executor_codegen_->GetParams();
 
+    std::cout << "\t\tGetIRModule\n";
     auto lowered_funcs = executor_codegen_->GetIRModule();
 
     // No need to build for external functions.

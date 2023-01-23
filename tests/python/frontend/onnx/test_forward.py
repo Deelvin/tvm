@@ -7824,4 +7824,7 @@ def test_pad_constant_value(target, dev):
 
 
 if __name__ == "__main__":
-    tvm.testing.main()
+    target = "llvm -mcpu=core-avx2"
+    dev = tvm.device(str(target), 0)
+    test_random_bernoulli(target, dev)
+    # tvm.testing.main()
