@@ -435,12 +435,12 @@ class TECompilerImpl : public TECompilerNode {
       if (key->virtual_device != VirtualDevice::FullyUnconstrained() &&
           !key->virtual_device->memory_scope.empty() &&
           key->virtual_device->memory_scope != "global") {
-        ICHECK(value->cached_func->outputs.size() == 1)
-            << "Expect only one output for defined memory scope";
-        te::Tensor x_ref = value->cached_func->outputs[0];
-        binds[x_ref] =
-            tir::BufferWithOffsetAlignment(x_ref->shape, x_ref->dtype, x_ref->op->name, -1, 0,
-                                           false, key->virtual_device->memory_scope);
+          for (size_t k=0; k < value->cached_func->outputs.size(); k++) {
+            te::Tensor x_ref = value->cached_func->outputs[k];
+            binds[x_ref] = tir::BufferWithOffsetAlignment(x_ref->shape, x_ref->dtype,
+                                            x_ref->op->name, -1, 0,
+                                            false, key->virtual_device->memory_scope);
+          }
       }
       auto func_name = value->cached_func->prim_fn_var->name_hint;
       VLOG(1) << "scheduling";
