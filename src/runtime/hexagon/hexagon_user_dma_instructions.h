@@ -26,50 +26,62 @@ namespace hexagon {
 
 inline unsigned int dmpause() {
   unsigned int dm0 = 0;
-  asm volatile(" %0 = dmpause" : "=r"(dm0));
+#if __HVX_ARCH__ >= 68
+  __asm__  __volatile__(" %0 = dmpause" : "=r"(dm0));
+#endif
   return dm0;
 }
 
-inline void dmstart(void* next) { asm volatile(" dmstart(%0)" : : "r"(next)); }
+inline void dmstart(void* next) {
+#if __HVX_ARCH__ >= 68
+  __asm__  __volatile__(" dmstart(%0)" : : "r"(next));
+#endif
+}
 
 inline void dmlink(void* tail, void* next) {
-  asm volatile(" dmlink(%0, %1)" : : "r"(tail), "r"(next));
+#if __HVX_ARCH__ >= 68
+  __asm__  __volatile__(" dmlink(%0, %1)" : : "r"(tail), "r"(next));
+#endif
 }
 
 inline unsigned int dmpoll() {
   unsigned int dm0 = 0;
-  asm volatile(" %0 = dmpoll" : "=r"(dm0));
+#if __HVX_ARCH__ >= 68
+  __asm__  __volatile__(" %0 = dmpoll" : "=r"(dm0));
+#endif
   return dm0;
 }
 
 inline unsigned int dmwait() {
   unsigned int dm0 = 0;
-  asm volatile(" %0 = dmwait" : "=r"(dm0));
+  __asm__  __volatile__(" %0 = dmwait" : "=r"(dm0));
   return dm0;
 }
 
-inline void dmresume(unsigned int dm0) { asm volatile(" dmresume(%0)" : : "r"(dm0)); }
+inline void dmresume(unsigned int dm0) {
+  __asm__  __volatile__(" dmresume(%0)" : : "r"(dm0));
+}
 
 inline unsigned int dmsyncht() {
   unsigned int dm0 = 0;
-  asm volatile(" %0 = dmsyncht" : "=r"(dm0));
+  __asm__  __volatile__(" %0 = dmsyncht" : "=r"(dm0));
   return dm0;
 }
 
 inline unsigned int dmtlbsynch() {
   unsigned int dm0 = 0;
-  asm volatile(" %0 = dmtlbsynch" : "=r"(dm0));
+  __asm__  __volatile__(" %0 = dmtlbsynch" : "=r"(dm0));
   return dm0;
 }
 
 inline unsigned int dmcfgrd(unsigned int dmindex) {
   unsigned int data = 0;
-  asm volatile(" %0 = dmcfgrd(%1)" : "=r"(data) : "r"(dmindex));
+  __asm__  __volatile__(" %0 = dmcfgrd(%1)" : "=r"(data) : "r"(dmindex));
   return data;
 }
 
 inline void dmcfgwr(unsigned int dmindex, unsigned int data) {
-  asm volatile(" dmcfgwr(%0, %1)" : : "r"(dmindex), "r"(data));
+  __asm__  __volatile__(" dmcfgwr(%0, %1)" : : "r"(dmindex), "r"(data));
 }
 
 }  // namespace hexagon
