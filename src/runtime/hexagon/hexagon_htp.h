@@ -49,7 +49,7 @@ class HexagonHtp {
 
  private:
   //! \brief Acquisition context ID
-  unsigned int context_id_;
+  unsigned int context_id_ = 0;
 
   void Acquire();
   void Release();

@@ -36,45 +36,60 @@ namespace runtime {
 namespace hexagon {
 
 HexagonHtp::HexagonHtp() {
+#if __HVX_ARCH__ >= 68
   Acquire();
   // TODO(HWE): Perform HTP lock/unlock in thread instead of HexagonHtp
   Lock();
+#endif
 }
 
 HexagonHtp::~HexagonHtp() {
   // TODO(HWE): Perform HTP lock/unlock in thread instead of HexagonHtp
+#if __HVX_ARCH__ >= 68
   Unlock();
   Release();
+#endif
 }
 
 void HexagonHtp::Acquire() {
   compute_res_attr_t compute_res_attr;
-  int nErr;
-
-  if ((nErr = HAP_compute_res_attr_init(&compute_res_attr))) {
-    LOG(FATAL) << "InternalError: HAP_compute_res_attr_init failed\n";
-  }
-  if ((nErr = HAP_compute_res_attr_set_hmx_param(&compute_res_attr, 1))) {
-    LOG(FATAL) << "InternalError: HAP_compute_res_attr_set_hmx_param failed\n";
-  }
-  context_id_ = HAP_compute_res_acquire(&compute_res_attr, COMPUTE_RES_ACQ_TIMEOUT);
-
-  if (!context_id_) {
-    LOG(FATAL) << "InternalError: HAP_compute_res_acquire failed\n";
+  auto nErr = HAP_compute_res_attr_init(&compute_res_attr);
+  if (0 == nErr) {
+    nErr = HAP_compute_res_attr_set_hmx_param(&compute_res_attr, 1);
+    if ((0 == nErr)) {
+      context_id_ = HAP_compute_res_acquire(&compute_res_attr, COMPUTE_RES_ACQ_TIMEOUT);
+      if (!context_id_) {
+        LOG(FATAL) << "InternalError: HAP_compute_res_acquire failed\n";
+      }
+    } else {
+      if (nErr != HAP_COMPUTE_RES_NOT_SUPPORTED) {
+        LOG(FATAL) << "UnknownError: HAP_compute_res_acquire failed\n";
+      }
+    }
   }
 }
 
-void HexagonHtp::Release() { HAP_compute_res_release((unsigned int)context_id_); }
+void HexagonHtp::Release() {
+  if (context_id_) {
+    HAP_compute_res_release((unsigned int)context_id_);
+    context_id_ = 0;
+  }
+}
 
 void HexagonHtp::Lock() {
   int nErr;
-
-  if ((nErr = HAP_compute_res_hmx_lock(context_id_))) {
-    LOG(FATAL) << "InternalError: Unable to lock HTP!";
+  if (context_id_) {
+    if ((nErr = HAP_compute_res_hmx_lock(context_id_))) {
+      LOG(FATAL) << "InternalError: Unable to lock HTP!";
+    }
   }
 }
 
-void HexagonHtp::Unlock() { HAP_compute_res_hmx_unlock((unsigned int)context_id_); }
+void HexagonHtp::Unlock() {
+  if (context_id_) {
+    HAP_compute_res_hmx_unlock((unsigned int)context_id_);
+  }
+}
 
 }  // namespace hexagon
 }  // namespace runtime

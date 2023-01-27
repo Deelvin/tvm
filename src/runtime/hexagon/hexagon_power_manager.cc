@@ -32,13 +32,17 @@ namespace hexagon {
 HexagonPowerManager::HexagonPowerManager() {
   hap_pwr_ctx_ = HAP_utils_create_context();
   PowerOnHVX();
+#if __HVX_ARCH__ >= 68
   PowerOnHTP();
+#endif
   SetAppType();
   SetDCVS();
 }
 
 HexagonPowerManager::~HexagonPowerManager() {
+#if __HVX_ARCH__ >= 68
   PowerOffHTP();
+#endif
   PowerOffHVX();
   HAP_utils_destroy_context(hap_pwr_ctx_);
 }

@@ -66,9 +66,12 @@ int HexagonUserDMA::Copy(int queue_id, void* dst, void* src, uint32_t length, bo
   dma_desc_set_desctype(dma_desc, DESC_DESCTYPE_1D);
   dma_desc_set_dstcomp(dma_desc, DESC_COMP_NONE);
   dma_desc_set_srccomp(dma_desc, DESC_COMP_NONE);
-
-  bool dst_is_ddr = !HexagonDeviceAPI::Global()->VtcmPool()->IsVtcm(dst, length);
-  bool src_is_ddr = !HexagonDeviceAPI::Global()->VtcmPool()->IsVtcm(src, length);
+  auto pool = HexagonDeviceAPI::Global()->VtcmPool();
+  if (pool == nullptr) {
+    return DMA_FAILURE;
+  }
+  bool dst_is_ddr = !pool->IsVtcm(dst, length);
+  bool src_is_ddr = !pool->IsVtcm(src, length);
 
   // VTCM -> DDR with bypass enabled
   if (dst_is_ddr && !src_is_ddr && bypass_cache) {

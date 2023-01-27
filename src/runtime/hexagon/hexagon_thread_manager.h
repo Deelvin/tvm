@@ -147,18 +147,23 @@ class HexagonThreadManager {
 
  private:
   struct ThreadContext {
-    qurt_pipe_t* pipe;
+    qurt_pipe_t* pipe = nullptr;
     unsigned index;
     HardwareResourceType resource_type;
-    HexagonHvx* hvx;
-    HexagonHtp* htp;
+    HexagonHvx* hvx = nullptr;
+    HexagonHtp* htp = nullptr;
     uint64_t status;
     ThreadContext(qurt_pipe_t* pipe, unsigned index, HardwareResourceType resource_type,
                   HexagonHvx* hvx, HexagonHtp* htp)
         : pipe(pipe), index(index), resource_type(resource_type), hvx(hvx), htp(htp), status(0) {
+#if __HVX_ARCH__ >= 68
       CHECK(resource_type == NONE || (hvx && htp))
           << "Missing resource manager pointer, type: " << resource_type << " hvx: " << hvx
           << " htp: " << htp;
+#else
+      CHECK(resource_type == NONE || (hvx))
+          << "Missing resource manager pointer, type: " << resource_type << " hvx: " << hvx;
+#endif
     }
   };
 
@@ -236,8 +241,9 @@ class HexagonThreadManager {
 
   //! \brief HTP hardware resource.
   // TODO(HWE): Move binding of HTP to a specific thread
+// #if __HVX_ARCH__ >= 68
   std::unique_ptr<HexagonHtp> htp_;
-
+// #endif
   //! \brief HVX hardware resource.
   // TODO(HWE): Move binding of individual HVX instances to a specific thread
   std::unique_ptr<HexagonHvx> hvx_;

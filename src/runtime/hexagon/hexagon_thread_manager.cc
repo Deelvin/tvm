@@ -18,6 +18,21 @@
  */
 
 #include "hexagon_thread_manager.h"
+// #if defined(__hexagon__)
+// extern "C" {
+#ifndef _DEBUG
+#define _DEBUG
+#endif
+#include <HAP_farf.h>
+// }
+// #endif
+
+// #include <android/log.h>
+
+// #define APPNAME_ "HEX_LOG"
+// #define LOGGR(...) { \
+//     __android_log_print(2, APPNAME_, __VA_ARGS__); \
+// }
 
 namespace tvm {
 namespace runtime {
@@ -31,7 +46,18 @@ HexagonThreadManager::HexagonThreadManager(unsigned num_threads, unsigned thread
   CHECK(num_threads);
   CHECK_LE(num_threads, QURT_MAX_HTHREAD_LIMIT);
   nthreads_ = num_threads;
-
+  qurt_sysenv_max_hthreads_t num_threads_t;
+  if (QURT_EOK == qurt_sysenv_get_max_hw_threads(&num_threads_t)) {
+        nthreads_ = std::min(num_threads_t.max_hthreads, num_threads);
+  }
+  FARF(ALWAYS,"HexagonThreadManager init nthreads_ = %d.\n", nthreads_);
+// #if defined(__hexagon__)
+  // LOGGR("HexagonThreadManager nthreads_ = %d", nthreads_);
+// #endif
+  // printf();
+  // FARF(ALWAYS,"HexagonThreadManager const.");
+  FARF(ALWAYS,"HexagonThreadManager thread_stack_size_bytes = %d.\n",thread_stack_size_bytes);
+  FARF(ALWAYS,"HexagonThreadManager thread_pipe_size_words = %d.\n",thread_pipe_size_words);
   CHECK_GE(thread_stack_size_bytes, MIN_STACK_SIZE_BYTES);
   CHECK_LE(thread_stack_size_bytes, MAX_STACK_SIZE_BYTES);
 
@@ -39,8 +65,10 @@ HexagonThreadManager::HexagonThreadManager(unsigned num_threads, unsigned thread
   CHECK_LE(thread_pipe_size_words, MAX_PIPE_SIZE_WORDS);
 
   hw_resources_ = hw_resources;
+#if __HVX_ARCH__ >= 68
   CheckResources();
-
+#endif
+  FARF(ALWAYS,"HexagonThreadManager CheckResources() create_resource_managers_ = %d\n", create_resource_managers_);
   if (create_resource_managers_) {
     DLOG(INFO) << "Initialize hardware resource managers";
     // This creates the manager objects, which reserves (acquires) the resources.
@@ -53,15 +81,17 @@ HexagonThreadManager::HexagonThreadManager(unsigned num_threads, unsigned thread
 
   DLOG(INFO) << "Spawning threads";
   SpawnThreads(thread_stack_size_bytes, thread_pipe_size_words);
-
+  FARF(ALWAYS,"HexagonThreadManager SpawnThreads()\n");
   // Initially, block all threads until we get the Start() call
   qurt_sem_init_val(&start_semaphore_, 0);
   for (unsigned i = 0; i < nthreads_; i++) {
     Dispatch(reinterpret_cast<TVMStreamHandle>(i), thread_wait, &start_semaphore_);
   }
+  FARF(ALWAYS,"HexagonThreadManager finished\n");
 }
 
 HexagonThreadManager::~HexagonThreadManager() {
+  FARF(ALWAYS,"HexagonThreadManager destructor\n");
   // In case Start() was never explicitly called, call it now to prevent deadlock
   if (qurt_sem_get_val(&start_semaphore_) == 0) {
     Start();
@@ -139,13 +169,15 @@ void HexagonThreadManager::CheckResources() {
 void HexagonThreadManager::SpawnThreads(unsigned thread_stack_size_bytes,
                                         unsigned thread_pipe_size_words) {
   // allocate all stack space for threads
+  FARF(ALWAYS,"HexagonThreadManager SpawnThreads entry thread_stack_size_bytes = %d, nthreads_ = %d\n", thread_stack_size_bytes, nthreads_);
   stack_buffer_ = hexbuffs_.AllocateHexagonBuffer(thread_stack_size_bytes * nthreads_,
                                                   MEM_ALIGNMENT, String("global"));
+  FARF(ALWAYS,"HexagonThreadManager AllocateHexagonBuffer stack_buffer_ %h, thread_stack_size_bytes = %d, thread_pipe_size_words = %d\n", stack_buffer_, thread_stack_size_bytes,thread_pipe_size_words);
   // allocate space for pipe buffers (command queues)
   unsigned thread_pipe_size_bytes = thread_pipe_size_words * sizeof(qurt_pipe_data_t);
   pipe_buffer_ = hexbuffs_.AllocateHexagonBuffer(thread_pipe_size_bytes * nthreads_, MEM_ALIGNMENT,
                                                  String("global"));
-
+  FARF(ALWAYS,"HexagonThreadManager::SpawnThreads pipe buffers\n");
   threads_.resize(nthreads_);
   pipes_.resize(nthreads_);
   contexts_.resize(nthreads_);
@@ -154,6 +186,7 @@ void HexagonThreadManager::SpawnThreads(unsigned thread_stack_size_bytes,
 
   // First, create pipe resources for all threads
   char* next_pipe_start = reinterpret_cast<char*>(pipe_buffer_);
+  FARF(ALWAYS,"HexagonThreadManager::SpawnThreads nthreads_ = %d\n", nthreads_);
   for (unsigned i = 0; i < nthreads_; i++) {
     qurt_pipe_attr_t pipe_attr;
     qurt_pipe_attr_init(&pipe_attr);
@@ -164,6 +197,7 @@ void HexagonThreadManager::SpawnThreads(unsigned thread_stack_size_bytes,
 
     // create the pipe
     int rc = qurt_pipe_init(&pipes_[i], &pipe_attr);
+    FARF(ALWAYS,"HexagonThreadManager::SpawnThreads rc = %d, i = %d\n", rc, i);
     CHECK_EQ(rc, QURT_EOK);
   }
 
@@ -171,14 +205,15 @@ void HexagonThreadManager::SpawnThreads(unsigned thread_stack_size_bytes,
 
   // Create all threads
   char* next_stack_start = reinterpret_cast<char*>(stack_buffer_);
+  qurt_thread_attr_t thread_attr;
+  char name[QURT_THREAD_ATTR_NAME_MAXLEN];
+  qurt_thread_attr_init(&thread_attr);
+  FARF(ALWAYS,"HexagonThreadManager::SpawnThreads init threads\n");
   for (unsigned i = 0; i < nthreads_; i++) {
     // create initialize the thread attr
-    qurt_thread_attr_t thread_attr;
-    char name[32];
-    qurt_thread_attr_init(&thread_attr);
     qurt_thread_attr_set_stack_addr(&thread_attr, next_stack_start);
     qurt_thread_attr_set_stack_size(&thread_attr, thread_stack_size_bytes);
-    snprintf(name, sizeof(name), "thread %d", i);
+    snprintf(name, sizeof(name), "thrd %d", i);
     qurt_thread_attr_set_name(&thread_attr, name);
     next_stack_start += thread_stack_size_bytes;
 
@@ -186,6 +221,7 @@ void HexagonThreadManager::SpawnThreads(unsigned thread_stack_size_bytes,
     contexts_[i] = new ThreadContext(&pipes_[i], i, hw_resources_.empty() ? NONE : hw_resources_[i],
                                      hvx_.get(), htp_.get());
     int rc = qurt_thread_create(&threads_[i], &thread_attr, thread_main, contexts_[i]);
+    FARF(ALWAYS,"HexagonThreadManager::SpawnThreads nre thread context rc = %d, i = %d\n", rc, i);
     CHECK_EQ(rc, QURT_EOK);
   }
 

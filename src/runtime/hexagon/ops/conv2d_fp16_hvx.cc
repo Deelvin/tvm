@@ -137,6 +137,7 @@ inline HVX_Vector getInputVector(uint16_t* base_ptr) {
  * @return output vector with 32 output channels even lanes
  */
 inline HVX_Vector computeOuputVector(HVX_Vector act_vec, HVX_Vector wgt_vec) {
+#if __HVX_ARCH__ >= 68
   HVX_Vector v_res = Q6_Vqf16_vmpy_VhfVhf(act_vec, wgt_vec);  // result is in qf16
   HVX_Vector v_rot = Q6_V_vror_VR(v_res, 2);
   HVX_Vector v_reduced = Q6_Vqf16_vadd_Vqf16Vqf16(v_res, v_rot);
@@ -144,6 +145,10 @@ inline HVX_Vector computeOuputVector(HVX_Vector act_vec, HVX_Vector wgt_vec) {
   HVX_Vector v1e = getOddEvenOnes().first;
   HVX_Vector v_reduced_even_lanes = Q6_V_vand_VV(v_hf, v1e);
   return v_reduced_even_lanes;
+#else
+  HVX_Vector v_reduced_even_lanes;
+  return v_reduced_even_lanes;
+#endif
 }
 
 static int round_down(int v, int base) { return v - (v % base); }
@@ -341,13 +346,16 @@ void conv_layer_fp16_hvx(DLTensor& cr_out, const DLTensor& cr_act,  // NOLINT(*)
             HVX_Vector reduced_vec_odd_elements = computeOuputVector(act_vec, weights_vec);
             reduced_vec_odd_elements = Q6_V_vror_VR(reduced_vec_odd_elements, -2);
             HVX_Vector out_final = Q6_V_vor_VV(reduced_vec_even_elements, reduced_vec_odd_elements);
-
+#if __HVX_ARCH__ >= 68
             HVX_Vector out_vec_qf16 = Q6_Vqf16_vadd_VhfVhf(out_final, existing_out_vec);
             existing_out_vec = Q6_Vhf_equals_Vqf16(out_vec_qf16);
+#endif
           } else {
+#if __HVX_ARCH__ >= 68
             HVX_Vector out_vec_qf16 =
                 Q6_Vqf16_vadd_VhfVhf(reduced_vec_even_elements, existing_out_vec);
             existing_out_vec = Q6_Vhf_equals_Vqf16(out_vec_qf16);
+#endif
           }
         }
       }

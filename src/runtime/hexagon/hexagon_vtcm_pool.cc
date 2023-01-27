@@ -21,24 +21,35 @@
 #include "HAP_compute_res.h"
 #include "hexagon_common.h"
 
+#ifndef _DEBUG
+#define _DEBUG
+#endif
+#include <HAP_farf.h>
+
 namespace tvm {
 namespace runtime {
 namespace hexagon {
 
 HexagonVtcmPool::HexagonVtcmPool() {
+  FARF(ALWAYS,"HexagonVtcmPool() entry\n");
   compute_res_attr_t res_info;
-  HEXAGON_SAFE_CALL(HAP_compute_res_attr_init(&res_info));
-
+  auto result = (HAP_compute_res_attr_init(&res_info));
+  FARF(ALWAYS,"HexagonVtcmPool() init %d\n", result);
   unsigned int avail_block_size;
   compute_res_vtcm_page_t total_block_layout;
   compute_res_vtcm_page_t avail_block_layout;
-
-  HEXAGON_SAFE_CALL(compute_resource_query_VTCM(/* application_id = */ 0, &vtcm_device_size_,
+  FARF(ALWAYS,"HexagonVtcmPool() compute_resource_query_VTCM start\n");
+  result = (compute_resource_query_VTCM(/* application_id = */ 0, &vtcm_device_size_,
                                                 &total_block_layout, &avail_block_size,
                                                 &avail_block_layout));
-  DLOG(INFO) << "HexagonVtcmPool total " << vtcm_device_size_ << " avail " << avail_block_size;
+  FARF(ALWAYS,"HexagonVtcmPool() compute_resource_query_VTCM end\n");
+  FARF(ALWAYS,"HexagonVtcmPool() result = %d, vtcm_device_size_ = %d, avail_block_size = %d\n", result, vtcm_device_size_, avail_block_size);
+  // DLOG(INFO) << "HexagonVtcmPool total " << vtcm_device_size_ << " avail " << avail_block_size;
+#if __HVX_ARCH__ >= 68
   CHECK(avail_block_size >= (1024 * 1024)) << "Less than 1MB VTCM available";
-
+#else
+  CHECK(avail_block_size >= (256 * 1024)) << "Less than 256 KB VTCM available"; // 80-PK882-38 Rev. B, page 8
+#endif
   // allocate nbytes of vtcm on a single page
   HEXAGON_SAFE_CALL(HAP_compute_res_attr_set_vtcm_param_v2(&res_info,
                                                            /*vtcm_size = */ vtcm_device_size_,

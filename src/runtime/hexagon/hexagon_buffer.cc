@@ -27,6 +27,10 @@
 #include "hexagon_common.h"
 #include "hexagon_device_api.h"
 #include "qurt_memory.h"
+#ifndef _DEBUG
+#define _DEBUG
+#endif
+#include <HAP_farf.h>
 
 namespace tvm {
 namespace runtime {
@@ -42,22 +46,33 @@ struct Allocation {
   Allocation& operator=(Allocation&&) = delete;
 
   void* data_{nullptr};
-  size_t allocation_nbytes_;
-  size_t alignment_;
+  size_t allocation_nbytes_{0};
+  size_t alignment_{0};
 };
 
 struct DDRAllocation : public Allocation {
   DDRAllocation(size_t nbytes, size_t alignment) : Allocation(nbytes, alignment) {
+    FARF(ALWAYS,"DDRAllocation nbytes = %d, alignment = %d.\n", nbytes, alignment);
+#if __HVX_ARCH__ >= 68
     int ret = posix_memalign(&data_, alignment, nbytes);
-    CHECK_EQ(ret, 0);
+#else
+    data_ = malloc(nbytes);
+    auto ret = data_;
+#endif
+    FARF(ALWAYS,"DDRAllocation ret = %d, data_ = %x\n", ret, data_);
+    CHECK_NE(data_, nullptr);
   }
-  ~DDRAllocation() { free(data_); }
+  ~DDRAllocation() {
+    if (data_)
+      free(data_);
+    }
 };
 
 struct VTCMAllocation : public Allocation {
   VTCMAllocation(size_t nbytes, size_t alignment) : Allocation(nbytes, alignment) {
     // For simplicity, the current VTCM dynamic pool supports the following alignments: less than
     // or equal to 128 (0x80), and 2k (0x800)
+    FARF(ALWAYS,"VTCMAllocation nbytes = %d, alignment = %d.\n", nbytes, alignment);
     CHECK((alignment <= 0x80) || (alignment == 0x800))
         << "VTCMAllocation called for invalid alignment " << alignment;
 
@@ -74,13 +89,18 @@ struct VTCMAllocation : public Allocation {
                  << nbytes;
       allocation_nbytes_ = nbytes;
     }
-    data_ = HexagonDeviceAPI::Global()->VtcmPool()->Allocate(allocation_nbytes_);
+    auto vtcm_pool = HexagonDeviceAPI::Global()->VtcmPool();
+    if(vtcm_pool)
+      data_ = vtcm_pool->Allocate(allocation_nbytes_);
     DLOG(INFO) << "VTCMAllocation " << data_ << " " << allocation_nbytes_ << " " << alignment;
   }
   ~VTCMAllocation() {
     DLOG(INFO) << "~VTCMAllocation " << data_ << " " << allocation_nbytes_;
-    HexagonDeviceAPI::Global()->VtcmPool()->Free(data_, allocation_nbytes_);
-    data_ = nullptr;
+    auto vtcm_pool = HexagonDeviceAPI::Global()->VtcmPool();
+    if(vtcm_pool) {
+      vtcm_pool->Free(data_, allocation_nbytes_);
+      data_ = nullptr;
+    }
   }
 };
 
@@ -102,7 +122,7 @@ std::unique_ptr<Allocation> Allocator<HexagonBuffer::StorageScope::kVTCM>(size_t
 HexagonBuffer::HexagonBuffer(size_t nbytes, size_t alignment, Optional<String> scope)
     : ndim_(1), nbytes_per_allocation_(nbytes) {
   SetStorageScope(scope);
-
+  FARF(ALWAYS,"HexagonBuffer::HexagonBuffer()\n");
   std::unique_ptr<Allocation> alloca = nullptr;
   if (GetStorageScope() == StorageScope::kDDR) {
     alloca = Allocator<StorageScope::kDDR>(nbytes, alignment);
@@ -118,7 +138,7 @@ HexagonBuffer::HexagonBuffer(size_t nallocs, size_t nbytes, size_t alignment,
                              Optional<String> scope)
     : ndim_(2), nbytes_per_allocation_(nbytes) {
   SetStorageScope(scope);
-
+  FARF(ALWAYS,"HexagonBuffer::HexagonBuffer() 1\n");
   size_t nbytes_aligned = ((nbytes + (alignment - 1)) / alignment) * alignment;
   size_t nbytes_monolithic = nallocs * nbytes_aligned;
 
