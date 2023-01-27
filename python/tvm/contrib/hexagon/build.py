@@ -270,7 +270,7 @@ class HexagonLauncherAndroid(HexagonLauncherRPC):
         hexagon_debug: bool = False,
         clear_logcat: bool = False,
         sysmon_profile: bool = False,
-        farf_config: str = "0x1e",
+        farf_config: str = "0x1F",
     ):
         """Configure a new HexagonLauncherAndroid
 
@@ -765,7 +765,7 @@ def HexagonLauncher(
     hexagon_debug: bool = False,
     clear_logcat: bool = False,
     sysmon_profile: bool = False,
-    farf_config: str = farf_config_from_python_log_level(logging.INFO),
+    farf_config: str = farf_config_from_python_log_level(logging.DEBUG),
 ):
     """Creates a HexagonLauncher"""
     if serial_number == HEXAGON_SIMULATOR_NAME:
