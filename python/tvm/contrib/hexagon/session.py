@@ -18,6 +18,7 @@
 """Defines a Session class for Hexagon devices."""
 
 import os
+import sys
 import pathlib
 import tempfile
 from typing import Union
@@ -31,7 +32,7 @@ from tvm.relay.backend.executor_factory import (
     GraphExecutorFactoryModule,
 )
 from .tools import export_module, HEXAGON_SIMULATOR_NAME
-
+import traceback
 
 class Session:
     """Hexagon Device Session
@@ -68,8 +69,10 @@ class Session:
         rpc_server_key: str,
         serial_number: str,
         session_name: str = "hexagon-rpc",
-        remote_stack_size_bytes: int = 256 * 1024,  # Min size for main thread in QuRT/sim
-        rpc_receive_buffer_size_bytes: int = 256 * 1024 * 1024,  # Size for passing hexagon tests
+        # the default stack size changed to 32 KB due to smamll RAM size on v66 board
+        remote_stack_size_bytes: int = 32 * 1024,  # Min size for main thread in QuRT/sim
+        # the buffer size changed due to small RAM size on v66 board
+        rpc_receive_buffer_size_bytes: int = 64 * 1024 * 1024,  # Size for passing hexagon tests
     ):
         self._workspace = str(remote_workspace)
         self._rpc_tracker = rpc_tracker
@@ -160,9 +163,20 @@ class Session:
         """
         upload_func = self._rpc.get_function("tvm.rpc.server.upload")
         remote_path = f"{self._workspace}/{remote_filename}"
+
         with open(local_path, mode="rb") as src_f:
             data = bytearray(src_f.read())
-        upload_func(remote_path, data)
+        fname = "/mnt/disk2/sshtin/tvm/test_binary.so"
+        with open(fname, "wb") as binary_file:
+            # Write bytes to file
+            binary_file.write(data)
+        # this is debug code!!!
+        # there are so,me problems with dlopen detected on v66 board.
+        # this solution is based on recommendations from here: https://mace.readthedocs.io/en/latest/faq.html
+        os.system('adb -s $ANDROID_SERIAL_NUMBER push {} /data/local/tmp/hexagon_test'.format(fname))
+        os.system('adb -s $ANDROID_SERIAL_NUMBER push {} /vendor/lib/rfsa/adsp/'.format(fname))
+        # print("remote_path to send = ", remote_path, len(data), flush=True)
+        # upload_func(remote_path, data)
         return remote_path
 
     def load_module(self, module: Union[str, pathlib.Path, tvm.runtime.Module]):

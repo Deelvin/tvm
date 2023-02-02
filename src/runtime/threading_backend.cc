@@ -36,6 +36,12 @@
 #include <sched.h>
 #endif
 #if defined(__hexagon__)
+
+#ifndef _DEBUG
+#define _DEBUG
+#endif
+#include <HAP_farf.h>
+
 extern "C" {
 #include <qurt_hvx.h>
 }
@@ -62,7 +68,15 @@ class QuRTThread {
     static int id = 1;
     qurt_thread_attr_t attr;
     char name[32];
-    int ret = posix_memalign(&stack_, HEXAGON_STACK_ALIGNMENT, HEXAGON_STACK_SIZE);
+    int ret = 0;
+#if __HVX_ARCH__ >= 68
+    ret = posix_memalign(&stack_, HEXAGON_STACK_ALIGNMENT, HEXAGON_STACK_SIZE);
+#else
+    stack_ = malloc(HEXAGON_STACK_SIZE);
+    if (stack_ == nullptr) {
+      ret = -1;
+    }
+#endif
     CHECK_EQ(ret, 0);
     // When a std::function<> is cast to bool,
     // it indicates whether it stores a callable target
@@ -371,7 +385,12 @@ void Yield() {
   // QuRT doesn't have a yield API, so instead we sleep for the minimum amount
   // of time to let the OS schedule another thread. std::this_thread::yield()
   // compiles down to an empty function.
+#if __HVX_ARCH__ >= 68
+  // No sleep for v66 qurt library.
   qurt_sleep(1);
+#endif
+  // auto id = qurt_thread_get_id();
+  // FARF(ALWAYS,"Yeild called. %d", id);
 #else
   std::this_thread::yield();
 #endif

@@ -36,6 +36,9 @@
 
 #if defined(__hexagon__)
 extern "C" {
+#ifndef _DEBUG
+#define _DEBUG
+#endif
 #include <HAP_farf.h>
 }
 #endif
@@ -121,24 +124,52 @@ void DSOLibrary::Unload() {
 #else
 
 void DSOLibrary::Load(const std::string& name) {
+#if defined(__hexagon__)
+#if __HVX_ARCH__ >= 68
   lib_handle_ = dlopen(name.c_str(), RTLD_LAZY | RTLD_LOCAL);
+#else
+  // that is a testing code!!!
+  dlerror();
+  std::string nm1 = "test_binary.so";
+  lib_handle_ = dlopen(nm1.c_str(), RTLD_LAZY | RTLD_GLOBAL);
+  auto code = dlerror();
+  if (code)
+    FARF(ALWAYS, "error code : %s\n", code);
+  else
+    FARF(ALWAYS, "empty error code\n");
+#endif
+#else
+  lib_handle_ = dlopen(name.c_str(), RTLD_LAZY | RTLD_LOCAL);
+#endif
   ICHECK(lib_handle_ != nullptr) << "Failed to load dynamic shared library " << name << " "
                                  << dlerror();
 #if defined(__hexagon__)
   int p;
   int rc = dlinfo(lib_handle_, RTLD_DI_LOAD_ADDR, &p);
   if (rc)
-    FARF(ERROR, "error getting model .so start address : %u", rc);
+    FARF(ERROR, "error getting model %s start address : %u", nm1.c_str(), rc);
   else
     FARF(ALWAYS, "Model .so Start Address : %x", p);
 #endif
 }
 
-void* DSOLibrary::GetSymbol_(const char* name) { return dlsym(lib_handle_, name); }
+void* DSOLibrary::GetSymbol_(const char* name) {
+  if (lib_handle_ != nullptr && name != nullptr) {
+    auto res = dlsym(lib_handle_, name);
+#if defined(__hexagon__)
+    FARF(ALWAYS, "DSOLibrary::GetSymbol_ %s result %x", name, res);
+#endif
+    return res;
+  } else {
+    return nullptr;
+  }
+}
 
 void DSOLibrary::Unload() {
-  dlclose(lib_handle_);
-  lib_handle_ = nullptr;
+  if (lib_handle_) {
+    dlclose(lib_handle_);
+    lib_handle_ = nullptr;
+  }
 }
 
 #endif

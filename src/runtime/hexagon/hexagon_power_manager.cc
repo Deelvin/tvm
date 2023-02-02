@@ -21,8 +21,14 @@
 
 #include <AEEStdDef.h>
 #include <AEEStdErr.h>
+#include <qurt_event.h>
+#include <qurt_error.h>
 
 #include "HAP_power.h"
+#ifndef _DEBUG
+#define _DEBUG
+#endif
+#include <HAP_farf.h>
 #include "hexagon_common.h"
 
 namespace tvm {
