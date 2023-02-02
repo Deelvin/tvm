@@ -18,21 +18,11 @@
  */
 
 #include "hexagon_thread_manager.h"
-// #if defined(__hexagon__)
-// extern "C" {
+
 #ifndef _DEBUG
 #define _DEBUG
 #endif
 #include <HAP_farf.h>
-// }
-// #endif
-
-// #include <android/log.h>
-
-// #define APPNAME_ "HEX_LOG"
-// #define LOGGR(...) { \
-//     __android_log_print(2, APPNAME_, __VA_ARGS__); \
-// }
 
 namespace tvm {
 namespace runtime {
@@ -51,6 +41,16 @@ HexagonThreadManager::HexagonThreadManager(unsigned num_threads, unsigned thread
         nthreads_ = std::min(num_threads_t.max_hthreads, num_threads);
   }
   FARF(ALWAYS,"HexagonThreadManager init nthreads_ = %d.\n", nthreads_);
+  qurt_arch_version_t vers;
+  vers.arch_version = 0;
+  int res = qurt_sysenv_get_arch_version(&vers);
+  if (res == QURT_EOK) {
+      FARF(ALWAYS, "HexagonThreadManager HW version is %x\n", vers.arch_version);
+  } else {
+      FARF(ALWAYS, "HexagonThreadManager HW result is %x\n", res);
+  }
+  hw_version_ = (vers.arch_version & 0xff);
+
 // #if defined(__hexagon__)
   // LOGGR("HexagonThreadManager nthreads_ = %d", nthreads_);
 // #endif
@@ -65,9 +65,11 @@ HexagonThreadManager::HexagonThreadManager(unsigned num_threads, unsigned thread
   CHECK_LE(thread_pipe_size_words, MAX_PIPE_SIZE_WORDS);
 
   hw_resources_ = hw_resources;
-#if __HVX_ARCH__ >= 68
-  CheckResources();
-#endif
+  if (hw_version_ >= 0x68) {
+    CheckResources();
+  } else {
+    create_resource_managers_ = true;
+  }
   FARF(ALWAYS,"HexagonThreadManager CheckResources() create_resource_managers_ = %d\n", create_resource_managers_);
   if (create_resource_managers_) {
     DLOG(INFO) << "Initialize hardware resource managers";

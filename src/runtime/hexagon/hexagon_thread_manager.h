@@ -247,6 +247,7 @@ class HexagonThreadManager {
   //! \brief HVX hardware resource.
   // TODO(HWE): Move binding of individual HVX instances to a specific thread
   std::unique_ptr<HexagonHvx> hvx_;
+  int hw_version_{0}
 };
 
 }  // namespace hexagon

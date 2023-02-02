@@ -230,7 +230,9 @@ TVM_REGISTER_GLOBAL("device_api.hexagon.dma_wait").set_body([](TVMArgs args, TVM
   int queue_id = args[0];
   int inflight = args[1];
   ICHECK(inflight >= 0);
-  HexagonDeviceAPI::Global()->UserDMA()->Wait(queue_id, inflight);
+  auto dma = HexagonDeviceAPI::Global()->UserDMA();
+  if (dma)
+    dma->Wait(queue_id, inflight);
   *rv = static_cast<int32_t>(0);
 });
 
@@ -255,7 +257,10 @@ TVM_REGISTER_GLOBAL("device_api.hexagon.alloc_nd").set_body([](TVMArgs args, TVM
   type_hint.lanes = 1;
 
   HexagonDeviceAPI* hexapi = HexagonDeviceAPI::Global();
-  *rv = hexapi->AllocDataSpace(dev, ndim, shape, type_hint, String(scope));
+  if (hexapi)
+    *rv = hexapi->AllocDataSpace(dev, ndim, shape, type_hint, String(scope));
+  else
+    *rv = nullptr;
 });
 
 TVM_REGISTER_GLOBAL("device_api.hexagon.free_nd").set_body([](TVMArgs args, TVMRetValue* rv) {
@@ -270,7 +275,8 @@ TVM_REGISTER_GLOBAL("device_api.hexagon.free_nd").set_body([](TVMArgs args, TVMR
   dev.device_id = device_id;
 
   HexagonDeviceAPI* hexapi = HexagonDeviceAPI::Global();
-  hexapi->FreeDataSpace(dev, ptr);
+  if (hexapi)
+    hexapi->FreeDataSpace(dev, ptr);
   *rv = static_cast<int32_t>(0);
 });
 

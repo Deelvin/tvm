@@ -48,6 +48,12 @@ struct Allocation {
   void* data_{nullptr};
   size_t allocation_nbytes_{0};
   size_t alignment_{0};
+  size_t allocation_nbytes_{0};
+  size_t alignment_{0};
+#if __HVX_ARCH__ < 68
+  char* pre_aligned_{nullptr};
+#endif
+
 };
 
 struct DDRAllocation : public Allocation {
@@ -56,16 +62,25 @@ struct DDRAllocation : public Allocation {
 #if __HVX_ARCH__ >= 68
     int ret = posix_memalign(&data_, alignment, nbytes);
 #else
-    data_ = malloc(nbytes);
-    auto ret = data_;
+    pre_aligned_ = (char*)malloc(nbytes + alignment - 1);
+    data_ = (void*)((uintptr_t)(pre_aligned_+ alignment - 1) & ~((uintptr_t)(alignment - 1)));
+    FARF(ALWAYS,"DDRAllocation data_ = %x, aligned = %x\n", data_, pre_aligned_);
 #endif
     FARF(ALWAYS,"DDRAllocation ret = %d, data_ = %x\n", ret, data_);
     CHECK_NE(data_, nullptr);
   }
   ~DDRAllocation() {
-    if (data_)
+#if __HVX_ARCH__ < 68
+    if (pre_aligned_) {
+      free(pre_aligned_);
+    }
+    data_ = nullptr;
+#else
+    if (data_) {
       free(data_);
     }
+#endif
+  }
 };
 
 struct VTCMAllocation : public Allocation {
@@ -97,7 +112,7 @@ struct VTCMAllocation : public Allocation {
   ~VTCMAllocation() {
     DLOG(INFO) << "~VTCMAllocation " << data_ << " " << allocation_nbytes_;
     auto vtcm_pool = HexagonDeviceAPI::Global()->VtcmPool();
-    if(vtcm_pool) {
+    if(vtcm_pool && data_) {
       vtcm_pool->Free(data_, allocation_nbytes_);
       data_ = nullptr;
     }
