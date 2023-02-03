@@ -36,11 +36,12 @@ from tvm.contrib.hexagon.hexagon_profiler import HexagonProfiler
 from ..._ffi import libinfo
 from .session import Session
 from .tools import HEXAGON_SIMULATOR_NAME
+# import traceback
 
 HEXAGON_RPC_LIB_DIR = os.environ.get("HEXAGON_RPC_LIB_DIR")
 ANDROID_BASH_FILE_NAME = "android_bash.sh"
 HEXAGON_REMOTE_DEVICE_KEY = "hexagon-dev"
-
+xxx = 0
 
 def _check_call_verbose(cmd, **kwargs) -> None:
     """
@@ -86,7 +87,8 @@ def _get_test_directory_name() -> str:
     """Generate a time-stamped name for use as a test directory name."""
     date_str = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     random_str = "".join(random.choice(string.ascii_lowercase) for _ in range(10))
-    return f"{date_str}-{random_str}"
+    # return f"{date_str}-{random_str}"
+    return ""
 
 
 class HexagonLauncherRPC(metaclass=abc.ABCMeta):
@@ -134,9 +136,18 @@ class HexagonLauncherRPC(metaclass=abc.ABCMeta):
             "rpc_server_port": 7070,
             "workspace_base": ".",
         }
+        global xxx
         self._rpc_info.update(rpc_info)
         self._workspace = self._create_workspace(workspace)
+        print("!!!!!HexagonLauncherRPC:")
+        # if xxx==0:
+        print("self._workspace = ", self._workspace)
+        # else:
+        #     print("self._workspace = ", self._workspace1)
+        print("workspace = ", workspace, flush=True)
         self._serial_number = serial_number
+        
+        xxx +=1
 
     @abc.abstractmethod
     def start_server(self):
@@ -239,6 +250,7 @@ class HexagonLauncherRPC(metaclass=abc.ABCMeta):
         Session :
             The session object.
         """
+        print("create_session remote_workspace = ", self._workspace, flush=True)
         hexagon_session_kw = {
             "remote_workspace": self._workspace,
             "rpc_tracker": (self._rpc_info["rpc_tracker_host"], self._rpc_info["rpc_tracker_port"]),
@@ -309,7 +321,8 @@ class HexagonLauncherAndroid(HexagonLauncherRPC):
         self._sysmon_process = None
         self._farf_config = farf_config
         rpc_info["device_key"] = HEXAGON_REMOTE_DEVICE_KEY + "." + self._serial_number
-
+        print("\nHexagonLauncherAndroid constructor")
+        print("workspace = ", workspace, flush=True)
         super(HexagonLauncherAndroid, self).__init__(rpc_info, workspace, self._serial_number)
 
     def _copy_to_remote(
@@ -362,6 +375,8 @@ class HexagonLauncherAndroid(HexagonLauncherRPC):
 
         # Push files
         lib_dir = _get_hexagon_rpc_lib_dir()
+        print("\n--lib_dir --: ", lib_dir, flush=True)
+        print("--workspace --: ", self._workspace, flush=True)
         for item in self.ANDROID_HEXAGON_RPC_FILES:
             self._copy_to_remote(lib_dir / item, self._workspace / item)
 
@@ -447,7 +462,7 @@ class HexagonLauncherAndroid(HexagonLauncherRPC):
 
     def cleanup_directory(self):
         """Abstract method implementation. See description in HexagonLauncherRPC."""
-        subprocess.Popen(self._adb_device_sub_cmd + ["shell", f"rm -rf {self._workspace}"])
+        # subprocess.Popen(self._adb_device_sub_cmd + ["shell", f"rm -rf {self._workspace}"])
 
     def _start_sysmon(self):
         hexagon_sdk_root = os.environ.get("HEXAGON_SDK_ROOT", default="")

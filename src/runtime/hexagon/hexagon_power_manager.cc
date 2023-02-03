@@ -21,8 +21,14 @@
 
 #include <AEEStdDef.h>
 #include <AEEStdErr.h>
+#include <qurt_event.h>
+#include <qurt_error.h>
 
 #include "HAP_power.h"
+#ifndef _DEBUG
+#define _DEBUG
+#endif
+#include <HAP_farf.h>
 #include "hexagon_common.h"
 
 namespace tvm {
@@ -31,14 +37,24 @@ namespace hexagon {
 
 HexagonPowerManager::HexagonPowerManager() {
   hap_pwr_ctx_ = HAP_utils_create_context();
+  // qurt_arch_version_t vers;
+  // int res = qurt_sysenv_get_arch_version(&vers);
+  // if (res != QURT_EOK) {
+
+  // }
+  // FARF(ALWAYS,"\nHexagonPowerManager::HexagonPowerManager. res = %d arch = %x\n", res, vers.arch_version);
   PowerOnHVX();
+#if __HVX_ARCH__ >= 68
   PowerOnHTP();
+#endif
   SetAppType();
   SetDCVS();
 }
 
 HexagonPowerManager::~HexagonPowerManager() {
+#if __HVX_ARCH__ >= 68
   PowerOffHTP();
+#endif
   PowerOffHVX();
   HAP_utils_destroy_context(hap_pwr_ctx_);
 }

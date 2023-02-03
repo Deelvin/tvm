@@ -40,6 +40,7 @@ namespace hexagon {
 
 HexagonDeviceAPI* HexagonDeviceAPI::Global() {
   static auto* inst = new HexagonDeviceAPI();
+  FARF(ALWAYS,"HexagonDeviceAPI::Global().");
   return inst;
 }
 
@@ -276,19 +277,26 @@ TVM_REGISTER_GLOBAL("device_api.hexagon.free_nd").set_body([](TVMArgs args, TVMR
 TVM_REGISTER_GLOBAL("device_api.hexagon.acquire_resources")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
       HexagonDeviceAPI* api = HexagonDeviceAPI::Global();
-      api->AcquireResources();
+      if (api)
+        api->AcquireResources();
     });
 
 TVM_REGISTER_GLOBAL("device_api.hexagon.release_resources")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
       HexagonDeviceAPI* api = HexagonDeviceAPI::Global();
-      api->ReleaseResources();
+      if (api)
+        api->ReleaseResources();
     });
 
 TVM_REGISTER_GLOBAL("device_api.hexagon.vtcm_device_bytes")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
       HexagonDeviceAPI* api = HexagonDeviceAPI::Global();
-      *rv = static_cast<int32_t>(api->VtcmPool()->VtcmDeviceBytes());
+      auto pool = api->VtcmPool();
+      if (pool) {
+        *rv = static_cast<int32_t>(api->VtcmPool()->VtcmDeviceBytes());
+      } else {
+        *rv = 0;
+      }
     });
 
 TVM_REGISTER_GLOBAL("device_api.hexagon").set_body([](TVMArgs args, TVMRetValue* rv) {

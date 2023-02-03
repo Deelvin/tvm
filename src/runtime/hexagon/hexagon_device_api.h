@@ -35,6 +35,10 @@
 #include "hexagon_thread_manager.h"
 #include "hexagon_user_dma.h"
 #include "hexagon_vtcm_pool.h"
+#ifndef _DEBUG
+#define _DEBUG
+#endif
+#include <HAP_farf.h>
 
 namespace tvm {
 namespace runtime {
@@ -58,35 +62,41 @@ class HexagonDeviceAPI final : public DeviceAPI {
   void AcquireResources() {
     CHECK_EQ(runtime_power_manager, nullptr);
     runtime_power_manager = std::make_unique<HexagonPowerManager>();
-
+    FARF(ALWAYS,"HexagonPowerManager.");
+#if __HVX_ARCH__ >= 68
     CHECK_EQ(runtime_vtcm, nullptr);
     runtime_vtcm = std::make_unique<HexagonVtcmPool>();
-
+#endif
+    FARF(ALWAYS,"HexagonVtcmPool.");
     CHECK_EQ(runtime_hexbuffs, nullptr);
     runtime_hexbuffs = std::make_unique<HexagonBufferManager>();
-
+    FARF(ALWAYS,"HexagonBufferManager.");
     CHECK_EQ(runtime_threads, nullptr);
     runtime_threads =
         std::make_unique<HexagonThreadManager>(threads, stack_size, pipe_size, hw_resources);
-
+    FARF(ALWAYS,"HexagonThreadManager.");
     CHECK_EQ(runtime_dma, nullptr);
+#if __HVX_ARCH__ >= 68
     runtime_dma = std::make_unique<HexagonUserDMA>();
+    FARF(ALWAYS,"HexagonUserDMA.");
+#endif
   }
 
   //! \brief Ensures all runtime resources are freed
   void ReleaseResources() {
+#if __HVX_ARCH__ >= 68
     CHECK(runtime_dma) << "runtime_dma was not created in AcquireResources";
     runtime_dma.reset();
-
+#endif
     CHECK(runtime_threads) << "runtime_threads was not created in AcquireResources";
     runtime_threads.reset();
 
     CHECK(runtime_hexbuffs) << "runtime_hexbuffs was not created in AcquireResources";
     runtime_hexbuffs.reset();
-
+#if __HVX_ARCH__ >= 68
     CHECK(runtime_vtcm) << "runtime_vtcm was not created in AcquireResources";
     runtime_vtcm.reset();
-
+#endif
     CHECK(runtime_power_manager) << "runtime_power_manager was not created in AcquireResources";
     runtime_power_manager.reset();
   }
@@ -188,9 +198,15 @@ class HexagonDeviceAPI final : public DeviceAPI {
   std::unique_ptr<HexagonThreadManager> runtime_threads;
   const unsigned threads{6};
   const unsigned pipe_size{1000};
+
+  
+#if __HVX_ARCH__ >= 68
   const unsigned stack_size{0x4000};  // 16KB
   const std::vector<HardwareResourceType> hw_resources{DMA_0, HTP_0, HVX_0, HVX_1, HVX_2, HVX_3};
-
+#else
+  const unsigned stack_size{0x2000};  // 8KB
+  const std::vector<HardwareResourceType> hw_resources{HVX_0, HVX_1, HVX_2, HVX_3};
+#endif
   //! \brief User DMA manager
   std::unique_ptr<HexagonUserDMA> runtime_dma;
 

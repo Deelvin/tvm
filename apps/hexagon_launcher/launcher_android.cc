@@ -28,9 +28,15 @@
 #include <string>
 #include <vector>
 
+#include <android/log.h>
+
 #include "launcher_core.h"
 #include "launcher_rpc.h"
 
+#define APPNAME "launcher_android"
+#define LOGGER(...) { \
+    __android_log_print(ANDROID_LOG_VERBOSE, APPNAME, __VA_ARGS__); \
+}
 AEEResult enable_unsigned_pd(bool enable) {
   remote_rpc_control_unsigned_module data;
   data.domain = CDSP_DOMAIN_ID;
@@ -39,6 +45,7 @@ AEEResult enable_unsigned_pd(bool enable) {
   if (rc != AEE_SUCCESS) {
     std::cout << "error " << (enable ? "enabling" : "disabling") << " unsigned PD\n";
   }
+  LOGGER("enable_unsigned_pd rc = %d", rc);
   return rc;
 }
 
@@ -58,7 +65,7 @@ struct RPCChannel : public ExecutionSession {
   explicit RPCChannel(const std::string& uri, bool gen_lwp_json = false)
       : ExecutionSession(gen_lwp_json) {
     enable_unsigned_pd(true);
-    set_remote_stack_size(128 * 1024);
+    set_remote_stack_size(32 * 1024);
 
     int rc = launcher_rpc_open(uri.c_str(), &handle);
     if (rc != AEE_SUCCESS) {

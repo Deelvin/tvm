@@ -18,6 +18,7 @@
 """Defines a Session class for Hexagon devices."""
 
 import os
+import sys
 import pathlib
 import tempfile
 from typing import Union
@@ -31,7 +32,7 @@ from tvm.relay.backend.executor_factory import (
     GraphExecutorFactoryModule,
 )
 from .tools import export_module, HEXAGON_SIMULATOR_NAME
-
+import traceback
 
 class Session:
     """Hexagon Device Session
@@ -68,10 +69,16 @@ class Session:
         rpc_server_key: str,
         serial_number: str,
         session_name: str = "hexagon-rpc",
-        remote_stack_size_bytes: int = 32 * 1024,  # Min size for main thread in QuRT/sim
-        rpc_receive_buffer_size_bytes: int = 64 * 1024 * 1024,  # Size for passing hexagon tests
+        remote_stack_size_bytes: int = 16 * 1024,  # Min size for main thread in QuRT/sim
+        rpc_receive_buffer_size_bytes: int = 32 * 1024 * 1024,  # Size for passing hexagon tests
     ):
         self._workspace = str(remote_workspace)
+
+        print("-----Session-----")
+        print("self._workspace = ", self._workspace)
+        # traceback.print_exc(file=sys.stdout)
+        # formatted_lines = traceback.format_exc().splitlines()
+        # print(formatted_lines, flush=True)
         self._rpc_tracker = rpc_tracker
         self._rpc_server_key = rpc_server_key
         self._serial_number = serial_number
@@ -89,6 +96,11 @@ class Session:
 
         tracker = _rpc.connect_tracker(self._rpc_tracker[0], self._rpc_tracker[1])
         try:
+            print("-----sesion info-----")
+            print("self._session_name = ", self._session_name)
+            print("self._remote_stack_size_bytes ", self._remote_stack_size_bytes)
+            print("self._rpc_receive_buffer_size_bytes ", self._rpc_receive_buffer_size_bytes)
+            print("-----sesion info-----", flush=True)
             self._rpc = tracker.request(
                 self._rpc_server_key,
                 priority=0,
@@ -160,9 +172,21 @@ class Session:
         """
         upload_func = self._rpc.get_function("tvm.rpc.server.upload")
         remote_path = f"{self._workspace}/{remote_filename}"
+        
         with open(local_path, mode="rb") as src_f:
             data = bytearray(src_f.read())
-        upload_func(remote_path, data)
+        fname = "/mnt/disk2/sshtin/tvm/test_binary.so"
+        with open(fname, "wb") as binary_file:
+            # Write bytes to file
+            binary_file.write(data)
+        os.system('adb -s $ANDROID_SERIAL_NUMBER push {} /data/local/tmp/hexagon_test'.format(fname))
+        os.system('adb -s $ANDROID_SERIAL_NUMBER push {} /vendor/lib/rfsa/adsp/'.format(fname))
+        # os.system('adb -s $ANDROID_SERIAL_NUMBER push /mnt/disk2/sshtin/tvm/build/hexagon_api_output/libtvm_runtime.so /vendor/lib/rfsa/adsp/')
+        # os.system('adb -s $ANDROID_SERIAL_NUMBER push /mnt/disk2/sshtin/tvm/build/hexagon_api_output/libhexagon_rpc_skel.so /vendor/lib/rfsa/adsp/')
+        # os.system('adb -s $ANDROID_SERIAL_NUMBER shell chmod +x /vendor/lib/rfsa/adsp/test_binary.so')
+        # os.system('adb -s $ANDROID_SERIAL_NUMBER shell chmod +x /data/local/tmp/hexagon_test/test_binary.so')
+        print("remote_path to send = ", remote_path, len(data), flush=True)
+        # upload_func(remote_path, data)
         return remote_path
 
     def load_module(self, module: Union[str, pathlib.Path, tvm.runtime.Module]):

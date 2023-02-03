@@ -17,6 +17,8 @@
  * under the License.
  */
 
+#include <stdio.h>
+
 extern "C" {
 #include <AEEStdDef.h>
 #include <AEEStdErr.h>
@@ -24,6 +26,15 @@ extern "C" {
 #include <HAP_perf.h>
 #include <qurt_error.h>
 }
+
+// #if defined(__hexagon__)
+// extern "C" {
+// #ifndef _DEBUG
+// #define _DEBUG
+// #endif
+// #include <HAP_farf.h>
+// }
+// #endif
 
 #include <dlfcn.h>
 #include <stdlib.h>
@@ -161,14 +172,18 @@ class HexagonPageAllocator {
     void* data;
 
     data = malloc(npages * kPageSize);
-
+    FARF(ALWAYS, "HexagonPageAllocator req size %d data is %x", npages * kPageSize, data);
     ArenaPageHeader* header = static_cast<ArenaPageHeader*>(data);
     header->size = npages * kPageSize;
     header->offset = sizeof(ArenaPageHeader);
     return header;
   }
 
-  void deallocate(ArenaPageHeader* page) { free(page); }
+  void deallocate(ArenaPageHeader* page) {
+    FARF(ALWAYS, "HexagonPageAllocator free %x\n", page);
+    if (page)
+      free(page);
+  }
 
   static const constexpr int kPageSize = 2 << 10;
   static const constexpr int kPageAlign = 8;
@@ -254,6 +269,11 @@ void reset_device_api() {
 
 int __QAIC_HEADER(hexagon_rpc_open)(const char* uri, remote_handle64* handle) {
   *handle = static_cast<remote_handle64>(reinterpret_cast<uintptr_t>(malloc(1)));
+
+#if defined(__hexagon__)
+  FARF(ALWAYS, "hexagon_rpc_open uri %s handle %x", uri, *handle);
+#endif
+
   if (!*handle) {
     LOG(ERROR) << __func__ << ": cannot allocate memory";
     return AEE_ENOMEMORY;
@@ -264,6 +284,10 @@ int __QAIC_HEADER(hexagon_rpc_open)(const char* uri, remote_handle64* handle) {
 }
 
 int __QAIC_HEADER(hexagon_rpc_close)(remote_handle64 handle) {
+#if defined(__hexagon__)
+  FARF(ALWAYS, "hexagon_rpc_close\n");
+#endif
+
   LOG(DEBUG) << __func__;
   if (handle) {
     free(reinterpret_cast<void*>(static_cast<uintptr_t>(handle)));
@@ -272,6 +296,10 @@ int __QAIC_HEADER(hexagon_rpc_close)(remote_handle64 handle) {
 }
 
 int __QAIC_HEADER(hexagon_rpc_init)(remote_handle64 _h, uint32_t buff_size_bytes) {
+#if defined(__hexagon__)
+  FARF(ALWAYS, "hexagon_rpc_init size %d, _h = %x\n", buff_size_bytes, _h);
+#endif
+
   get_hexagon_rpc_server(buff_size_bytes);
   return AEE_SUCCESS;
 }
@@ -286,6 +314,10 @@ int __QAIC_HEADER(hexagon_rpc_init)(remote_handle64 _h, uint32_t buff_size_bytes
  */
 AEEResult __QAIC_HEADER(hexagon_rpc_send)(remote_handle64 _handle, const unsigned char* data,
                                           int dataLen) {
+#if defined(__hexagon__)
+  FARF(ALWAYS, "hexagon_rpc_send, dataLen = %d, _handle = %d, data = %x\n", dataLen, _handle, (void*)data);
+#endif
+
   int64_t written_size = get_hexagon_rpc_server()->Write(reinterpret_cast<const uint8_t*>(data),
                                                          static_cast<size_t>(dataLen));
   if (written_size != dataLen) {
@@ -307,6 +339,10 @@ AEEResult __QAIC_HEADER(hexagon_rpc_send)(remote_handle64 _handle, const unsigne
  */
 AEEResult __QAIC_HEADER(hexagon_rpc_receive)(remote_handle64 _handle, unsigned char* buf,
                                              int bufLen, int64_t* buf_written_size) {
+#if defined(__hexagon__)
+  FARF(ALWAYS, "hexagon_rpc_receive\n");
+#endif
+
   int64_t read_size =
       get_hexagon_rpc_server()->Read(reinterpret_cast<uint8_t*>(buf), static_cast<size_t>(bufLen));
   *buf_written_size = read_size;
@@ -330,6 +366,9 @@ TVM_REGISTER_GLOBAL("tvm.hexagon.load_module")
       std::string soname = args[0];
       tvm::ObjectPtr<tvm::runtime::Library> n = tvm::runtime::CreateDSOLibraryObject(soname);
       *rv = CreateModuleFromLibrary(n);
+#if defined(__hexagon__)
+      FARF(ALWAYS, "tvm.hexagon.load_module n = %x, soname %s\n", n.get(), soname.c_str());
+#endif
     });
 
 TVM_REGISTER_GLOBAL("tvm.hexagon.get_profile_output")
@@ -345,9 +384,22 @@ TVM_REGISTER_GLOBAL("tvm.hexagon.get_profile_output")
     });
 
 void SaveBinaryToFile(const std::string& file_name, const std::string& data) {
-  std::ofstream fs(file_name, std::ios::out | std::ios::binary);
-  ICHECK(!fs.fail()) << "Cannot open " << file_name;
-  fs.write(&data[0], data.length());
+  try {
+    std::ofstream fs(file_name, std::ios::out | std::ios::binary);
+#if defined(__hexagon__)
+    FARF(ALWAYS, "SaveBinaryToFile %s", file_name.c_str());
+#endif
+    ICHECK(!fs.fail()) << "Cannot open " << file_name;
+    if (fs.is_open())
+      fs.write(&data[0], data.length());
+    else {
+      FILE* fle = fopen(file_name.c_str(), "wb");
+      ICHECK(false) << "Cannot open " << file_name << " fle " << fle;
+      fclose(fle);
+    }
+  } catch (std::ifstream::failure e) {
+    ICHECK(false) << "failure status " << e.what();
+  }
 }
 
 TVM_REGISTER_GLOBAL("tvm.rpc.server.upload")

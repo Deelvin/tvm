@@ -38,7 +38,9 @@
     return wrapper_api<__fp16>(ip1, ip2, NAME, #NAME);         \
   }
 
+#if __HVX_ARCH__ >= 68
 extern "C" {
+
 #include "hvx_internal.h"
 #include "qhmath_hvx.h"
 #include "qhmath_hvx_vector.h"
@@ -85,5 +87,5 @@ TVM_QHL_WRAPPER_AHF_1IP(qhmath_hvx_tan_ahf);
 TVM_QHL_WRAPPER_AHF_1IP(qhmath_hvx_tanh_ahf);
 
 TVM_QHL_WRAPPER_AHF_2IP(qhmath_hvx_pow_ahf);
-
+#endif
 #endif

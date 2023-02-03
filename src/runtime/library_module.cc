@@ -30,6 +30,14 @@
 #include <string>
 #include <utility>
 #include <vector>
+#if defined(__hexagon__)
+extern "C" {
+#ifndef _DEBUG
+#define _DEBUG
+#endif
+#include <HAP_farf.h>
+}
+#endif
 
 namespace tvm {
 namespace runtime {
@@ -198,6 +206,9 @@ void ProcessModuleBlob(const char* mblob, ObjectPtr<Library> lib,
 }
 
 Module CreateModuleFromLibrary(ObjectPtr<Library> lib, PackedFuncWrapper packed_func_wrapper) {
+#if defined(__hexagon__)
+  FARF(ALWAYS, "CreateModuleFromLibrary ");
+#endif
   InitContextFunctions([lib](const char* fname) { return lib->GetSymbol(fname); });
   auto n = make_object<LibraryModuleNode>(lib, packed_func_wrapper);
   // Load the imported modules
@@ -218,6 +229,9 @@ Module CreateModuleFromLibrary(ObjectPtr<Library> lib, PackedFuncWrapper packed_
   if (auto* ctx_addr = reinterpret_cast<void**>(lib->GetSymbol(runtime::symbol::tvm_module_ctx))) {
     *ctx_addr = dso_ctx_addr;
   }
+#if defined(__hexagon__)
+  FARF(ALWAYS, "CreateModuleFromLibrary dev_mblob = %h, dso_ctx_addr = %h, \n", dev_mblob, dso_ctx_addr);
+#endif
 
   return root_mod;
 }

@@ -34,6 +34,7 @@
 #include "../library_module.h"
 #include "HAP_debug.h"
 #include "HAP_perf.h"
+#include <HAP_farf.h>
 #include "hexagon_buffer.h"
 
 namespace tvm {
@@ -42,8 +43,14 @@ namespace hexagon {
 
 class HexagonTimerNode : public TimerNode {
  public:
-  virtual void Start() { start = HAP_perf_get_time_us(); }
-  virtual void Stop() { end = HAP_perf_get_time_us(); }
+  virtual void Start() {
+    start = HAP_perf_get_time_us();
+    // FARF(ALWAYS, "HexagonTimerNode start %d\n", start);
+  }
+  virtual void Stop() {
+    end = HAP_perf_get_time_us();
+    // FARF(ALWAYS, "HexagonTimerNode end %d, diff %d\n", end, (end - start));
+  }
   virtual int64_t SyncAndGetElapsedNanos() { return (end - start) * 1e3; }
   virtual ~HexagonTimerNode() {}
 

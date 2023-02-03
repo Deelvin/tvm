@@ -22,7 +22,7 @@
  * \brief RPC session for remote function call.
  */
 #include "rpc_endpoint.h"
-
+#include <tvm/runtime/logging.h>
 #include <tvm/runtime/c_runtime_api.h>
 #include <tvm/runtime/device_api.h>
 #include <tvm/runtime/packed_func.h>
@@ -1093,12 +1093,15 @@ class RPCClientSession : public RPCSession, public DeviceAPI {
     temp.shape = const_cast<int64_t*>(shape);
     temp.strides = nullptr;
     temp.byte_offset = 0;
+    void* result = nullptr;
     if (mem_scope.defined()) {
-      return endpoint_->SysCallRemote(RPCCode::kDevAllocDataWithScope, &temp,
+      result = endpoint_->SysCallRemote(RPCCode::kDevAllocDataWithScope, &temp,
                                       static_cast<std::string>(mem_scope.value()));
     } else {
-      return endpoint_->SysCallRemote(RPCCode::kDevAllocDataWithScope, &temp, nullptr);
+      result = endpoint_->SysCallRemote(RPCCode::kDevAllocDataWithScope, &temp, nullptr);
     }
+    LOG(DEBUG) << "AllocDataSpace res = " << result << "\n";
+    return result;
   }
 
   void FreeDataSpace(Device dev, void* ptr) final {

@@ -45,6 +45,7 @@ static AEEResult error_too_small(const std::string& func_name, const std::string
 }
 
 int __QAIC_HEADER(launcher_rpc_open)(const char* uri, remote_handle64* handle) {
+  FARF(ALWAYS, "---launcher_rpc_open\n");
   *handle = 0;  // Just use any value.
   reset_device_api();
   static const tvm::runtime::PackedFunc acq_res =
@@ -55,6 +56,7 @@ int __QAIC_HEADER(launcher_rpc_open)(const char* uri, remote_handle64* handle) {
 
 int __QAIC_HEADER(launcher_rpc_close)(remote_handle64 handle) {
   // Comment to stop clang-format from single-lining this function.
+  FARF(ALWAYS, "---launcher_rpc_close\n");
   static const tvm::runtime::PackedFunc rel_res =
       get_runtime_func("device_api.hexagon.release_resources");
   rel_res();
@@ -63,13 +65,15 @@ int __QAIC_HEADER(launcher_rpc_close)(remote_handle64 handle) {
 
 AEEResult __QAIC_HEADER(launcher_rpc_load)(remote_handle64 handle, const char* module_path,
                                            const char* graph_json) {
+  FARF(ALWAYS, "---launcher_rpc_load %x\n", TheModel.get());
   if (TheModel) {
     // Need to unload first.
     LOG(ERROR) << __func__ << ": model already loaded, unload first";
     return AEE_EUNABLETOLOAD;
   }
-
+  FARF(ALWAYS, "---launcher_rpc_load  path %s\n", module_path);
   tvm::runtime::Module module = load_module(module_path);
+  FARF(ALWAYS, "---launcher_rpc_load module = %x\n", module);
   std::string module_type = module->type_key();
   tvm::runtime::Module executor;
   if (module_type == "AotExecutorFactory") {
@@ -88,6 +92,7 @@ AEEResult __QAIC_HEADER(launcher_rpc_load)(remote_handle64 handle, const char* m
   }
 
   TheModel = std::make_unique<Model>(executor, module, graph_json);
+  FARF(ALWAYS, "---launcher_rpc_load TheModel %x\n", TheModel.get());
   return AEE_SUCCESS;
 }
 
@@ -211,6 +216,7 @@ AEEResult __QAIC_HEADER(launcher_rpc_get_output)(remote_handle64 handle, int out
 
 AEEResult __QAIC_HEADER(launcher_rpc_run)(remote_handle64 handle, uint64_t* pcycles,
                                           uint64_t* usecs, int gen_lwp_json) {
+  FARF(ALWAYS, "launcher_rpc_run TheModel: %x\n", TheModel.get());
   if (!TheModel) {
     // No model created.
     LOG(ERROR) << __func__ << ": no model created";
@@ -219,14 +225,14 @@ AEEResult __QAIC_HEADER(launcher_rpc_run)(remote_handle64 handle, uint64_t* pcyc
 
   uint64_t us_begin = HAP_perf_get_time_us();
   uint64_t pc_begin = HAP_perf_get_pcycles();
-
+  
   TheModel->run();
 
   uint64_t pc_end = HAP_perf_get_pcycles();
   uint64_t us_end = HAP_perf_get_time_us();
   *pcycles = pc_end - pc_begin;
   *usecs = us_end - us_begin;
-
+  FARF(ALWAYS, "Timings are folliwing usecs %d, pcycles %d\n", *usecs, *pcycles);
   if (gen_lwp_json) {
     if (!WriteLWPOutput("lwp.json")) {
       LOG(ERROR) << "ERROR: failed to generate lwp json file";

@@ -418,6 +418,7 @@ inline Array<FloatImm> AsFloatArray(const ObjectRef& obj) {
   const ArrayNode* arr = obj.as<ArrayNode>();
   ICHECK(arr) << "TypeError: Expect an array, but gets: " << obj->GetTypeKey();
   Array<FloatImm> results;
+  std::cout << "AsFloatArray : arr size: " << arr->size() << "\n" << std::flush;
   results.reserve(arr->size());
   for (const ObjectRef& elem : *arr) {
     if (const auto* int_imm = elem.as<IntImmNode>()) {

@@ -217,7 +217,7 @@ def _benchmark_hexagon_elementwise_add_kernel(
                     input2,
                     output,
                 ],
-                get_hexagon_target("v69"),
+                get_hexagon_target("v66"),
                 name=_PRIMFUNC_NAME,
             )
 

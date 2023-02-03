@@ -54,16 +54,20 @@ class HexagonTransportChannel : public RPCChannel {
 
     AEEResult rc = hexagon_rpc_open(uri.c_str(), &_handle);
     ICHECK(rc == AEE_SUCCESS) << "hexagon_rpc_open failed. URI: " << uri.c_str();
-
+    LOG(DEBUG) << "HexagonTransportChannel hexagon_rpc_open rc = " << rc << " _handle " << _handle << "\n";
     rc = hexagon_rpc_init(_handle, receive_buf_size_bytes);
     ICHECK(rc == AEE_SUCCESS) << "hexagon_rpc_set_receive_buf_size failed. receive_buf_size_bytes: "
                               << receive_buf_size_bytes;
+    LOG(DEBUG) << "HexagonTransportChannel hexagon_rpc_init rc = " << rc << "\n";
   }
 
   size_t Send(const void* data, size_t size) override {
     ICHECK(_handle != AEE_EUNKNOWN) << "RPC handle is not initialized.";
     AEEResult rc =
         hexagon_rpc_send(_handle, static_cast<const unsigned char*>(data), static_cast<int>(size));
+#ifdef __hexagon__
+    FARF("send  %h, %d", data, size, result);
+#endif
     ICHECK(rc == AEE_SUCCESS) << "hexagon_rpc_send failed: " << rc;
     return size;
   }
@@ -73,6 +77,7 @@ class HexagonTransportChannel : public RPCChannel {
     int64_t written_size = 0;
     AEEResult rc = hexagon_rpc_receive(_handle, static_cast<unsigned char*>(data),
                                        static_cast<int>(size), &written_size);
+    LOG(DEBUG) << "HexagonTransportChannel hexagon_rpc_receive rc = " << rc << " _handle " << _handle << " data " << data << " size " << size << " size " << size<<"\n";
     ICHECK(rc == AEE_SUCCESS) << "hexagon_rpc_receive failed: " << rc;
     return static_cast<size_t>(written_size);
   }
@@ -88,7 +93,8 @@ class HexagonTransportChannel : public RPCChannel {
     data.domain = CDSP_DOMAIN_ID;
     data.prio = -1;
     data.stack_size = size;
-    AEEResult rc = remote_session_control(FASTRPC_THREAD_PARAMS, &data, sizeof(data));
+    AEEResult rc = -1;
+    rc = remote_session_control(FASTRPC_THREAD_PARAMS, &data, sizeof(data));
     if (rc != AEE_SUCCESS) {
       LOG(ERROR) << "error setting remote stack size: " << std::hex << rc << '\n';
     }

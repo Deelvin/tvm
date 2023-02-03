@@ -126,8 +126,14 @@ class JSONDatabaseNode : public DatabaseNode {
     }
     Array<TuningRecord> results;
     results.reserve(top_k);
+    std::cout << "----GetTopK----\nrecords size = "<< this->tuning_records_.size() <<  "\n";
     for (const TuningRecord& record : this->tuning_records_) {
       auto run_secs = record->run_secs;
+      if (!run_secs.value().empty())
+        std::cout << " run_secs = " << run_secs.value() << "\n";
+      else {
+        std::cout << " run_secs empty\n";
+      }
       if (!run_secs.defined() || run_secs.value().empty() ||
           std::all_of(run_secs.value().begin(), run_secs.value().end(),
                       // kMaxMeanTime(1e10) is used as a stub for undefined measurement times.
@@ -145,6 +151,7 @@ class JSONDatabaseNode : public DatabaseNode {
         }
       }
     }
+    std::cout << std::flush;
     if (results.size() < static_cast<size_t>(top_k)) {
       LOG(WARNING) << "The size of the GetTopK result is smaller than requested. There are not "
                       "enough valid records in the database for this workload.";

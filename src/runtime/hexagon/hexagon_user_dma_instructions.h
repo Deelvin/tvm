@@ -26,25 +26,25 @@ namespace hexagon {
 
 inline unsigned int dmpause() {
   unsigned int dm0 = 0;
-  asm volatile(" %0 = dmpause" : "=r"(dm0));
+  // asm volatile(" %0 = dmpause" : "=r"(dm0));
   return dm0;
 }
 
-inline void dmstart(void* next) { asm volatile(" dmstart(%0)" : : "r"(next)); }
+inline void dmstart(void* next) {}//{ asm volatile(" dmstart(%0)" : : "r"(next)); }
 
 inline void dmlink(void* tail, void* next) {
-  asm volatile(" dmlink(%0, %1)" : : "r"(tail), "r"(next));
+  //asm volatile(" dmlink(%0, %1)" : : "r"(tail), "r"(next));
 }
 
 inline unsigned int dmpoll() {
   unsigned int dm0 = 0;
-  asm volatile(" %0 = dmpoll" : "=r"(dm0));
+  // asm volatile(" %0 = dmpoll" : "=r"(dm0));
   return dm0;
 }
 
 inline unsigned int dmwait() {
   unsigned int dm0 = 0;
-  asm volatile(" %0 = dmwait" : "=r"(dm0));
+  // asm volatile(" %0 = dmwait" : "=r"(dm0));
   return dm0;
 }
 

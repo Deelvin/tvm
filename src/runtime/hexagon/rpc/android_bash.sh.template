@@ -16,10 +16,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+export TVM_LOG_DEBUG=1
 export LD_LIBRARY_PATH=.
 
 # Enable FARF-based logging for Hexagon code invoked by 'tvm_rpc_android_server'.
-export ADSP_LIBRARY_PATH=`pwd`
+export DSP_LIBRARY_PATH=/data/local/tmp/hexagon_test/;/vendor/lib64/;/vendor/lib/rfsa/adsp/
+export ADSP_LIBRARY_PATH=/data/local/tmp/hexagon_test/;/vendor/lib64/;/vendor/lib/rfsa/adsp/;/system/vendor/lib/rfsa/adsp;/dsp
 
 echo <FARF_CONFIG> > tvm_rpc_android.farf
 
