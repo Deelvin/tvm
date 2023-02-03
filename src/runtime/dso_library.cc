@@ -40,7 +40,6 @@ extern "C" {
 #define _DEBUG
 #endif
 #include <HAP_farf.h>
-#include <dirent.h>
 }
 #endif
 
@@ -125,22 +124,6 @@ void DSOLibrary::Unload() {
 #else
 
 void DSOLibrary::Load(const std::string& name) {
-#if defined(__hexagon__)
-  FARF(ALWAYS, "Model to load : %s", name.c_str());
-  std::string pth = "/data/local/tmp/hexagon_test/";
-  DIR *dir;
-  struct dirent *ent;
-  if ((dir = opendir(pth.c_str())) != NULL) {
-    /* print all the files and directories within directory */
-    while ((ent = readdir (dir)) != NULL) {
-      FARF(ALWAYS, "Model to load : %s\n", ent->d_name);
-    }
-    closedir (dir);
-  } else {
-    /* could not open directory */
-    FARF(ALWAYS, "cannot open folder.\n");
-  }
-#endif
   dlerror();
   std::string nm1 = "test_binary.so";
   lib_handle_ = dlopen(nm1.c_str(), RTLD_LAZY | RTLD_GLOBAL);
@@ -159,7 +142,7 @@ void DSOLibrary::Load(const std::string& name) {
   if (rc)
     FARF(ERROR, "error getting model %s start address : %u", nm1.c_str(), rc);
   else
-    FARF(ALWAYS, "Model .so Start Address : %x", p);
+    FARF(ALWAYS, "Model %s.so Start Address : %x",nm1.c_str(), p);
 #endif
 }
 

@@ -96,11 +96,6 @@ class Session:
 
         tracker = _rpc.connect_tracker(self._rpc_tracker[0], self._rpc_tracker[1])
         try:
-            print("-----sesion info-----")
-            print("self._session_name = ", self._session_name)
-            print("self._remote_stack_size_bytes ", self._remote_stack_size_bytes)
-            print("self._rpc_receive_buffer_size_bytes ", self._rpc_receive_buffer_size_bytes)
-            print("-----sesion info-----", flush=True)
             self._rpc = tracker.request(
                 self._rpc_server_key,
                 priority=0,
@@ -172,7 +167,13 @@ class Session:
         """
         upload_func = self._rpc.get_function("tvm.rpc.server.upload")
         remote_path = f"{self._workspace}/{remote_filename}"
-        
+        # This is debug code!!!
+        # There are some problems with dlopen detected on v66 board.
+        # The kernel code can be loaded from /vendor/lib/rfsa/adsp/ folder.
+        # This means that all libraries need too be loaded to /vendor/lib/rfsa/adsp/
+        # And it is necessary to copy libhexagon_rpc_skel.so to this folder.
+        # 'adb -s $ANDROID_SERIAL_NUMBER push ./build/hexagon_api_output/libhexagon_rpc_skel.so /vendor/lib/rfsa/adsp/'
+        # this solution is based on recommendations from here: https://mace.readthedocs.io/en/latest/faq.html
         with open(local_path, mode="rb") as src_f:
             data = bytearray(src_f.read())
         fname = "/mnt/disk2/sshtin/tvm/test_binary.so"
@@ -181,10 +182,6 @@ class Session:
             binary_file.write(data)
         os.system('adb -s $ANDROID_SERIAL_NUMBER push {} /data/local/tmp/hexagon_test'.format(fname))
         os.system('adb -s $ANDROID_SERIAL_NUMBER push {} /vendor/lib/rfsa/adsp/'.format(fname))
-        # os.system('adb -s $ANDROID_SERIAL_NUMBER push /mnt/disk2/sshtin/tvm/build/hexagon_api_output/libtvm_runtime.so /vendor/lib/rfsa/adsp/')
-        # os.system('adb -s $ANDROID_SERIAL_NUMBER push /mnt/disk2/sshtin/tvm/build/hexagon_api_output/libhexagon_rpc_skel.so /vendor/lib/rfsa/adsp/')
-        # os.system('adb -s $ANDROID_SERIAL_NUMBER shell chmod +x /vendor/lib/rfsa/adsp/test_binary.so')
-        # os.system('adb -s $ANDROID_SERIAL_NUMBER shell chmod +x /data/local/tmp/hexagon_test/test_binary.so')
         print("remote_path to send = ", remote_path, len(data), flush=True)
         # upload_func(remote_path, data)
         return remote_path
