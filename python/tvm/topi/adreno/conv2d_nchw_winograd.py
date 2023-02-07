@@ -28,7 +28,7 @@ logger = logging.getLogger("conv2d_nchw_winograd")
 @autotvm.register_topi_compute("conv2d_nchw_winograd.image2d")
 def conv2d_nchw_winograd(cfg, data, kernel, strides, padding, dilation, out_dtype):
     return conv2d_nchw_winograd_comp(
-        cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed=False
+        cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed=False, default_block_size = 4
     )
 
 
@@ -42,7 +42,7 @@ def conv2d_nchw_winograd_without_weight_transform(
     cfg, data, kernel, strides, padding, dilation, out_dtype
 ):
     return conv2d_nchw_winograd_comp(
-        cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed=True
+        cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed=True, default_block_size = 4
     )
 
 
@@ -52,7 +52,7 @@ def schedule_conv2d_nchw_winograd_without_weight_transform(cfg, outs):
 
 
 def conv2d_nchw_winograd_comp(
-    cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed
+    cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed, default_block_size
 ):
     """Compute declaration for winograd
 
@@ -91,5 +91,5 @@ def conv2d_nchw_winograd_comp(
         4-D or 5-D with shape NCHW or NCHW4c
     """
     return conv2d_winograd_comp(
-        cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed, "NCHW"
+        cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed, "NCHW", default_block_size
     )

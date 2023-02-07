@@ -525,7 +525,7 @@ def bind_data_copy(stage, axis_to_vectorize=None):
         stage.bind(block, te.thread_axis("blockIdx.z"))
         stage.bind(thread, te.thread_axis("threadIdx.z"))
     else:
-        if shape[-1] == 4:
+        if shape[-1] == 4 or shape[-1] == 8:
             axes = stage.op.axis
             fused = stage.fuse(*axes[:-1])
             ftc = numpy.prod(shape[:-1])

@@ -57,7 +57,7 @@ def schedule_adaptive_pool(outs, layout="NCHW"):
 
         # detect axis for later reorder and binding of batch/channel to blocks and
         # spatial to threads
-        if layout in ("NCHW", "NCHW4c"):
+        if layout in ("NCHW", "NCHW4c", "NCHW8c"):
             channel_index = 1
             height_index = 2
             width_index = 3
@@ -91,7 +91,7 @@ def schedule_adaptive_pool(outs, layout="NCHW"):
         haxis = s[Out].op.axis[height_index]
         waxis = s[Out].op.axis[width_index]
 
-        if layout in ("NHWC4c", "NCHW4c"):
+        if layout in ("NHWC4c", "NCHW4c", "NHWC8c", "NCHW8c"):
             texture_axis = s[Out].op.axis[-1]
             s[Out].reorder(naxis, caxis, haxis, waxis, texture_axis)
             s[Out].vectorize(texture_axis)

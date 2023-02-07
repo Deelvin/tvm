@@ -49,6 +49,10 @@ def schedule_depthwise_conv2d_nchwc(cfg, outs):
 
 @autotvm.register_topi_compute("depthwise_conv2d_nchwc.image2d")
 def depthwise_conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
+    compute_depthwise_conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype, 4)
+
+
+def compute_depthwise_conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype, default_block_size):
     """
     Depthwise convolution operator in NCHWc layout.
     Algo:
@@ -85,8 +89,8 @@ def depthwise_conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dt
         batch, in_channels, in_height, in_width = Input.shape
         out_channles, in_filter_channels, kernel_h, kernel_w = Filter.shape
 
-        in_channel_chunks, in_channel_block, in_channel_tail = split_to_chunks(in_channels, 4)
-        out_channel_chunks, out_channel_block, out_channel_tail = split_to_chunks(out_channles, 4)
+        in_channel_chunks, in_channel_block, in_channel_tail = split_to_chunks(in_channels, default_block_size)
+        out_channel_chunks, out_channel_block, out_channel_tail = split_to_chunks(out_channles, default_block_size)
 
         if autotvm.GLOBAL_SCOPE.in_tuning:
             dshape = (batch, in_channel_chunks, in_height, in_width, in_channel_block)

@@ -49,6 +49,10 @@ def schedule_conv2d_nhwc(cfg, outs):
 
 @autotvm.register_topi_compute("conv2d_nhwc.image2d")
 def conv2d_nhwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
+    return compute_conv2d_nhwc_a(cfg, Input, Filter, stride, padding, dilation, out_dtype, 4)
+
+
+def compute_conv2d_nhwc_a(cfg, Input, Filter, stride, padding, dilation, out_dtype, default_block_size):
     """
     Convolution operator in NHWC layout.
     Algo:
@@ -83,7 +87,7 @@ def conv2d_nhwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
     convert_from4d = False
     if len(Input.shape) == 4:
         batch, in_height, in_width, in_channels = Input.shape
-        in_channel_chunks, in_channel_block, in_channel_tail = split_to_chunks(in_channels, 4)
+        in_channel_chunks, in_channel_block, in_channel_tail = split_to_chunks(in_channels, default_block_size)
 
         if autotvm.GLOBAL_SCOPE.in_tuning:
             dshape = (batch, in_height, in_width, in_channel_chunks, in_channel_block)
@@ -104,7 +108,7 @@ def conv2d_nhwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
 
     if len(Filter.shape) == 4:
         kernel_h, kernel_w, in_filter_channels, out_channles = Filter.shape
-        out_channel_chunks, out_channel_block, out_channel_tail = split_to_chunks(out_channles, 4)
+        out_channel_chunks, out_channel_block, out_channel_tail = split_to_chunks(out_channles, default_block_size)
         if autotvm.GLOBAL_SCOPE.in_tuning:
             kshape = (kernel_h, kernel_w, in_filter_channels, out_channel_chunks, out_channel_block)
             Filter = tvm.te.placeholder(kshape, Filter.dtype, name="kernel_placeholder")
@@ -291,20 +295,28 @@ def schedule_conv2d_NHWC(cfg, s, output):
             else:
                 pack_data = pad_data
                 bind_data_copy(s[pack_data])
-
-        AT = s.cache_read(pad_data, get_texture_storage(pad_data.shape), [conv])
+        if pad_data.shape[-1] == 4:
+            AT = s.cache_read(pad_data, get_texture_storage(pad_data.shape), [conv])
+        else:
+            AT = s.cache_read(pad_data, "global", [conv])
         bind_data_copy(s[AT])
     elif "pad_temp" in pad_data.op.name:
         s[pad_data].compute_inline()
         # create cache stage
-        AT = s.cache_read(pad_data, get_texture_storage(pad_data.shape), [conv])
+        if pad_data.shape[-1] == 4:
+            AT = s.cache_read(pad_data, get_texture_storage(pad_data.shape), [conv])
+        else:
+            AT = s.cache_read(pad_data, "global", [conv])
         bind_data_copy(s[AT])
 
     if autotvm.GLOBAL_SCOPE.in_tuning or filter_pack_rt:
         if not autotvm.GLOBAL_SCOPE.in_tuning:
             bind_data_copy(s[kernel])
         if kernel.shape[0] == 1 and kernel.shape[1] == 1:
-            WT = s.cache_read(kernel, get_texture_storage(kernel.shape), [conv])
+            if kernel.shape[-1] == 4:
+                WT = s.cache_read(kernel, get_texture_storage(kernel.shape), [conv])
+            else:
+                WT = s.cache_read(kernel, "global", [conv])
             bind_data_copy(s[WT])
 
     s[conv].set_scope("local")

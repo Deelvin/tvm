@@ -35,7 +35,7 @@ from .utils import (
 
 
 def conv2d_winograd_comp(
-    cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed, layout
+    cfg, data, kernel, strides, padding, dilation, out_dtype, pre_computed, layout, default_block_size
 ):
     """Compute declaration for winograd
 
@@ -101,8 +101,8 @@ def conv2d_winograd_comp(
             alpha, _, CI, out_channels = get_const_tuple(kernel.shape)
             KH = KW = alpha + 1 - tile_size
 
-        in_channel_chunks, in_channel_block, in_channel_tail = split_to_chunks(CI, 4)
-        out_channel_chunks, out_channel_block, out_channel_tail = split_to_chunks(out_channels, 4)
+        in_channel_chunks, in_channel_block, in_channel_tail = split_to_chunks(CI, default_block_size)
+        out_channel_chunks, out_channel_block, out_channel_tail = split_to_chunks(out_channels, default_block_size)
         if autotvm.GLOBAL_SCOPE.in_tuning is True:
             if layout == "NCHW":
                 dshape = (N, in_channel_chunks, H, W, in_channel_block)

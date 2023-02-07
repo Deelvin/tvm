@@ -49,6 +49,9 @@ def schedule_conv2d_nchwc(cfg, outs):
 
 @autotvm.register_topi_compute("conv2d_nchwc.image2d")
 def conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
+    compute_conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype, 4)
+
+def compute_conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype, default_block_size):
     """
     Convolution operator in NCHWc layout.
     Algo:
@@ -83,7 +86,7 @@ def conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
     convert_from4d = False
     if len(Input.shape) == 4:
         batch, in_channels, in_height, in_width = Input.shape
-        in_channel_chunks, in_channel_block, in_channel_tail = split_to_chunks(in_channels, 4)
+        in_channel_chunks, in_channel_block, in_channel_tail = split_to_chunks(in_channels, default_block_size)
 
         if autotvm.GLOBAL_SCOPE.in_tuning:
             dshape = (batch, in_channel_chunks, in_height, in_width, in_channel_block)
@@ -104,7 +107,7 @@ def conv2d_nchwc(cfg, Input, Filter, stride, padding, dilation, out_dtype):
 
     if len(Filter.shape) == 4:
         out_channles, in_filter_channels, kernel_h, kernel_w = Filter.shape
-        out_channel_chunks, out_channel_block, out_channel_tail = split_to_chunks(out_channles, 4)
+        out_channel_chunks, out_channel_block, out_channel_tail = split_to_chunks(out_channles, default_block_size)
 
         if autotvm.GLOBAL_SCOPE.in_tuning:
             kshape = (out_channel_chunks, in_filter_channels, kernel_h, kernel_w, out_channel_block)
