@@ -64,6 +64,7 @@ from .target import (
     rocm,
     mali,
     intel_graphics,
+    iris_graphics,
     arm_cpu,
     rasp,
     vta,

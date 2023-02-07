@@ -64,6 +64,7 @@ class Target(Object):
     - :py:func:`tvm.target.rocm` create ROCM target
     - :py:func:`tvm.target.mali` create Mali target
     - :py:func:`tvm.target.intel_graphics` create Intel Graphics target
+    - :py:func:`tvm.target.iris` create Intel Graphics target
     """
 
     def __init__(self, target, host=None):
@@ -438,6 +439,21 @@ def intel_graphics(model="unknown", options=None):
         Additional options
     """
     opts = ["-device=intel_graphics", "-model=%s" % model, "-thread_warp_size=16"]
+    opts = _merge_opts(opts, options)
+    return Target(" ".join(["opencl"] + opts))
+
+
+def iris_graphics(model="unknown", options=None):
+    """Returns an Intel Graphics target.
+
+    Parameters
+    ----------
+    model: str
+        The model of this device
+    options : str or list of str
+        Additional options
+    """
+    opts = ["-device=iris_graphics", "-model=%s" % model, "-thread_warp_size=16"]
     opts = _merge_opts(opts, options)
     return Target(" ".join(["opencl"] + opts))
 
