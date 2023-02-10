@@ -158,18 +158,29 @@ def conv2d_strategy_adreno(attrs, inputs, out_type, target):
                     + ") - only support NCHW4c / OIHW4o and NHWC / HWOI layouts for conv2d"
                 )
         else:
-            raise RuntimeError("General group convolution is not currently supported")
+            if len(kernel.shape) == 4:
+                _, _, kh, kw = get_const_tuple(kernel.shape)
+            else:
+                _, _, kh, kw, _ = get_const_tuple(kernel.shape)
+            
+            strategy.add_implementation(
+                wrap_compute_conv2d(topi.adreno.group_conv2d_nchwc, has_groups=True),
+                wrap_topi_schedule(topi.adreno.schedule_group_conv2d_nchwc),
+                name="group_conv2d_nchwc.image2d",
+                plevel=10,
+            )
+            # raise RuntimeError("General group convolution is not currently supported")
     return strategy
 
 
-@conv2d_winograd_without_weight_transform_strategy.register("adreno")
-def conv2d_winograd_without_weight_transform_strategy_adreno(attrs, inputs, out_type, target):
-    """conv2d_winograd_without_weight_transform adreno strategy"""
+@conv2d_winograd_without_weight_transfrom_strategy.register("adreno")
+def conv2d_winograd_without_weight_transfrom_strategy_adreno(attrs, inputs, out_type, target):
+    """conv2d_winograd_without_weight_transfrom adreno strategy"""
     dilation = attrs.get_int_tuple("dilation")
     groups = attrs.get_int("groups")
     layout = attrs.data_layout
     assert dilation == (1, 1), "Do not support dilate now"
-    assert groups == 1, "Do not support arbitrary group number"
+    assert groups == 1, "Do not supoort arbitrary group number"
     strategy = _op.OpStrategy()
     if layout in ("NCHW", "NCHW4c"):
         strategy.add_implementation(
@@ -187,7 +198,7 @@ def conv2d_winograd_without_weight_transform_strategy_adreno(attrs, inputs, out_
         )
     else:
         raise RuntimeError(
-            "Unsupported conv2d_winograd_without_weight_transform layout {}".format(layout)
+            "Unsupported conv2d_winograd_without_weight_transfrom layout {}".format(layout)
         )
     return strategy
 
@@ -206,20 +217,6 @@ def schedule_injective_adreno(attrs, outs, target):
     """schedule injective ops for adreno"""
     with target:
         return topi.adreno.schedule_injective(outs)
-
-
-@schedule_reduce.register(["adreno"])
-def schedule_reduce_adreno(attrs, outs, target):
-    """schedule reduction ops for adreno GPU"""
-    with target:
-        return topi.adreno.schedule_reduce(outs)
-
-
-@schedule_adaptive_pool.register(["adreno"])
-def schedule_adaptive_pool_adreno(attrs, outs, target):
-    """schedule adaptive pooling ops for adreno"""
-    with target:
-        return topi.adreno.schedule_adaptive_pool(outs, attrs.layout)
 
 
 @concatenate_strategy.register(["adreno"])
