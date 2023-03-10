@@ -28,6 +28,9 @@
 #include <tvm/auto_scheduler/transform_step.h>
 #include <tvm/runtime/registry.h>
 
+#include <dmlc/memory_io.h>
+
+
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -172,6 +175,23 @@ struct Handler<::tvm::auto_scheduler::SearchTaskNode> {
       writer->WriteArrayItem(std::string(""));
     }
     writer->WriteArrayItem(static_cast<int>(data.layout_rewrite_option));
+
+    //DEELVIN: adding serialization of custom_seed and ref tensors
+    writer->WriteArrayItem(static_cast<int>(data.custom_seed));
+    std::string serialized_tensors_file = "tmp.stream";
+
+    dmlc::Stream* fs = dmlc::Stream::Create(serialized_tensors_file.c_str(),"wb");
+
+    writer->WriteArrayItem(serialized_tensors_file);
+
+    for (const auto& i : data.ref_output_tensors) {
+        i.Save(fs);
+    }
+
+    delete fs;
+
+
+
     writer->WriteArraySeperator();
     writer->BeginArray(false);
     for (const auto& i : data.task_input_names) {
@@ -209,6 +229,24 @@ struct Handler<::tvm::auto_scheduler::SearchTaskNode> {
         ICHECK(s);
         reader->Read(&int_value);
         data->layout_rewrite_option = ::tvm::auto_scheduler::LayoutRewriteOption(int_value);
+
+/// Deelvin
+        s = reader->NextArrayItem();
+        reader->Read(&int_value);
+        data->custom_seed = int_value;
+
+        s = reader->NextArrayItem();
+        reader->Read(&str_value);
+
+        dmlc::Stream* fs = dmlc::Stream::Create(str_value.c_str(),"rb");
+
+        tvm::runtime::NDArray i;
+        i.Load(fs);
+        data->ref_output_tensors.push_back(i);
+
+        delete fs;
+
+///
         s = reader->NextArrayItem();
         if (s) {
           reader->BeginArray();

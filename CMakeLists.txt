@@ -299,6 +299,19 @@ tvm_file_glob(GLOB CODEGEN_SRCS
 
 list(APPEND COMPILER_SRCS ${CODEGEN_SRCS})
 
+file(GLOB DMLC_SRC
+        3rdparty/dmlc-core/src/*.cc
+        3rdparty/dmlc-core/src/io/filesys.cc
+        3rdparty/dmlc-core/src/io/indexed_recordio_split.cc
+        3rdparty/dmlc-core/src/io/input_split_base.cc
+        3rdparty/dmlc-core/src/io/line_split.cc
+        3rdparty/dmlc-core/src/io/local_filesys.cc
+        3rdparty/dmlc-core/src/io/recordio_split.cc
+        )
+list(APPEND COMPILER_SRCS ${DMLC_SRC})
+
+
+
 tvm_file_glob(GLOB_RECURSE RELAY_OP_SRCS
     src/relay/op/*.cc
     )

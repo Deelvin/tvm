@@ -125,6 +125,12 @@ class SearchTaskNode : public Object {
   LayoutRewriteOption layout_rewrite_option;
   /*! \brief Names of some user defined input data used in program measuring. */
   Array<String> task_input_names;
+  /*! \brief keeping custom seed to reproduce randomly generated input values */
+  int custom_seed;
+
+  /*! \brief ref value for output values */
+  Array<tvm::runtime::NDArray> ref_output_tensors;
+
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("compute_dag", &compute_dag);
@@ -135,7 +141,13 @@ class SearchTaskNode : public Object {
     v->Visit("hardware_params", &hardware_params);
     v->Visit("layout_rewrite_option", &layout_rewrite_option);
     v->Visit("task_input_names", &task_input_names);
+    v->Visit("custom_seed",&custom_seed);
+    v->Visit("ref_output_tensors",&ref_output_tensors);
   }
+
+  void SetReferenceTensors(Array<tvm::runtime::NDArray> arr);
+
+  void SetTarget(Target target, Target target_host);
 
   static constexpr const char* _type_key = "auto_scheduler.SearchTask";
   TVM_DECLARE_FINAL_OBJECT_INFO(SearchTaskNode, Object);
@@ -160,7 +172,10 @@ class SearchTask : public ObjectRef {
    */
   SearchTask(ComputeDAG compute_dag, String workload_key, Target target, Target target_host,
              Optional<HardwareParams> hardware_params, LayoutRewriteOption layout_rewrite_option,
-             Array<String> task_input_names, String desc = "");
+             Array<String> task_input_names,
+             String desc = "",
+             Array<tvm::runtime::NDArray> ref_output_tensors = Array<tvm::runtime::NDArray>(),
+             int custom_seed = 42);
 
   TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };
