@@ -78,8 +78,8 @@ def preprocessing(in_size=224):
     img = cv2.resize(img, (in_size, in_size))
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = np.transpose(img / 255.0, [2, 0, 1])
-    img = np.expand_dims(img, axis=0)
-    return img
+    # img = np.expand_dims(img, axis=0)
+    return tvm.nd.array(img)
 
 
 def compile_model(model, params, target):
@@ -111,13 +111,13 @@ def main():
     img = preprocessing(args.in_size)
     onnx_model = download_onnx_model(args.model_name)
 
-    img_name = ""
+    input_name = ""
     if args.model_name == "mask" or args.model_name == "fast":
-        img_name = "image"
+        input_name = "image"
     elif args.model_name == "ssd":
-        img_name = "image_tensor:0"
+        input_name = "image_tensor:0"
     shape_dict = {}
-    shape_dict[img_name] = [3, args.in_size, args.in_size]
+    shape_dict[input_name] = [3, args.in_size, args.in_size]
     model, params = load_from_onnx_model(onnx_model, shape_dict)
     vm_exec = compile_model(model, params, target)
     if target_c == "cuda":
@@ -129,12 +129,11 @@ def main():
 
     print("Create VM....")
     vm = VirtualMachine(vm_exec, dev)
-    input_name = "data"
     vm.set_input("main", **{input_name: img})
     print("Run...")
     tvm_res = vm.run()
     print("Output...")
-    print(tvm_res)
+    print(tvm_res.numpy())
 
 if __name__ == '__main__':
     main()
