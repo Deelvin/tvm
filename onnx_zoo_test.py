@@ -3,6 +3,7 @@ import argparse
 import tvm
 from tvm import relay
 from tvm.runtime.vm import VirtualMachine
+from tvm.contrib.graph_executor import GraphModule
 from tvm.contrib.download import download_testdata
 
 import cv2
@@ -82,10 +83,38 @@ def preprocessing(in_size=224):
     return tvm.nd.array(img)
 
 
-def compile_model(model, params, target):
-    with tvm.transform.PassContext(opt_level=3):
-        vm_exec = relay.vm.compile(model, target=target, params=params)
-    return vm_exec
+def compile_model(model, params, target, exec_type="vm"):
+    exec=None
+    if exec_type == "vm":
+        with tvm.transform.PassContext(opt_level=3):
+            exec = relay.vm.compile(model, target=target, params=params)
+    elif exec_type == "graph":
+        with tvm.transform.PassContext(opt_level=3):
+            exec = relay.build(model, target=target, params=params)
+    else:
+        raise ValueError("ERROR: Executor type {} is unsupported. ".format(exec_type),
+            "Only \"vm\" and \"graph\" types are supported")
+    return exec
+
+
+def get_executor(model, params, target, dev, exec_type="vm"):
+    lib = compile_model(model, params, target, exec_type)
+    exec=None
+    if exec_type == "vm":
+        exec = VirtualMachine(lib, dev)
+    elif exec_type == "graph":
+        exec = GraphModule(lib["default"](dev))
+    else:
+        raise ValueError("ERROR: Executor type {} is unsupported. ".format(exec_type),
+            "Only \"vm\" and \"graph\" types are supported")
+    return exec
+
+
+def set_input(mod, tvm_inputs, exec_type="vm"):
+    if exec_type == "vm":
+        mod.set_input(func_name="main", **tvm_inputs)
+    else:
+        mod.set_input(**tvm_inputs)
 
 
 def main():
@@ -99,8 +128,10 @@ def main():
     # Model format
     parser.add_argument("-m", "--model_name", default="fast", type=str, help=\
         "Model name: 'ssd' for SSD witn MobileNetv1, 'fast' for Faster-RCNN, 'mask' for Mask-RCNN")
+    parser.add_argument("-ex", "--executor", default="vm", type=str, help=\
+        "Executor type used by TVM for model compilation. There are two types supported: 'vm' and 'graph'")
     parser.add_argument("-t", "--target", default="opencl", type=str, help=\
-        "Target from the list ('opencl', 'cuda')")
+        "Target from the list ('opencl', 'cuda', 'llvm')")
     parser.add_argument("-s", "--in_size", default=224, type=int, help=\
         "Size for input image resizing")
 
@@ -116,10 +147,12 @@ def main():
         input_name = "image"
     elif args.model_name == "ssd":
         input_name = "image_tensor:0"
+    input_dict = {input_name: img}
+
     shape_dict = {}
     shape_dict[input_name] = [3, args.in_size, args.in_size]
     model, params = load_from_onnx_model(onnx_model, shape_dict)
-    vm_exec = compile_model(model, params, target)
+
     if target_c == "cuda":
         dev = tvm.cuda()
     elif target_c == "opencl":
@@ -127,13 +160,14 @@ def main():
     else:
         dev = tvm.cpu()
 
-    print("Create VM....")
-    vm = VirtualMachine(vm_exec, dev)
-    vm.set_input("main", **{input_name: img})
+    print(f"Create {args.executor} executor...")
+    exec = get_executor(model, params, target, dev, args.executor)
+    set_input(exec, input_dict, args.executor)
     print("Run...")
-    tvm_res = vm.run()
+    tvm_res = exec.run()
     print("Output...")
-    print(tvm_res.numpy())
+    print(tvm_res)
+
 
 if __name__ == '__main__':
     main()
