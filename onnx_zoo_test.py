@@ -15,23 +15,26 @@ from tvm.target import Target
 SSD_MOBILENET_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/ssd-mobilenetv1/model/ssd_mobilenet_v1_10.onnx"
 FASTER_RCNN_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-12.onnx"
 MASK_RCNN_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/mask-rcnn/model/MaskRCNN-12.onnx"
+YOLO_V3_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/yolov3/model/yolov3-10.onnx"
+TINY_YOLO_V3_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx"
+
+MODEL_URL_COLLECTION = {
+    "ssd": SSD_MOBILENET_URL,   # SSD MobileNetv1
+    "fast": FASTER_RCNN_URL,    # Faster-RCNN
+    "mask": MASK_RCNN_URL,      # MASK-RCNN
+    "yolo": YOLO_V3_URL,        # "YOLO-v3"
+    "tiny": TINY_YOLO_V3_URL,   # "Tiny YOLO-v3"
+}
 
 target_h = "llvm"
 
 def download_onnx_model(model_name):
-    model_url = None
-    if model_name == "ssd":
-      model_url = SSD_MOBILENET_URL
-    elif model_name == "fast":
-      model_url = FASTER_RCNN_URL
-    elif model_name == "mask":
-      model_url = MASK_RCNN_URL
-    else:
-      raise ValueError(f"Model name {model_name} is not supported")
+    model_url = MODEL_URL_COLLECTION[model_name]
 
     print("Downloading model...")
     model_file_name = model_url[model_url.rfind("/") + 1:].strip()
     file_name = download_testdata(model_url, model_file_name, module="models")
+    print("Model was saved in", file_name)
     print("Loading model...")
     onnx_model = onnx.load(file_name)
     return onnx_model
@@ -69,7 +72,7 @@ def load_from_onnx_model(onnx_model, shape_dict):
     return model, params
 
 
-def preprocessing(in_size=224):
+def preprocessing(in_size=224, expand=False):
     img_url = (
         "https://raw.githubusercontent.com/dmlc/web-data/master/gluoncv/detection/street_small.jpg"
     )
@@ -79,8 +82,9 @@ def preprocessing(in_size=224):
     img = cv2.resize(img, (in_size, in_size))
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = np.transpose(img / 255.0, [2, 0, 1])
-    # img = np.expand_dims(img, axis=0)
-    return tvm.nd.array(img)
+    if expand:
+        img = np.expand_dims(img, axis=0)
+    return img
 
 
 def compile_model(model, params, target, exec_type="vm"):
@@ -118,16 +122,21 @@ def set_input(mod, tvm_inputs, exec_type="vm"):
 
 
 def main():
+    model_list_str = ""
+    for model_name in MODEL_URL_COLLECTION.keys():
+        model_list_str += " " + model_name + ","
+    model_list_str = model_list_str[:-1]
+
     class MyFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
-        description="Debugging test for some models from https://github.com/onnx/models with dynamism",
+        description="Debugging test for some models from https://github.com/onnx/models with dynamism:" + model_list_str,
         formatter_class=MyFormatter
     )
     # Model format
     parser.add_argument("-m", "--model_name", default="fast", type=str, help=\
-        "Model name: 'ssd' for SSD witn MobileNetv1, 'fast' for Faster-RCNN, 'mask' for Mask-RCNN")
+        "Model name from the list: " + model_list_str)
     parser.add_argument("-ex", "--executor", default="vm", type=str, help=\
         "Executor type used by TVM for model compilation. There are two types supported: 'vm' and 'graph'")
     parser.add_argument("-t", "--target", default="opencl", type=str, help=\
@@ -136,21 +145,42 @@ def main():
         "Size for input image resizing")
 
     args = parser.parse_args()
+    assert args.model_name in MODEL_URL_COLLECTION.keys(), f"Model {args.model_name} is not supported"
 
     target_c = args.target
     target = Target(target_c, host=target_h)
-    img = preprocessing(args.in_size)
+    img = preprocessing(args.in_size, args.model_name in ["ssd", "yolo", "tiny"])
     onnx_model = download_onnx_model(args.model_name)
-
-    input_name = ""
-    if args.model_name == "mask" or args.model_name == "fast":
-        input_name = "image"
-    elif args.model_name == "ssd":
-        input_name = "image_tensor:0"
-    input_dict = {input_name: img}
+    # inputs = [node.name for node in onnx_model.graph.input]
+    # initializer = [node.name for node in onnx_model.graph.initializer]
+    # inputs = list(set(inputs) - set(initializer))
+    # print("Input_names:", inputs)
+    # shapes = [
+    #     [dv.dim_value for dv in node.type.tensor_type.shape.dim]
+    #     for node in sorted(onnx_model.graph.input, key=lambda node: node.name) if node.name in inputs
+    # ]
+    # print("Input shapes:", shapes)
 
     shape_dict = {}
-    shape_dict[input_name] = [3, args.in_size, args.in_size]
+    input_dict = {}
+    if args.model_name in ["yolo", "tiny"]:
+        shape_dict = {
+            "image_shape": [1, 2],
+            "input_1": img.shape,
+        }
+        input_dict = {
+            "image_shape": tvm.nd.array(np.array(img.shape).astype("float32")[2:]),
+            "input_1": tvm.nd.array(img),
+        }
+    else:
+        input_name = ""
+        if args.model_name == "mask" or args.model_name == "fast":
+            input_name = "image"
+        elif args.model_name == "ssd":
+            input_name = "image_tensor:0"
+
+        shape_dict[input_name] = img.shape
+        input_dict = {input_name: tvm.nd.array(img)}
     model, params = load_from_onnx_model(onnx_model, shape_dict)
 
     if target_c == "cuda":
