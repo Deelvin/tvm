@@ -107,12 +107,12 @@ class BlockBuilder(Object):
     --------
     .. code-block:: python
 
-        m = tir.Var("m", "int32")
-        n = tir.Var("n", "int32")
+        m = tir.Var("m", "int64")
+        n = tir.Var("n", "int64")
         x = rx.Var("x", rx.TensorStructInfo([m, n], "float16"))
-        y = rx.Var("y", rx.TensorStructInfo([n], "float16")
+        y = rx.Var("y", rx.TensorStructInfo([n], "float16"))
         bb = rx.BlockBuilder()
-        with bb.function([x, y], "func"):
+        with bb.function("func", [x, y]):
             with bb.dataflow() as df:
                 lv0 = bb.emit(rx.add(x, y))
                 lv1 = bb.emit(rx.multiply(lv0, y))

@@ -48,6 +48,7 @@ register_legalize("relax.multiply", _binary(topi.multiply))
 register_legalize("relax.power", _binary(topi.power))
 register_legalize("relax.subtract", _binary(topi.subtract))
 register_legalize("relax.equal", _binary(topi.equal))
+register_legalize("relax.maximum", _binary(topi.maximum))
 
 register_legalize("relax.greater", _binary(topi.greater))
 register_legalize("relax.greater_equal", _binary(topi.greater_equal))

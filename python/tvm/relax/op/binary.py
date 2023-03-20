@@ -67,6 +67,42 @@ def divide(x1: Expr, x2: Expr) -> Expr:
     return _ffi_api.divide(x1, x2)  # type: ignore
 
 
+def maximum(lhs, rhs):
+    """Maximum with numpy-style broadcasting.
+
+    Parameters
+    ----------
+    lhs : relax.Expr
+        The left hand side input data
+    rhs : relax.Expr
+        The right hand side input data
+
+    Returns
+    -------
+    result : relax.Expr
+        The computed result.
+    """
+    return _ffi_api.maximum(lhs, rhs)
+
+
+def minimum(lhs, rhs):
+    """Minimum with numpy-style broadcasting.
+
+    Parameters
+    ----------
+    lhs : relax.Expr
+        The left hand side input data
+    rhs : relax.Expr
+        The right hand side input data
+
+    Returns
+    -------
+    result : relax.Expr
+        The computed result.
+    """
+    return _ffi_api.minimum(lhs, rhs)
+
+
 def floor_divide(x1: Expr, x2: Expr) -> Expr:
     """Floor division with numpy-style broadcasting.
 

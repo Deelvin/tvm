@@ -66,6 +66,12 @@ Expr add(Expr x1, Expr x2);
 /*! \brief Division with numpy-style broadcasting. */
 Expr divide(Expr x1, Expr x2);
 
+/*! \brief Elementwise maximum of two tensors with broadcasting. */
+Expr maximum(Expr x1, Expr x2);
+
+/*! \brief Elementwise minimum of two tensors with broadcasting. */
+Expr minimum(Expr x1, Expr x2);
+
 /*! \brief Floor division with numpy-style broadcasting. */
 Expr floor_divide(Expr x1, Expr x2);
 
