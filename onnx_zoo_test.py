@@ -72,7 +72,7 @@ def load_from_onnx_model(onnx_model, shape_dict):
     return model, params
 
 
-def preprocessing(in_size=224, expand=False):
+def preprocessing(in_size=224, batch_size=1, expand=False):
     img_url = (
         "https://raw.githubusercontent.com/dmlc/web-data/master/gluoncv/detection/street_small.jpg"
     )
@@ -82,8 +82,11 @@ def preprocessing(in_size=224, expand=False):
     img = cv2.resize(img, (in_size, in_size))
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = np.transpose(img / 255.0, [2, 0, 1])
-    if expand:
+    if batch_size > 1 or expand:
         img = np.expand_dims(img, axis=0)
+        broadcast_shape = list(img.shape)
+        broadcast_shape[0] = batch_size
+        img = np.broadcast_to(img, broadcast_shape)
     return img
 
 
@@ -143,13 +146,17 @@ def main():
         "Target from the list ('opencl', 'cuda', 'llvm')")
     parser.add_argument("-s", "--in_size", default=224, type=int, help=\
         "Size for input image resizing")
+    parser.add_argument("-b", "--batch_size", default=1, type=int, help=\
+        "Batch size. The same image is used with broadcasting if the batch size is bigger than 1")
+    parser.add_argument("-l", "--with_nhwc", action="store_true", help=\
+        "Use NHWC layout instead of NCHW. It needs for MobileNetv1-SSD")
 
     args = parser.parse_args()
     assert args.model_name in MODEL_URL_COLLECTION.keys(), f"Model {args.model_name} is not supported"
 
     target_c = args.target
     target = Target(target_c, host=target_h)
-    img = preprocessing(args.in_size, args.model_name in ["ssd", "yolo", "tiny"])
+    img = preprocessing(args.in_size, args.batch_size, args.model_name in ["ssd", "yolo", "tiny"])
     onnx_model = download_onnx_model(args.model_name)
     # inputs = [node.name for node in onnx_model.graph.input]
     # initializer = [node.name for node in onnx_model.graph.initializer]
@@ -178,6 +185,8 @@ def main():
             input_name = "image"
         elif args.model_name == "ssd":
             input_name = "image_tensor:0"
+            if args.with_nhwc:
+                img = np.transpose(img, [0, 2, 3, 1])
 
         shape_dict[input_name] = img.shape
         input_dict = {input_name: tvm.nd.array(img)}
