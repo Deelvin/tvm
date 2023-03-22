@@ -1,9 +1,10 @@
 import argparse
 
 import tvm
-from tvm import relax
+from tvm import relay, relax
 from tvm.contrib.download import download_testdata
 from tvm.relax.frontend.onnx import from_onnx
+from tvm.relax.testing.relay_translator import from_relay
 
 import cv2
 import onnx
@@ -37,6 +38,12 @@ def download_onnx_model(model_name):
     print("Loading model...")
     onnx_model = onnx.load(file_name)
     return onnx_model
+
+
+def load_from_onnx_model(onnx_model, shape_dict):
+    print("Importing to TVM...")
+    model, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
+    return model, params
 
 
 def preprocessing(in_size=224, batch_size=1, expand=False):
@@ -89,6 +96,8 @@ def main():
         "Batch size. The same image is used with broadcasting if the batch size is bigger than 1")
     parser.add_argument("-l", "--with_nhwc", action="store_true", help=\
         "Use NHWC layout instead of NCHW. It needs for MobileNetv1-SSD")
+    parser.add_argument("-r", "--from_relay", action="store_true", help=\
+        "Use method from_relay to extract Relax IR from ONNX model using Relay front-end")
 
     args = parser.parse_args()
 
@@ -97,8 +106,13 @@ def main():
     img = preprocessing(args.in_size, args.batch_size, args.model_name in ["ssd", "yolo", "tiny"])
     onnx_model = download_onnx_model(args.model_name)
 
+    shape_dict = {}
     input_dict = {}
     if args.model_name in ["yolo", "tiny"]:
+        shape_dict = {
+            "image_shape": [1, 2],
+            "input_1": img.shape,
+        }
         input_dict = {
             "image_shape": tvm.nd.array(np.array(img.shape).astype("float32")[2:]),
             "input_1": tvm.nd.array(img),
@@ -112,8 +126,16 @@ def main():
             if args.with_nhwc:
                 img = np.transpose(img, [0, 2, 3, 1])
 
+        shape_dict[input_name] = img.shape
         input_dict = {input_name: tvm.nd.array(img)}
-    tvm_model = from_onnx(onnx_model)
+    if args.from_relay:
+        model, params = load_from_onnx_model(onnx_model, shape_dict)
+        tvm_model = from_relay(model["main"], target, relay_params=params)
+        print("=" * 10)
+        tvm_model.show()
+        print("=" * 10)
+    else:
+        tvm_model = from_onnx(onnx_model)
     # Legalize any relax ops into tensorir.
     tvm_model = relax.transform.LegalizeOps()(tvm_model)
 
@@ -124,8 +146,7 @@ def main():
     else:
         dev = tvm.cpu()
 
-    print(f"Create {args.executor} executor...")
-    exec = get_relax_executor(tvm_model, target, dev, args.executor)
+    exec = get_relax_executor(tvm_model, target, dev)
     exec.set_input("main", **input_dict)
     print("Run...")
     exec.invoke_stateful("main")
