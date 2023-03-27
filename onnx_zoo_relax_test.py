@@ -1,10 +1,12 @@
 import argparse
 
 import tvm
-from tvm import relay, relax
+from tvm import relay, relax, transform
 from tvm.contrib.download import download_testdata
 from tvm.relax.frontend.onnx import from_onnx
 from tvm.relax.testing.relay_translator import from_relay
+from tvm.ir.module import IRModule
+from tvm.relax.testing import relay_translator
 
 import cv2
 import onnx
@@ -44,6 +46,25 @@ def load_from_onnx_model(onnx_model, shape_dict):
     print("Importing to TVM...")
     model, params = relay.frontend.from_onnx(onnx_model, shape_dict, freeze_params=True)
     return model, params
+
+
+def apply_opt_before_tuning(relay_mod, params, target):
+    with transform.PassContext(opt_level=3):
+        main_func = relay_mod["main"]
+        bind_main_func = relay.build_module.bind_params_by_name(main_func, params)
+        relay_mod = IRModule.from_expr(bind_main_func)
+        relay_mod = relay.transform.SimplifyInference()(relay_mod)
+        relay_mod = relay.transform.FoldConstant()(relay_mod)
+        relay_mod = relay.transform.FoldScaleAxis()(relay_mod)
+        relay_mod = relay.transform.CanonicalizeOps()(relay_mod)
+        relay_mod = relay.transform.AlterOpLayout()(relay_mod)
+        relay_mod = relay.transform.FoldConstant()(relay_mod)
+
+        relax_mod = relay_translator.from_relay(relay_mod["main"], target=target)
+        relax_mod = relax.transform.AnnotateTIROpPattern()(relax_mod)
+        relax_mod = relax.transform.FuseOps()(relax_mod)
+        relax_mod = relax.transform.FuseTIR()(relax_mod)
+    return relax_mod
 
 
 def preprocessing(in_size=224, batch_size=1, expand=False):
@@ -130,14 +151,14 @@ def main():
         input_dict = {input_name: tvm.nd.array(img)}
     if args.from_relay:
         model, params = load_from_onnx_model(onnx_model, shape_dict)
-        tvm_model = from_relay(model["main"], target, relay_params=params)
-        print("=" * 10)
-        tvm_model.show()
-        print("=" * 10)
+        tvm_model = apply_opt_before_tuning(model, params, target)
     else:
         tvm_model = from_onnx(onnx_model)
     # Legalize any relax ops into tensorir.
     tvm_model = relax.transform.LegalizeOps()(tvm_model)
+    print("=" * 10)
+    tvm_model.show()
+    print("=" * 10)
 
     if target_c == "cuda":
         dev = tvm.cuda()
