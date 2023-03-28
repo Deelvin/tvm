@@ -22,6 +22,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 from functools import reduce
 
 import mlir
+import numpy
 from mlir.dialects import chlo
 from mlir.dialects import stablehlo
 
@@ -109,19 +110,23 @@ class StableHLOImporter:
         if mlir.ir.IntegerAttr.isinstance(node):
             int_attr = mlir.ir.IntegerAttr(node)
             return int_attr.value
-        if mlir.ir.FloatAttr.isinstance(node):
+        elif mlir.ir.FloatAttr.isinstance(node):
             float_attr = mlir.ir.FloatAttr(node)
             return float_attr.value
-        if mlir.ir.DenseIntElementsAttr.isinstance(node):
-            dense_attr = mlir.ir.DenseIntElementsAttr(node)
-        elif mlir.ir.DenseFPElementsAttr.isinstance(node):
-            dense_attr = mlir.ir.DenseFPElementsAttr(node)
+        elif mlir.ir.DenseElementsAttr.isinstance(node):
+            if mlir.ir.DenseIntElementsAttr.isinstance(node):
+                dense_attr = mlir.ir.DenseIntElementsAttr(node)
+            elif mlir.ir.DenseFPElementsAttr.isinstance(node):
+                dense_attr = mlir.ir.DenseFPElementsAttr(node)
+            else:
+                raise ValueError("Unsupported DenseAttribute type: " + str(type(node)))
+
+            data = [val for val in dense_attr]
+            shape = self.get_shape(node.type)
+            dtype = self._convert_data_type(node.type)
+            return numpy.array(data).astype(dtype).reshape(shape)
         else:
             raise ValueError("Unsupported Attribute type: " + str(type(node)))
-        ret = []
-        for val in dense_attr:
-            ret.append(val)
-        return ret
 
     def _getattr(self, node: mlir.ir.Operation) -> relax.Var:
         if isinstance(self._nodes[node.args[0]], relax.Expr):
@@ -202,7 +207,7 @@ class StableHLOImporter:
             return self._retrieve_operands(node.owner)
         return node
 
-    def get_shape(self, inpt_type: mlir.ir.ShapedType) -> List[Any]:
+    def get_shape(self, inpt_type: Union[mlir.ir.Type, mlir.ir.ShapedType]) -> List[Any]:
         """Get the shape from Type like tensor<?x?xf32>"""
         shape_type = inpt_type
         if isinstance(shape_type, mlir.ir.Type):
@@ -292,7 +297,6 @@ class StableHLOImporter:
         shaped_type = mlir.ir.ShapedType(node.result.type)
         out_dtype = self._convert_data_type(shaped_type.element_type)
         strides = self._attr2value(node.attributes["window_strides"])
-        padding = self._attr2value(node.attributes["padding"])
         padding = self._attr2value(node.attributes["padding"])
         lhs_dilation = self._attr2value(node.attributes["lhs_dilation"])
         rhs_dilation = self._attr2value(node.attributes["rhs_dilation"])
