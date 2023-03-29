@@ -106,7 +106,10 @@ class StableHLOImporter:
             return tensor.shape
         raise ValueError("Unsupported type: {}".format(type(tensor)))
 
-    def _attr2value(self, node: mlir.ir.Attribute) -> Union[Any, List[Any]]:
+    def _attr2value(self, node: mlir.ir.Attribute, default=None) -> Union[Any, List[Any]]:
+        if node is None:
+            return default
+
         if mlir.ir.IntegerAttr.isinstance(node):
             int_attr = mlir.ir.IntegerAttr(node)
             return int_attr.value
@@ -124,7 +127,7 @@ class StableHLOImporter:
             data = [val for val in dense_attr]
             shape = self.get_shape(node.type)
             dtype = self._convert_data_type(node.type)
-            return numpy.array(data).astype(dtype).reshape(shape)
+            return numpy.array(data).astype(dtype).reshape(shape).tolist()
         else:
             raise ValueError("Unsupported Attribute type: " + str(type(node)))
 
@@ -292,14 +295,14 @@ class StableHLOImporter:
         lhs, rhs = self.retrieve_operands(node)
         return self.block_builder.emit(relax.op.matmul(lhs, rhs))
 
-    def _convolution(self, node: mlir.ir.Operation) -> relax.Expr:
+    def _convolution(self, node: mlir.dialects.stablehlo.ConvolutionOp) -> relax.Expr:
         x, weight = self.retrieve_operands(node)
         shaped_type = mlir.ir.ShapedType(node.result.type)
         out_dtype = self._convert_data_type(shaped_type.element_type)
-        strides = self._attr2value(node.attributes["window_strides"])
-        padding = self._attr2value(node.attributes["padding"])
-        lhs_dilation = self._attr2value(node.attributes["lhs_dilation"])
-        rhs_dilation = self._attr2value(node.attributes["rhs_dilation"])
+        strides = self._attr2value(node.window_strides)
+        padding = self._attr2value(node.padding)
+        lhs_dilation = self._attr2value(node.lhs_dilation, default=[0])
+        rhs_dilation = self._attr2value(node.rhs_dilation)
         if len(lhs_dilation) > 0:
             lhs_dilation = lhs_dilation[0]
         if len(rhs_dilation) > 0:
@@ -311,7 +314,35 @@ class StableHLOImporter:
         padding[1] = padding[2]
         padding[2] = tmp
         # todo(yongwww): fix, feature_group_count ? batch_group_count
-        groups = self._attr2value(node.attributes["batch_group_count"])
+        groups = self._attr2value(node.batch_group_count)
+
+        # Layouts
+        # TODO(agladyshev): very dirty hack
+        def get_layouts(view: str) -> Tuple[str, str, str]:
+            def split_view(view: str) -> Tuple[str, str, str]:
+                import re
+                input_dimensions, kernel_dimensions, output_dimensions = map(
+                    lambda x: re.sub('\ |\,|\[|\]', '', x),
+                    re.findall(r'\[.*?\]', view)
+                )
+                return input_dimensions, kernel_dimensions, output_dimensions
+
+            def convert2layout(dimensions: str) -> str:
+                convert_map = {
+                    "b": "N",
+                    "f": "C",
+                    "0": "H",   # TODO(agladyshev): what if other order?
+                    "1": "W",
+                    "i": "I",
+                    "o": "O",
+                }
+                return "".join([convert_map[item] for item in dimensions])
+
+            return tuple(map(convert2layout, split_view(view)))
+
+        dimension_numbers: mlir.ir.Attribute = node.attributes["dimension_numbers"]
+        data_layout, kernel_layout, out_layout = get_layouts(str(dimension_numbers))
+
         conv2d = relax.op.nn.conv2d(
             x,
             weight,
@@ -319,8 +350,9 @@ class StableHLOImporter:
             padding=padding,
             dilation=dilation,
             groups=groups,
-            data_layout="NHWC",
-            kernel_layout="HWIO",
+            data_layout=data_layout,
+            kernel_layout=kernel_layout,
+            out_layout=out_layout,
             out_dtype=out_dtype,
         )
 
