@@ -25,7 +25,7 @@ from tvm.topi.utils import simplify
 from tvm.topi import nn
 from tvm.autotvm.task.space import SplitEntity
 from ..utils import get_const_tuple
-
+from numbers import Integral
 
 def get_div(value, start):
     """Returns the maximum divider for `value` starting from `start` value"""
@@ -153,6 +153,27 @@ def pack_input(Input, layout, batch, chunks, block, original_tail, in_height, in
         assert False, "Adreno util function pack_input does not accept unknown layout"
     return reordered_data
 
+def get_const_int(expr):
+    """Verifies expr is integer and get the constant value.
+
+    Parameters
+    ----------
+    expr : tvm.Expr or int
+        The input expression.
+
+    Returns
+    -------
+    out_value : int
+        The output.
+    """
+    if isinstance(expr, Integral):
+        return expr
+    if not isinstance(expr, tvm.tir.IntImm):
+        ana = tvm.arith.Analyzer()
+        expr = ana.simplify(expr)
+    if not isinstance(expr, tvm.tir.IntImm):
+        raise ValueError("Expect value to be constant int")
+    return int(expr.value)
 
 def pack_filter(
     Filter,

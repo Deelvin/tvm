@@ -173,33 +173,33 @@ def conv2d_strategy_adreno(attrs, inputs, out_type, target):
     return strategy
 
 
-@conv2d_winograd_without_weight_transfrom_strategy.register("adreno")
-def conv2d_winograd_without_weight_transfrom_strategy_adreno(attrs, inputs, out_type, target):
-    """conv2d_winograd_without_weight_transfrom adreno strategy"""
-    dilation = attrs.get_int_tuple("dilation")
-    groups = attrs.get_int("groups")
-    layout = attrs.data_layout
-    assert dilation == (1, 1), "Do not support dilate now"
-    assert groups == 1, "Do not supoort arbitrary group number"
-    strategy = _op.OpStrategy()
-    if layout in ("NCHW", "NCHW4c"):
-        strategy.add_implementation(
-            wrap_compute_conv2d(topi.adreno.conv2d_nchw_winograd_without_weight_transform),
-            wrap_topi_schedule(topi.adreno.schedule_conv2d_nchw_winograd_without_weight_transform),
-            name="conv2d_nchw_winograd_without_weight_transform.image2d",
-            plevel=5,
-        )
-    elif layout in ("NHWC", "NHWC4c"):
-        strategy.add_implementation(
-            wrap_compute_conv2d(topi.adreno.conv2d_nhwc_winograd_without_weight_transform),
-            wrap_topi_schedule(topi.adreno.schedule_conv2d_nhwc_winograd_without_weight_transform),
-            name="conv2d_nhwc_winograd_without_weight_transform.image2d",
-            plevel=5,
-        )
-    else:
-        raise RuntimeError(
-            "Unsupported conv2d_winograd_without_weight_transfrom layout {}".format(layout)
-        )
+# @conv2d_winograd_without_weight_transfrom_strategy.register("adreno")
+# def conv2d_winograd_without_weight_transfrom_strategy_adreno(attrs, inputs, out_type, target):
+#     """conv2d_winograd_without_weight_transfrom adreno strategy"""
+#     dilation = attrs.get_int_tuple("dilation")
+#     groups = attrs.get_int("groups")
+#     layout = attrs.data_layout
+#     assert dilation == (1, 1), "Do not support dilate now"
+#     assert groups == 1, "Do not supoort arbitrary group number"
+#     strategy = _op.OpStrategy()
+#     if layout in ("NCHW", "NCHW4c"):
+#         strategy.add_implementation(
+#             wrap_compute_conv2d(topi.adreno.conv2d_nchw_winograd_without_weight_transform),
+#             wrap_topi_schedule(topi.adreno.schedule_conv2d_nchw_winograd_without_weight_transform),
+#             name="conv2d_nchw_winograd_without_weight_transform.image2d",
+#             plevel=5,
+#         )
+#     elif layout in ("NHWC", "NHWC4c"):
+#         strategy.add_implementation(
+#             wrap_compute_conv2d(topi.adreno.conv2d_nhwc_winograd_without_weight_transform),
+#             wrap_topi_schedule(topi.adreno.schedule_conv2d_nhwc_winograd_without_weight_transform),
+#             name="conv2d_nhwc_winograd_without_weight_transform.image2d",
+#             plevel=5,
+#         )
+#     else:
+#         raise RuntimeError(
+#             "Unsupported conv2d_winograd_without_weight_transfrom layout {}".format(layout)
+#         )
     return strategy
 
 
