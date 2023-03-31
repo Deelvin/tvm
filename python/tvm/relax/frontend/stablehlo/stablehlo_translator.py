@@ -309,10 +309,9 @@ class StableHLOImporter:
             rhs_dilation = rhs_dilation[0]
         # todo (yongwww): how to get dilation if lhs and rhs is not squired
         dilation = (lhs_dilation, rhs_dilation)
-        # TODO (yongwww): Remove hack for padding
-        tmp = padding[1]
-        padding[1] = padding[2]
-        padding[2] = tmp
+        # TODO(agladyshev): find better solution
+        if isinstance(padding[0], list):
+            padding = [item for sublist in padding for item in sublist]
         # todo(yongwww): fix, feature_group_count ? batch_group_count
         groups = self._attr2value(node.batch_group_count)
 
@@ -411,6 +410,9 @@ class StableHLOImporter:
             pass  # todo(yongwww)
         return self.block_builder.emit_output(self.nodes[outputs])
 
+    def _reverse(self, node: mlir.dialects.stablehlo.ReverseOp) -> relax.Expr:
+        raise NotImplementedError(type(node))
+
     def create_convert_map(self):
 
         self.convert_map: Dict[str, Callable[[mlir.ir.Operation], relax.Var]] = {
@@ -420,6 +422,7 @@ class StableHLOImporter:
             "stablehlo.convolution": self._convolution,
             "stablehlo.divide": self._divide,
             "stablehlo.dot_general": self._dot_general,
+            "stablehlo.dot": self._dot_general,     # TODO(agladyshev): check this binding
             "stablehlo.maximum": self._maximum,
             "stablehlo.minimum": self._minimum,
             "stablehlo.multiply": self._multiply,
@@ -430,6 +433,7 @@ class StableHLOImporter:
             "stablehlo.subtract": self._subtract,
             "func.return": self._return,
             "stablehlo.return": self._return,
+            "stablehlo.reverse": self._reverse,
             "getattr": self._getattr,
             "getitem": self._getitem,
             "contiguous": lambda node: self._nodes[node.args[0]],
