@@ -30,6 +30,7 @@ import mlir.ir
 import mlir.dialects
 
 import tvm.testing
+import tvm.runtime.relax_vm
 from tvm.relax.frontend.stablehlo import from_stablehlo
 
 Invoker = typing.TypeVar("Invoker")
@@ -73,7 +74,7 @@ def filter_operations(test: torch_mlir_e2e_test.framework.Test) -> bool:
 
 
 class TVMBackend(torch_mlir_e2e_test.stablehlo_backends.abc.StablehloBackend):
-    def compile(self, module: mlir.ir.Module) -> torch_mlir_e2e_test.framework.CompiledArtifact:
+    def compile(self, module: mlir.ir.Module) -> tvm.runtime.relax_vm.VirtualMachine:
         # TODO(agladyshev): need investigate
         #   arg_shape = mlir.ir.ShapedType(arg)
         #         TypeError: __init__(): incompatible constructor arguments. The following argument types are supported:
@@ -81,14 +82,20 @@ class TVMBackend(torch_mlir_e2e_test.stablehlo_backends.abc.StablehloBackend):
         # ir_mod = from_stablehlo(module)
 
         ir_mod: tvm.ir.IRModule = to_relax(str(module))
-        print(ir_mod.show())
+        ir_mod: tvm.ir.IRModule = tvm.relax.transform.LegalizeOps()(ir_mod)
         executable: tvm.relax.Executable = tvm.relax.build(ir_mod, target=tvm.target.Target("llvm", host="llvm"))
-        vm: tvm.relax.VirtualMachine = tvm.relax.VirtualMachine(executable, tvm.cpu())
-        print(vm)
+        vm: tvm.runtime.relax_vm.VirtualMachine = tvm.relax.VirtualMachine(executable, tvm.cpu())
         return vm
 
-    def load(self, artifact: torch_mlir_e2e_test.framework.CompiledArtifact) -> Invoker:
-        raise NotImplementedError(artifact)
+    def load(self, artifact: tvm.runtime.relax_vm.VirtualMachine) -> Invoker:
+        class Invoker:
+            def __init__(self):
+                self.vm: tvm.runtime.relax_vm.VirtualMachine = artifact
+
+            def forward(*args):
+                raise NotImplementedError(args)
+
+        return Invoker()
 
 
 if __name__ == "__main__":
