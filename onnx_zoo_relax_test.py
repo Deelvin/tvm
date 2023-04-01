@@ -6,7 +6,6 @@ from tvm.contrib.download import download_testdata
 from tvm.relax.frontend.onnx import from_onnx
 from tvm.relax.testing.relay_translator import from_relay
 from tvm.ir.module import IRModule
-from tvm.relax.testing import relay_translator
 
 import cv2
 import onnx
@@ -14,24 +13,135 @@ import numpy as np
 
 from tvm.target import Target
 
-SSD_MOBILENET_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/ssd-mobilenetv1/model/ssd_mobilenet_v1_10.onnx"
-FASTER_RCNN_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-12.onnx"
-MASK_RCNN_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/mask-rcnn/model/MaskRCNN-12.onnx"
-YOLO_V3_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/yolov3/model/yolov3-10.onnx"
-TINY_YOLO_V3_URL = "https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx"
+ONNX_MODEL_ZOO_ROOT_URL = "https://github.com/onnx/models/raw/main/"
+
+MOBILENET_2_URL = "vision/classification/mobilenet/model/mobilenetv2-7.onnx"
+RESNET50_1_URL = "vision/classification/resnet/model/resnet50-v1-7.onnx"
+RESNET50_2_URL = "vision/classification/resnet/model/resnet50-v2-7.onnx"
+RESNET152_1_URL = "vision/classification/resnet/model/resnet152-v1-7.onnx"
+SQUEEZENET_1_1_URL = "vision/classification/squeezenet/model/squeezenet1.1-7.onnx"
+SQUEEZENET_1_0_URL = "vision/classification/squeezenet/model/squeezenet1.0-7.onnx"
+INCEPTION_1_URL = "vision/classification/inception_and_googlenet/inception_v1/model/inception-v1-7.onnx"
+INCEPTION_2_URL = "vision/classification/inception_and_googlenet/inception_v2/model/inception-v2-7.onnx"
+VGG_16_URL = "vision/classification/vgg/model/vgg16-7.onnx"
+VGG_19_URL = "vision/classification/vgg/model/vgg19-7.onnx"
+DENCENET_121_URL = "vision/classification/densenet-121/model/densenet-9.onnx"
+ALEXNET_URL = "vision/classification/alexnet/model/bvlcalexnet-9.onnx"
+GOOGLENET_URL = "vision/classification/inception_and_googlenet/googlenet/model/googlenet-9.onnx"
+SHUFFLENET_1_URL = "vision/classification/shufflenet/model/shufflenet-9.onnx"
+SHUFFLENET_2_URL = "vision/classification/shufflenet/model/shufflenet-v2-12.onnx"
+ZFNET_URL = "vision/classification/zfnet-512/model/zfnet512-9.onnx"
+CAFFENET = "vision/classification/caffenet/model/caffenet-9.onnx"
+RCNN_ILSVRC13_URL = "vision/classification/rcnn_ilsvrc13/model/rcnn-ilsvrc13-9.onnx"
+EFFICIENTNET_LITE4_URL = "vision/classification/efficientnet-lite4/model/efficientnet-lite4-11.onnx"
+
+MNIST_URL = "vision/classification/mnist/model/mnist-8.onnx"
+
+SSD_URL = "vision/object_detection_segmentation/ssd/model/ssd-10.onnx"
+SSD_MOBILENET_URL = "vision/object_detection_segmentation/ssd-mobilenetv1/model/ssd_mobilenet_v1_10.onnx"
+FASTER_RCNN_URL = "vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-12.onnx"
+MASK_RCNN_URL = "vision/object_detection_segmentation/mask-rcnn/model/MaskRCNN-12.onnx"
+RETINANET_URL = "vision/object_detection_segmentation/retinanet/model/retinanet-9.onnx"
+YOLO_V2_URL = "vision/object_detection_segmentation/yolov2-coco/model/yolov2-coco-9.onnx"
+TINY_YOLO_V2_URL = "vision/object_detection_segmentation/tiny-yolov2/model/tinyyolov2-8.onnx"
+YOLO_V3_URL = "vision/object_detection_segmentation/yolov3/model/yolov3-10.onnx"
+TINY_YOLO_V3_URL = "vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx"
+YOLO_V4_URL = "vision/object_detection_segmentation/yolov4/model/yolov4.onnx"
+DUC_URL = "vision/object_detection_segmentation/duc/model/ResNet101-DUC-7.onnx"
+FCN_50_URL = "vision/object_detection_segmentation/fcn/model/fcn-resnet50-11.onnx"
+FCN_101_URL = "vision/object_detection_segmentation/fcn/model/fcn-resnet101-11.onnx"
+
+ARC_FACE_URL = "vision/body_analysis/arcface/model/arcfaceresnet100-8.onnx"
+ULTRA_FACE_URL_320 = "vision/body_analysis/ultraface/models/version-RFB-320.onnx"
+ULTRA_FACE_URL_640 = "vision/body_analysis/ultraface/models/version-RFB-640.onnx"
+EMOTION_PLUS_URL = "vision/body_analysis/emotion_ferplus/model/emotion-ferplus-8.onnx"
+GOOGLENET_AGE_URL = "vision/body_analysis/age_gender/models/age_googlenet.onnx"
+GOOGLENET_GENDER_URL = "vision/body_analysis/age_gender/models/gender_googlenet.onnx"
+VGG_ILSVRC16_AGE_URL ="vision/body_analysis/age_gender/models/vgg_ilsvrc_16_age_imdb_wiki.onnx"
+VGG_ILSVRC16_GENDER_URL = "vision/body_analysis/age_gender/models/vgg_ilsvrc_16_gender_imdb_wiki.onnx"
+
+SUPER_RESOLUTION_URL = "vision/super_resolution/sub_pixel_cnn_2016/model/super-resolution-10.onnx"
+FNST_MOSAIC_URL = "vision/style_transfer/fast_neural_style/model/mosaic-9.onnx"
+FNST_CANDY_URL = "vision/style_transfer/fast_neural_style/model/candy-9.onnx"
+FNST_RAIN_PRINCESS_URL = "vision/style_transfer/fast_neural_style/model/rain-princess-9.onnx"
+FNST_UDNIE_URL = "vision/style_transfer/fast_neural_style/model/udnie-9.onnx"
+FNST_POINTILISM_URL = "vision/style_transfer/fast_neural_style/model/pointilism-9.onnx"
+
+BIDAF_URL = "text/machine_comprehension/bidirectional_attention_flow/model/bidaf-9.onnx"
+BERT_URL = "text/machine_comprehension/bert-squad/model/bertsquad-10.onnx"
+ROBERTA_BASE_URL = "text/machine_comprehension/roberta/model/roberta-base-11.onnx"
+ROBERTA_SEQ_URL = "text/machine_comprehension/roberta/model/roberta-sequence-classification-9.onnx"
+GPT_2_URL = "text/machine_comprehension/gpt-2/model/gpt2-10.onnx"
+T5_URL = "text/machine_comprehension/t5/model/t5-encoder-12.onnx"
 
 MODEL_URL_COLLECTION = {
-    "ssd": SSD_MOBILENET_URL,   # SSD MobileNetv1
-    "fast": FASTER_RCNN_URL,    # Faster-RCNN
-    "mask": MASK_RCNN_URL,      # MASK-RCNN
-    "yolo": YOLO_V3_URL,        # "YOLO-v3"
-    "tiny": TINY_YOLO_V3_URL,   # "Tiny YOLO-v3"
+# CV classification
+    "mbn-2": MOBILENET_2_URL,       # MobileNet-v2
+    "rsn50": RESNET50_1_URL,        # ResNet50-v1
+    "rsn50-2": RESNET50_2_URL,      # ResNet50-v2
+    "rsn152": RESNET152_1_URL,      # ResNet152-v1
+    "sqz-1.1": SQUEEZENET_1_1_URL,  # SqueezeNet-v1.1
+    "sqz-1.0": SQUEEZENET_1_0_URL,  # SqueezeNet-v1.0
+    "inc": INCEPTION_1_URL,         # Inception-v1
+    "inc-2": INCEPTION_2_URL,       # Inception-v2
+    "vgg16": VGG_16_URL,            # VGG-16
+    "vgg19": VGG_19_URL,            # VGG-19
+    "dense": DENCENET_121_URL,      # DenseNet-121
+    "alex": ALEXNET_URL,            # AlexNet
+    "google": GOOGLENET_URL,        # GoogleNet
+    "shuffle": SHUFFLENET_1_URL ,   # ShuffleNet-v1
+    "shuffle-2": SHUFFLENET_2_URL,  # ShuffleNet-v2
+    "zf": ZFNET_URL,                # ZFNet
+    "caffe": CAFFENET,              # CaffeNet
+    "ilsvrc13": RCNN_ILSVRC13_URL,  # RCNN_ILSVRC13
+    "eff": EFFICIENTNET_LITE4_URL,  # EfficientNet-Lite4
+# Handwritten Digit Recognition
+    "mnist": MNIST_URL,             # MNIST
+# Detection and segmentation
+    "ssd": SSD_URL,                 # SSD
+    "ssd-mob": SSD_MOBILENET_URL,   # SSD MobileNetv1
+    "fast": FASTER_RCNN_URL,        # Faster-RCNN
+    "mask": MASK_RCNN_URL,          # MASK-RCNN
+    "retina": RETINANET_URL,        # RetinaNet
+    "tiny-yolo2": TINY_YOLO_V2_URL, # Tiny YOLO-v2
+    "yolo2": YOLO_V2_URL,           # YOLO-v2
+    # There is difference with YOLO-v3 from MXNet. It has dynamic shape inside and is not supported by TVM
+    "yolo3": YOLO_V3_URL,           # "YOLO-v3"
+    "tiny-yolo3": TINY_YOLO_V3_URL, # "Tiny YOLO-v3"
+    "yolo4": YOLO_V4_URL,           # YOLO-v4
+    "duc": DUC_URL,                 # DUC
+    "fcn-50": FCN_50_URL,           # FCN-50
+    "fcn-101": FCN_101_URL,         # FCN-101
+# Body, Face and Gesture analysis
+    "arc": ARC_FACE_URL,            # ArcFace
+    "ultra-320": ULTRA_FACE_URL_320,# UltraFace-320
+    "ultra-640": ULTRA_FACE_URL_640,# UltraFace-640
+    "emotion": EMOTION_PLUS_URL,    # EmotionFerPlus
+    "ggl-age": GOOGLENET_AGE_URL,   # GoogleNet-age
+    "ggl-gender": GOOGLENET_GENDER_URL,             # GoogleNet-gender
+    "vgg_ilsvrc_16_age": VGG_ILSVRC16_AGE_URL,      # VGG_ILSVRC_16-age
+    "vgg_ilsvrc_16_gender": VGG_ILSVRC16_GENDER_URL,# VGG_ILSVRC_16-gender
+# Image manipulation
+    "super_res": SUPER_RESOLUTION_URL,              # SuperResolution
+    # Fast Neural Style Transfer. TODO(vvchernov): accuracy test failed (rtol~0,5%)
+    "fnst-m": FNST_MOSAIC_URL,      # FNST-mosaic
+    "fnst-c": FNST_CANDY_URL,       # FNST-candy
+    "fnst-rp": FNST_RAIN_PRINCESS_URL,              # FNST-rain-princess
+    "fnst-u": FNST_UDNIE_URL,       # FNST-udnie
+    "fnst-p": FNST_POINTILISM_URL,  # FNST-pointilism
+# Machine compression
+    "bidaf": BIDAF_URL,             # BiDAF
+    "bert": BERT_URL,               # BERT
+    "roberta-b": ROBERTA_BASE_URL,  # RoBERTa-base
+    "roberta-s": ROBERTA_SEQ_URL,   # RoBERTa-seq
+    "gpt-2": GPT_2_URL,             # GPT-2
+    "t5": T5_URL,                   # T5
 }
 
 target_h = "llvm"
 
 def download_onnx_model(model_name):
-    model_url = MODEL_URL_COLLECTION[model_name]
+    model_url = ONNX_MODEL_ZOO_ROOT_URL + MODEL_URL_COLLECTION[model_name]
 
     print("Downloading model...")
     model_file_name = model_url[model_url.rfind("/") + 1:].strip()
@@ -60,7 +170,7 @@ def apply_opt_before_tuning(relay_mod, params, target):
         relay_mod = relay.transform.AlterOpLayout()(relay_mod)
         relay_mod = relay.transform.FoldConstant()(relay_mod)
 
-        relax_mod = relay_translator.from_relay(relay_mod["main"], target=target)
+        relax_mod = from_relay(relay_mod["main"], target=target)
         relax_mod = relax.transform.AnnotateTIROpPattern()(relax_mod)
         relax_mod = relax.transform.FuseOps()(relax_mod)
         relax_mod = relax.transform.FuseTIR()(relax_mod)
@@ -109,7 +219,7 @@ def main():
     # Model format
     parser.add_argument("-m", "--model_name", default="fast", type=str, help=\
         "Model name: 'ssd' for SSD witn MobileNetv1, 'fast' for Faster-RCNN, 'mask' for Mask-RCNN")
-    parser.add_argument("-t", "--target", default="opencl", type=str, help=\
+    parser.add_argument("-t", "--target", default="llvm", type=str, help=\
         "Target from the list ('opencl', 'cuda', 'llvm')")
     parser.add_argument("-s", "--in_size", default=224, type=int, help=\
         "Size for input image resizing")
