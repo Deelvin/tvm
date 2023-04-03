@@ -376,6 +376,8 @@ def main():
         "Use method from_relay to extract Relax IR from ONNX model using Relay front-end")
     parser.add_argument("-i", "--use_image", action="store_true", help=\
         "Test model use real image otherwise it generates random tensor of corresponding size")
+    parser.add_argument("-p", "--print", action="store_true", help=\
+        "Print the relax model and output tensors")
 
     args = parser.parse_args()
 
@@ -395,9 +397,10 @@ def main():
         tvm_model = from_onnx(onnx_model)
     # Legalize any relax ops into tensorir.
     tvm_model = relax.transform.LegalizeOps()(tvm_model)
-    print("=" * 10)
-    tvm_model.show()
-    print("=" * 10)
+    if args.print:
+        print("=" * 10)
+        tvm_model.show()
+        print("=" * 10)
 
     if target_c == "cuda":
         dev = tvm.cuda()
@@ -411,8 +414,9 @@ def main():
     print("Run...")
     exec.invoke_stateful("main")
     tvm_res = exec.get_outputs("main")
-    print("Output...")
-    print(tvm_res.numpy())
+    if args.print:
+        print("Output...")
+        print(tvm_res.numpy())
 
 
 if __name__ == '__main__':
