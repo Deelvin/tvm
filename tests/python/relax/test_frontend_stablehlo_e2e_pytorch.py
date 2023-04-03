@@ -17,9 +17,13 @@
 
 import typing
 
+import torch
+import torchvision
+
 import torch_mlir
 import torch_mlir_e2e_test.configs
 import torch_mlir_e2e_test.framework
+import torch_mlir_e2e_test.annotations
 import torch_mlir_e2e_test.registry
 import torch_mlir_e2e_test.reporting
 import torch_mlir_e2e_test.stablehlo_backends.linalg_on_tensors
@@ -34,6 +38,27 @@ import tvm.runtime.relax_vm
 from tvm.relax.frontend.stablehlo import from_stablehlo
 
 Invoker = typing.TypeVar("Invoker")
+
+
+class ResNet18Module(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        torch.manual_seed(0)
+        self.resnet = torchvision.models.resnet18(pretrained=True).train(False)
+
+    @torch_mlir_e2e_test.annotations.export
+    @torch_mlir_e2e_test.annotations.annotate_args([
+        None,
+        ([1, 3, 224, 224], torch.float32, True),
+    ])
+    def forward(self, x):
+        return self.resnet(x)
+
+
+@torch_mlir_e2e_test.registry.register_test_case(module_factory=lambda: ResNet18Module())
+def ResNet18(module, tu: torch_mlir_e2e_test.framework.TestUtils):
+    t = tu.rand(1, 3, 224, 224)
+    module.forward(t)
 
 
 def to_relax(model: str) -> tvm.ir.IRModule:
