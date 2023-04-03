@@ -1,3 +1,5 @@
+# For GPT-2 only
+from transformers import GPT2Tokenizer
 import argparse
 
 import tvm
@@ -9,9 +11,13 @@ from tvm.ir.module import IRModule
 
 import cv2
 import onnx
+from onnx import mapping
 import numpy as np
 
 from tvm.target import Target
+
+
+target_h = "llvm"
 
 ONNX_MODEL_ZOO_ROOT_URL = "https://github.com/onnx/models/raw/main/"
 
@@ -138,7 +144,51 @@ MODEL_URL_COLLECTION = {
     "t5": T5_URL,                   # T5
 }
 
-target_h = "llvm"
+specific_model_names = [
+    "tiny-yolo3",
+    "fcn-50",
+    "fcn-101",
+    "roberta-b",
+    "roberta-s",
+    "t5",
+]
+
+
+def get_FCN50_shape_dict():
+    return {"input": [1, 3, 480, 640]}
+
+
+def get_FCN101_shape_dict():
+    return {"input": [1, 3, 480, 640]}
+
+
+def get_RoBERTa_shape_dict():
+    return {"input_ids": [1, 100]}
+
+
+def get_T5_shape_dict():
+    return {"input_ids": [1, 100]}
+
+
+def get_TinyYOLOv3_shape_dict():
+    return {"input_1": [1, 3, 416, 416],
+            "image_shape": [1, 2]}
+
+
+def get_specific_input_shapes(model_name):
+    shapes_dict = {}
+    if model_name == "fcn-50":
+        shapes_dict = get_FCN50_shape_dict()
+    elif model_name == "fcn-101":
+        shapes_dict = get_FCN101_shape_dict()
+    elif model_name == "roberta-b" or model_name == "roberta-s":
+        shapes_dict = get_RoBERTa_shape_dict()
+    elif model_name == "t5":
+        shapes_dict = get_T5_shape_dict()
+    elif model_name == "tiny-yolo3":
+        shapes_dict = get_TinyYOLOv3_shape_dict()
+    return [shapes_dict[name] for name in sorted(shapes_dict.keys())]
+
 
 def download_onnx_model(model_name):
     model_url = ONNX_MODEL_ZOO_ROOT_URL + MODEL_URL_COLLECTION[model_name]
@@ -203,6 +253,101 @@ def get_relax_executor(tvm_model, target, dev):
     return exec
 
 
+def get_onnx_input_names(model):
+    inputs = [node.name for node in model.graph.input]
+    initializer = [node.name for node in model.graph.initializer]
+    inputs = list(set(inputs) - set(initializer))
+    return sorted(inputs)
+
+
+def get_onnx_input_types(model):
+    input_names = get_onnx_input_names(model)
+    return [
+        mapping.TENSOR_TYPE_TO_NP_TYPE[node.type.tensor_type.elem_type]
+        for node in sorted(model.graph.input, key=lambda node: node.name) if node.name in input_names
+    ]
+
+
+def get_common_input_shapes(model):
+    input_names = get_onnx_input_names(model)
+    shapes = [
+        [dv.dim_value for dv in node.type.tensor_type.shape.dim]
+        for node in sorted(model.graph.input, key=lambda node: node.name) if node.name in input_names
+    ]
+    for shape in shapes:
+        for i in range(len(shape)):
+            if shape[i] < 1:
+                print("WARNING: dimension of shape is non-positive. It is replaced by 1!")
+                shape[i] = 1
+    return shapes
+
+
+def get_onnx_input_shapes(model, model_name = ""):
+    if model_name in specific_model_names:
+        return get_specific_input_shapes(model_name)
+    else:
+        return get_common_input_shapes(model)
+
+
+def get_random_model_inputs(model, model_name = ""):
+    inputs = []
+    if model_name == "gpt-2":
+        # TODO: looks like ORT catches shape mismatch if number of words in the input string is not equal to 8. Pure TVM works fine for any number of words
+        test_string = "One two three four five six seven eight"
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        inputs = [np.array([[tokenizer.encode(test_string)]])]
+        input_shapes = [inputs[0].shape]
+    else:
+        input_shapes = get_onnx_input_shapes(model, model_name)
+        input_types = get_onnx_input_types(model)
+        assert len(input_types) == len(input_shapes)
+        inputs = []
+        for shape, dtype in zip(input_shapes, input_types):
+            high_val = 1.0
+            if (dtype == "int32" or dtype == "int64"):
+                high_val = 1000.0
+            inputs.append(np.random.uniform(size=shape, high=high_val).astype(dtype))
+    print("INPUT SHAPES:", input_shapes)
+    return inputs, input_shapes
+
+
+def get_inputs_shapes(onnx_model, model_name, in_size, batch_size, with_nhwc=False, use_image=True):
+    shape_dict = {}
+    input_dict = {}
+    if use_image:
+        img = preprocessing(in_size, batch_size, model_name in ["ssd", "yolo", "tiny"])
+        if model_name in ["yolo", "tiny"]:
+            shape_dict = {
+                "image_shape": [1, 2],
+                "input_1": img.shape,
+            }
+            input_dict = {
+                "image_shape": tvm.nd.array(np.array(img.shape).astype("float32")[2:]),
+                "input_1": tvm.nd.array(img),
+            }
+        else:
+            input_name = ""
+            if model_name == "mask" or model_name == "fast":
+                input_name = "image"
+            elif model_name == "ssd":
+                input_name = "image_tensor:0"
+                if with_nhwc:
+                    img = np.transpose(img, [0, 2, 3, 1])
+
+            shape_dict[input_name] = img.shape
+            input_dict = {input_name: tvm.nd.array(img)}
+    else:
+        inputs, input_shapes = get_random_model_inputs(onnx_model, model_name)
+        input_names = sorted(get_onnx_input_names(onnx_model))
+        print("INPUT NAMES:", input_names)
+        for key, value in zip(input_names, input_shapes):
+            shape_dict[key] = value
+        for key, value in zip(input_names, inputs):
+            input_dict[key] = tvm.nd.array(value)
+
+    return input_dict, shape_dict
+
+
 def main():
     model_list_str = ""
     for model_name in MODEL_URL_COLLECTION.keys():
@@ -213,12 +358,12 @@ def main():
         pass
 
     parser = argparse.ArgumentParser(
-        description="Debugging test for some models from https://github.com/onnx/models with dynamism using Relax:" + model_list_str,
+        description="Debugging test for some models from https://github.com/onnx/models using Relax:" + model_list_str,
         formatter_class=MyFormatter
     )
     # Model format
-    parser.add_argument("-m", "--model_name", default="fast", type=str, help=\
-        "Model name: 'ssd' for SSD witn MobileNetv1, 'fast' for Faster-RCNN, 'mask' for Mask-RCNN")
+    parser.add_argument("-m", "--model_name", default="rsn50", type=str, help=\
+        "Shortened model name from ONNX model zoo")
     parser.add_argument("-t", "--target", default="llvm", type=str, help=\
         "Target from the list ('opencl', 'cuda', 'llvm')")
     parser.add_argument("-s", "--in_size", default=224, type=int, help=\
@@ -229,36 +374,20 @@ def main():
         "Use NHWC layout instead of NCHW. It needs for MobileNetv1-SSD")
     parser.add_argument("-r", "--from_relay", action="store_true", help=\
         "Use method from_relay to extract Relax IR from ONNX model using Relay front-end")
+    parser.add_argument("-i", "--use_image", action="store_true", help=\
+        "Test model use real image otherwise it generates random tensor of corresponding size")
 
     args = parser.parse_args()
 
     target_c = args.target
     target = Target(target_c, host=target_h)
-    img = preprocessing(args.in_size, args.batch_size, args.model_name in ["ssd", "yolo", "tiny"])
+    print("Trying to check model:", args.model_name)
     onnx_model = download_onnx_model(args.model_name)
 
-    shape_dict = {}
-    input_dict = {}
-    if args.model_name in ["yolo", "tiny"]:
-        shape_dict = {
-            "image_shape": [1, 2],
-            "input_1": img.shape,
-        }
-        input_dict = {
-            "image_shape": tvm.nd.array(np.array(img.shape).astype("float32")[2:]),
-            "input_1": tvm.nd.array(img),
-        }
-    else:
-        input_name = ""
-        if args.model_name == "mask" or args.model_name == "fast":
-            input_name = "image"
-        elif args.model_name == "ssd":
-            input_name = "image_tensor:0"
-            if args.with_nhwc:
-                img = np.transpose(img, [0, 2, 3, 1])
+    input_dict, shape_dict = get_inputs_shapes(
+        onnx_model, args.model_name, args.in_size, args.batch_size, args.with_nhwc, args.use_image
+    )
 
-        shape_dict[input_name] = img.shape
-        input_dict = {input_name: tvm.nd.array(img)}
     if args.from_relay:
         model, params = load_from_onnx_model(onnx_model, shape_dict)
         tvm_model = apply_opt_before_tuning(model, params, target)
