@@ -92,8 +92,10 @@ class TVMBackend(torch_mlir_e2e_test.stablehlo_backends.abc.StablehloBackend):
             def __init__(self):
                 self.vm: tvm.runtime.relax_vm.VirtualMachine = artifact
 
-            def forward(*args):
-                raise NotImplementedError(args)
+            def forward(self, *args):
+                inputs = [tvm.nd.array(arg) for arg in args]
+                outputs = self.vm["main"](*inputs)
+                return outputs.numpy()
 
         return Invoker()
 
