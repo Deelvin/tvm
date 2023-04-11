@@ -144,6 +144,9 @@ class TorchFXImporter:
     def _sin(self, node: fx.node.Node) -> relax.Var:
         return self.block_builder.emit(relax.op.sin(self.env[node.args[0]]))
 
+    def _tanh(self, node: fx.node.Node) -> relax.Var:
+        return self.block_builder.emit(relax.op.tanh(self.env[node.args[0]]))
+
     def _sigmoid(self, node: fx.node.Node) -> relax.Var:
         return self.block_builder.emit(relax.op.sigmoid(self.env[node.args[0]]))
 
@@ -1045,11 +1048,13 @@ class TorchFXImporter:
             nn.GroupNorm: self._group_norm,
             nn.Dropout: lambda node: self.env[node.args[0]],
             nn.modules.sparse.Embedding: self._embedding,
+            nn.Tanh: self._tanh,
             # call_function and call_method
             "cos": self._cos,
             "exp": self._exp,
             "sin": self._sin,
             "add": self._add,
+            "iadd": self._add,
             "floordiv": self._floordiv,
             "mul": self._mul,
             "sub": self._sub,
