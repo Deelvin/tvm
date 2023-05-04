@@ -191,20 +191,7 @@ def conv2d_strategy_arm_cpu(attrs, inputs, out_type, target):
             )
         elif layout == "NHWC":
             data_width_padding = _get_padding_width(padding)
-            if (
-                target.features.has_dsp
-                and dilation_w == dilation_h == 1
-                and kernel_layout == "OHWI"
-                # Check SIMD alignment
-                and _is_simd_aligned(data.dtype, data.shape[2:], padding=(data_width_padding, 0))
-                and _is_simd_aligned(kernel.dtype, kernel.shape[2:])
-            ):
-                strategy.add_implementation(
-                    wrap_compute_conv2d(topi.arm_cpu.conv2d_nhwc_ohwi_dsp, need_out_layout=True),
-                    wrap_topi_schedule(topi.arm_cpu.schedule_conv2d_nhwc_ohwi_dsp),
-                    name="conv2d_nhwc_ohwi_dsp.arm_cpu",
-                )
-            elif target.features.has_dsp and kernel_layout == "HWOI":
+            if target.features.has_dsp and data.shape[3] % 4 == 0:
                 strategy.add_implementation(
                     wrap_compute_conv2d(topi.arm_cpu.conv2d_nhwc_dsp),
                     wrap_topi_schedule(topi.arm_cpu.schedule_conv2d_nhwc_dsp),

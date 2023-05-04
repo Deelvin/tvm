@@ -177,6 +177,24 @@ def _alter_conv2d_layout(attrs, inputs, tinfos, out_type):
 
         return relay.nn.conv2d(*inputs, **new_attrs)
 
+    if topi_tmpl == "conv2d_nhwc_dsp.arm_cpu":
+        # Need to repack kernel and update workload in case of HWIO, else do not change anything
+        if kernel_layout == "HWIO":
+            batch_size, height, width, in_channel = get_const_tuple(data.shape)
+            kh, kw, in_filter_channel, out_channel = get_const_tuple(kernel.shape)
+
+            new_attrs["kernel_layout"] = "HWOI"
+            new_data = data
+            new_kernel = te.placeholder((kh, kw, out_channel, in_filter_channel), dtype=kernel.dtype)
+            new_workload = autotvm.task.args_to_workload(
+                [new_data, new_kernel, strides, padding, dilation, out_dtype],
+                "conv2d_nhwc_dsp.arm_cpu",
+            )
+            dispatch_ctx.update(target, new_workload, cfg)
+            print("ALL UPDATED")
+            return relay.nn.conv2d(*inputs, **new_attrs)
+        return None
+
     if topi_tmpl == "conv2d_nhwc_spatial_pack.arm_cpu":
         assert (
             data.dtype == "int8"
