@@ -65,19 +65,25 @@ def conv2d_nhwc_dsp_compute(cfg, data, kernel, strides, padding, dilation, out_d
     else:
         dilation_h, dilation_w = dilation
 
-    if autotvm.GLOBAL_SCOPE.in_tuning:
-        # input is good enough, need to modify weights in case of HWIO since AlterOpLayout
-        # does not work in AutoTVM tune workflow
-        _, _, _, in_channels = data.shape
-        kernel_h, kernel_w, channels1, channels2 = kernel.shape
+    # input is good enough, need to modify weights in case of HWIO since AlterOpLayout
+    # does not work in AutoTVM tune workflow
+    _, _, _, in_channels = data.shape
+    kernel_h, kernel_w, channels1, channels2 = kernel.shape
 
-        # since we cannot reliably determine the layout, it's verified by comparing of
-        # channels in data and shape in 3ed position assumung that it is HWIO
-        # it is safe enough since NHWC will have allways HW** layout
-        # and this approach will work even if it is HWIO and number of output channels is eq
-        # to number of input ones
-        if in_channels == channels1:
+    if in_channels == channels1 and in_channels !=channels2:
+        if autotvm.GLOBAL_SCOPE.in_tuning:
+            # since we cannot reliably determine the layout, it's verified by comparing of
+            # channels in data and shape in 3ed position assumung that it is HWIO
+            # it is safe enough since NHWC will have allways HW** layout
+            # and this approach will work even if it is HWIO and number of output channels is eq
+            # to number of input ones
             kernel = te.placeholder((kernel_h, kernel_w, channels2, channels1), kernel.dtype, name="kernel_placeholder")
+        else:
+            kernel = te.compute(
+                (kernel_h, kernel_w, channels2, channels1),
+                    lambda h, w, c2, c1: kernel[h, w, c1, c2],
+                    name="kernel_repack",
+                )
 
     batch_size, in_height, in_width, in_channels = data.shape
     kernel_h, kernel_w, out_channels, _ = kernel.shape
