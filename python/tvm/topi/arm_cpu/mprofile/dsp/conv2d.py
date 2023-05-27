@@ -133,16 +133,18 @@ def conv2d_nhwc_dsp_compute(cfg, data, kernel, strides, padding, dilation, out_d
         cfg.reduce_axis(in_channels.value),
     )
 
-    owo, owi = cfg.define_split("tile_ow", ow, policy="factors", num_outputs=2)
+    owo, owi = cfg.define_split("tile_ow", ow, policy="factors", num_outputs=2,
+                                filter=None if cfg.is_fallback else lambda x: x.size[-1] < 32)
     cio, cii = cfg.define_split(
         "tile_ci",
         ci,
         policy="factors",
         num_outputs=2,
         # TODO: check case with in_channels.value % 4 != 0 with AutoTVM
-        filter=None if cfg.is_fallback else lambda x: x.size[-1] % 4 == 0,
+        filter=None if cfg.is_fallback else lambda x: x.size[-1] % 4 == 0 and x.size[-1] <=16,
     )
-    coo, coi = cfg.define_split("tile_co", co, policy="factors", num_outputs=2)
+    coo, coi = cfg.define_split("tile_co", co, policy="factors", num_outputs=2,
+                                filter=None if cfg.is_fallback else lambda x: x.size[-1] <= 4)
 
     cfg.define_reorder(
         "reorder_0_simd",
