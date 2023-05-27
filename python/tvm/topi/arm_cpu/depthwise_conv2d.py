@@ -384,9 +384,12 @@ def schedule_depthwise_conv2d_nhwc(cfg, outs):
         wo, wi = cfg["tile_w"].apply(s, out, w)
         ho, hi = cfg["tile_h"].apply(s, out, h)
         s[out].reorder(n, ho, wo, co, hi, wi, ci)
-        if cfg["unroll_tile"]:
-            s[out].unroll(wi)
-            s[out].unroll(hi)
+        # TODO(amalyshe): below unroll breaks the DSP and code gen.
+        # it causes not to create intermediate variable for each unrolled block
+        # need to fix
+        # if cfg["unroll_tile"]:
+        #     s[out].unroll(wi)
+        #     s[out].unroll(hi)
 
         if out.dtype in ["int8", "uint8"]:
             # In case of quantized convolution further split the channel in batches of 4 elements
