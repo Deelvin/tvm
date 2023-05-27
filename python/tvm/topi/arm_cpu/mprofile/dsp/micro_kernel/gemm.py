@@ -139,11 +139,8 @@ __attribute__((always_inline)) static inline const int8_t *read_and_pad(const in
     int32_t inA;
     memcpy(&inA, source, 4);
     source += 4;
-
-    int32_t inAbuf1 = __sxtb16(__ror((uint32_t)inA, 8));
-    int32_t inAbuf2 = __sxtb16(inA);
-    *out2 = (int32_t)(__pkhtb(inAbuf1, inAbuf2, 16));
-    *out1 = (int32_t)(__pkhbt(inAbuf2, inAbuf1, 16));
+    *out1 = __sxtb16(inA);
+    *out2 = __sxtb16(__ror((uint32_t)inA, 8));
 
     return source;
 }}
