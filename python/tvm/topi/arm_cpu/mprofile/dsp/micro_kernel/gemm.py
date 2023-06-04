@@ -144,6 +144,24 @@ __attribute__((always_inline)) static inline const int8_t *read_and_pad(const in
 
     return source;
 }}
+
+__attribute__((always_inline)) static inline int32_t arm_nn_read_s8x4_ia(const int8_t **in_s8)
+{{
+    int32_t val;
+    memcpy(&val, *in_s8, 4);
+    *in_s8 += 4;
+
+    return (val);
+}}
+
+__attribute__((always_inline)) static inline int32_t arm_nn_read_s8x4(const int8_t *in_s8)
+{{
+    int32_t val;
+    memcpy(&val, in_s8, 4);
+
+    return (val);
+}}
+
 #endif
 """
         + f"""
@@ -325,37 +343,237 @@ extern "C"
 __attribute__((always_inline)) static inline int32_t gemm_{M}x{K}x{N}_update_{uniq_id}(
     int8_t *aa, int8_t *bb, int32_t *cc,
     int A_stride, int B_stride, int C_stride) {{
-  int16_t bb_pad[{bb_pad_size}];
+
   int32_t retcode = 0;
+  if ( {M} % 2 == 0 && ({K} == 16 || {K} == 8 || {K} == 4) && {N} % 2 == 0) {{
+    for (int i = 0; i < {M}; i+=2) {{
+      for (int j = 0; j < {N}; j+=2) {{
+        const int32_t off0 = B_stride - 4;
+        const int32_t lhs_off0 = B_stride - 4;
 
-  if ( {M} < 2 && {N} < 2 ) {{
-    retcode = gemm_{M}x{K}x{N}_update_loop_{uniq_id}(aa, bb, cc, A_stride, B_stride, C_stride);
-    goto out;
-  }}
+        int32_t res00 = 0;
+        int32_t res01 = 0;
+        int32_t res10 = 0;
+        int32_t res11 = 0;
 
-  for (int i = 0; i < {N}; i++)
-    for (int j = 0; j < {K} / 4; j++)
-      read_and_pad(&bb[i*B_stride + j*4], (int32_t*) &bb_pad[i*{K} + j*4], (int32_t*) &bb_pad[i*{K} + j*4 + 2]);
+        int32_t val0, val1, val2, val3, val4, val5;
+        const int8_t *rhs_ptr = &bb[j * B_stride];
+        const int8_t *lhs_ptr = &aa[i * A_stride];
+        if ( {K} == 16) {{
+          val1 = arm_nn_read_s8x4_ia((const int8_t **)&rhs_ptr);
+          val2 = __sxtb16(val1);
+          val0 = arm_nn_read_s8x4_ia((const int8_t **)&lhs_ptr);
+          val3 = __sxtb16(val0);
+          val4 = arm_nn_read_s8x4((const int8_t *)&rhs_ptr[off0]);
+          val1 = __sxtb16(__ror((uint32_t)val1, 8));
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
 
-  for (int i = 0; i < {M}; i++) {{
-    int16_t aa_pad_line[{K}];
-    for (int l = 0; l < {K} / 4; l++)
-      read_and_pad(&aa[i*A_stride + l*4], (int32_t*) &aa_pad_line[l*4], (int32_t*) &aa_pad_line[l*4 + 2]);
+          // 4 x MAC res00, res01
+          res00 = __smlad(val3, val2, res00);
+          val5 = __sxtb16(val4);
+          res00 = __smlad(val0, val1, res00);
+          val4 = __sxtb16(__ror((uint32_t)val4, 8));
+          res01 = __smlad(val3, val5, res01);
+          res01 = __smlad(val0, val4, res01);
 
-    for (int j = 0; j < {N}; j++) {{
-      int32_t *aa_ptr = (int32_t *) aa_pad_line;
-      int32_t *bb_ptr = (int32_t *) &bb_pad[j*{K}];
-      int32_t sum = 0;
-      for (int l = 0; l < 2 * ({K} / 4); l++) {{
-        sum = __smlad(*aa_ptr, *bb_ptr, sum);
-        ++ aa_ptr; ++ bb_ptr;
+          // 4 x MAC res10, res11
+          val0 = arm_nn_read_s8x4((const int8_t *)&lhs_ptr[lhs_off0]);
+          val3 = __sxtb16(val0);
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+          res10 = __smlad(val3, val2, res10);
+          res11 = __smlad(val3, val5, res11);
+          res10 = __smlad(val0, val1, res10);
+          val1 = arm_nn_read_s8x4_ia((const int8_t **)&rhs_ptr);
+          res11 = __smlad(val0, val4, res11);
+
+          val4 = arm_nn_read_s8x4((const int8_t *)&rhs_ptr[off0]);
+          val2 = __sxtb16(val1);
+          val0 = arm_nn_read_s8x4_ia((const int8_t **)&lhs_ptr);
+          val3 = __sxtb16(val0);
+          val1 = __sxtb16(__ror((uint32_t)val1, 8));
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+
+          // 4 x MAC res00, res01
+          res00 = __smlad(val3, val2, res00);
+          val5 = __sxtb16(val4);
+          res00 = __smlad(val0, val1, res00);
+          val4 = __sxtb16(__ror((uint32_t)val4, 8));
+          res01 = __smlad(val3, val5, res01);
+          res01 = __smlad(val0, val4, res01);
+
+          // 4 x MAC res10, res11
+          val0 = arm_nn_read_s8x4((const int8_t *)&lhs_ptr[lhs_off0]);
+          val3 = __sxtb16(val0);
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+          res10 = __smlad(val3, val2, res10);
+          res11 = __smlad(val3, val5, res11);
+          res10 = __smlad(val0, val1, res10);
+          val1 = arm_nn_read_s8x4_ia((const int8_t **)&rhs_ptr);
+          res11 = __smlad(val0, val4, res11);
+
+          val4 = arm_nn_read_s8x4((const int8_t *)&rhs_ptr[off0]);
+          val2 = __sxtb16(val1);
+          val0 = arm_nn_read_s8x4_ia((const int8_t **)&lhs_ptr);
+          val3 = __sxtb16(val0);
+          val1 = __sxtb16(__ror((uint32_t)val1, 8));
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+
+          // 4 x MAC res00, res01
+          res00 = __smlad(val3, val2, res00);
+          val5 = __sxtb16(val4);
+          res00 = __smlad(val0, val1, res00);
+          val4 = __sxtb16(__ror((uint32_t)val4, 8));
+          res01 = __smlad(val3, val5, res01);
+          res01 = __smlad(val0, val4, res01);
+
+          // 4 x MAC res10, res11
+          val0 = arm_nn_read_s8x4((const int8_t *)&lhs_ptr[lhs_off0]);
+          val3 = __sxtb16(val0);
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+          res10 = __smlad(val3, val2, res10);
+          res11 = __smlad(val3, val5, res11);
+          res10 = __smlad(val0, val1, res10);
+          val1 = arm_nn_read_s8x4_ia((const int8_t **)&rhs_ptr);
+          res11 = __smlad(val0, val4, res11);
+
+          val4 = arm_nn_read_s8x4((const int8_t *)&rhs_ptr[off0]);
+          val2 = __sxtb16(val1);
+          val0 = arm_nn_read_s8x4_ia((const int8_t **)&lhs_ptr);
+          val3 = __sxtb16(val0);
+          val1 = __sxtb16(__ror((uint32_t)val1, 8));
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+
+          // 4 x MAC res00, res01
+          res00 = __smlad(val3, val2, res00);
+          val5 = __sxtb16(val4);
+          res00 = __smlad(val0, val1, res00);
+          val4 = __sxtb16(__ror((uint32_t)val4, 8));
+          res01 = __smlad(val3, val5, res01);
+          res01 = __smlad(val0, val4, res01);
+
+          // 4 x MAC res10, res11
+          val0 = arm_nn_read_s8x4((const int8_t *)&lhs_ptr[lhs_off0]);
+          val3 = __sxtb16(val0);
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+          res10 = __smlad(val3, val2, res10);
+          res11 = __smlad(val3, val5, res11);
+          res10 = __smlad(val0, val1, res10);
+          res11 = __smlad(val0, val4, res11);
+        }} else if ( {K} == 8) {{
+          val1 = arm_nn_read_s8x4_ia((const int8_t **)&rhs_ptr);
+          val2 = __sxtb16(val1);
+          val0 = arm_nn_read_s8x4_ia((const int8_t **)&lhs_ptr);
+          val3 = __sxtb16(val0);
+          val4 = arm_nn_read_s8x4((const int8_t *)&rhs_ptr[off0]);
+          val1 = __sxtb16(__ror((uint32_t)val1, 8));
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+
+          // 4 x MAC res00, res01
+          res00 = __smlad(val3, val2, res00);
+          val5 = __sxtb16(val4);
+          res00 = __smlad(val0, val1, res00);
+          val4 = __sxtb16(__ror((uint32_t)val4, 8));
+          res01 = __smlad(val3, val5, res01);
+          res01 = __smlad(val0, val4, res01);
+
+          // 4 x MAC res10, res11
+          val0 = arm_nn_read_s8x4((const int8_t *)&lhs_ptr[lhs_off0]);
+          val3 = __sxtb16(val0);
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+          res10 = __smlad(val3, val2, res10);
+          res11 = __smlad(val3, val5, res11);
+          res10 = __smlad(val0, val1, res10);
+          val1 = arm_nn_read_s8x4_ia((const int8_t **)&rhs_ptr);
+          res11 = __smlad(val0, val4, res11);
+
+          val4 = arm_nn_read_s8x4((const int8_t *)&rhs_ptr[off0]);
+          val2 = __sxtb16(val1);
+          val0 = arm_nn_read_s8x4_ia((const int8_t **)&lhs_ptr);
+          val3 = __sxtb16(val0);
+          val1 = __sxtb16(__ror((uint32_t)val1, 8));
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+
+          // 4 x MAC res00, res01
+          res00 = __smlad(val3, val2, res00);
+          val5 = __sxtb16(val4);
+          res00 = __smlad(val0, val1, res00);
+          val4 = __sxtb16(__ror((uint32_t)val4, 8));
+          res01 = __smlad(val3, val5, res01);
+          res01 = __smlad(val0, val4, res01);
+
+          // 4 x MAC res10, res11
+          val0 = arm_nn_read_s8x4((const int8_t *)&lhs_ptr[lhs_off0]);
+          val3 = __sxtb16(val0);
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+          res10 = __smlad(val3, val2, res10);
+          res11 = __smlad(val3, val5, res11);
+          res10 = __smlad(val0, val1, res10);
+          res11 = __smlad(val0, val4, res11);
+        }} else if ( {K} == 4) {{
+          val1 = arm_nn_read_s8x4_ia((const int8_t **)&rhs_ptr);
+          val2 = __sxtb16(val1);
+          val0 = arm_nn_read_s8x4_ia((const int8_t **)&lhs_ptr);
+          val3 = __sxtb16(val0);
+          val4 = arm_nn_read_s8x4((const int8_t *)&rhs_ptr[off0]);
+          val1 = __sxtb16(__ror((uint32_t)val1, 8));
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+
+          // 4 x MAC res00, res01
+          res00 = __smlad(val3, val2, res00);
+          val5 = __sxtb16(val4);
+          res00 = __smlad(val0, val1, res00);
+          val4 = __sxtb16(__ror((uint32_t)val4, 8));
+          res01 = __smlad(val3, val5, res01);
+          res01 = __smlad(val0, val4, res01);
+
+          // 4 x MAC res10, res11
+          val0 = arm_nn_read_s8x4((const int8_t *)&lhs_ptr[lhs_off0]);
+          val3 = __sxtb16(val0);
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+          res10 = __smlad(val3, val2, res10);
+          res11 = __smlad(val3, val5, res11);
+          res10 = __smlad(val0, val1, res10);
+          res11 = __smlad(val0, val4, res11);
+        }}
+
+        cc[i * C_stride + j] += res00;
+        cc[i * C_stride + j + 1] += res01;
+        cc[(i + 1) * C_stride + j] += res10;
+        cc[(i + 1) * C_stride + j + 1] += res11;
       }}
-      cc[i*C_stride + j] += sum;
     }}
-  }}
+    return retcode;
+  }} else {{
+    int16_t bb_pad[{bb_pad_size}];
+    if ( {M} < 2 && {N} < 2 ) {{
+      retcode = gemm_{M}x{K}x{N}_update_loop_{uniq_id}(aa, bb, cc, A_stride, B_stride, C_stride);
+      goto out;
+    }}
 
-  if ( {K} % 4 != 0 )
-    gemm_{M}x{N}_update_rest_{uniq_id}({K}, aa, bb, cc, A_stride, B_stride, C_stride);
+    for (int i = 0; i < {N}; i++)
+      for (int j = 0; j < {K} / 4; j++)
+        read_and_pad(&bb[i*B_stride + j*4], (int32_t*) &bb_pad[i*{K} + j*4], (int32_t*) &bb_pad[i*{K} + j*4 + 2]);
+
+    for (int i = 0; i < {M}; i++) {{
+      int16_t aa_pad_line[{K}];
+      for (int l = 0; l < {K} / 4; l++)
+        read_and_pad(&aa[i*A_stride + l*4], (int32_t*) &aa_pad_line[l*4], (int32_t*) &aa_pad_line[l*4 + 2]);
+
+      for (int j = 0; j < {N}; j++) {{
+        int32_t *aa_ptr = (int32_t *) aa_pad_line;
+        int32_t *bb_ptr = (int32_t *) &bb_pad[j*{K}];
+        int32_t sum = 0;
+        for (int l = 0; l < 2 * ({K} / 4); l++) {{
+          sum = __smlad(*aa_ptr, *bb_ptr, sum);
+          ++ aa_ptr; ++ bb_ptr;
+        }}
+        cc[i*C_stride + j] += sum;
+      }}
+    }}
+
+    if ( {K} % 4 != 0 )
+      gemm_{M}x{N}_update_rest_{uniq_id}({K}, aa, bb, cc, A_stride, B_stride, C_stride);
+  }}
 
 out:
   return retcode;
