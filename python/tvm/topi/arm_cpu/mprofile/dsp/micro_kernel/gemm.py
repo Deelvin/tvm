@@ -345,7 +345,7 @@ __attribute__((always_inline)) static inline int32_t gemm_{M}x{K}x{N}_update_{un
     int A_stride, int B_stride, int C_stride) {{
 
   int32_t retcode = 0;
-  if ( ({K} == 16 || {K} == 8 || {K} == 4) && {N} % 2 == 0) {{
+  if ( ({K} ==  3 || {K} == 16 || {K} == 8 || {K} == 4) && {N} % 2 == 0) {{
     int i = 0;
     for (; i < {M} - 1; i+=2) {{
       for (int j = 0; j < {N}; j+=2) {{
@@ -535,6 +535,31 @@ __attribute__((always_inline)) static inline int32_t gemm_{M}x{K}x{N}_update_{un
           res11 = __smlad(val3, val5, res11);
           res10 = __smlad(val0, val1, res10);
           res11 = __smlad(val0, val4, res11);
+        }} else if ( {K} == 3) {{
+          val1 = arm_nn_read_s8x4_ia((const int8_t **)&rhs_ptr);
+          val2 = __sxtb16(val1);
+          val0 = arm_nn_read_s8x4_ia((const int8_t **)&lhs_ptr);
+          val3 = __sxtb16(val0);
+          val4 = arm_nn_read_s8x4((const int8_t *)&rhs_ptr[off0]);
+          val1 = __sxtb16(__ror((uint32_t)val1, 8));
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+
+          // 4 x MAC res00, res01
+          res00 = __smlad(val3, val2, res00);
+          val5 = __sxtb16(val4);
+          res00 = __smlabb(val0, val1, res00);
+          val4 = __sxtb16(__ror((uint32_t)val4, 8));
+          res01 = __smlad(val3, val5, res01);
+          res01 = __smlabb(val0, val4, res01);
+
+          // 4 x MAC res10, res11
+          val0 = arm_nn_read_s8x4((const int8_t *)&lhs_ptr[lhs_off0]);
+          val3 = __sxtb16(val0);
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+          res10 = __smlad(val3, val2, res10);
+          res11 = __smlad(val3, val5, res11);
+          res10 = __smlabb(val0, val1, res10);
+          res11 = __smlabb(val0, val4, res11);
         }}
 
         cc[i * C_stride + j] += res00;
@@ -668,6 +693,22 @@ __attribute__((always_inline)) static inline int32_t gemm_{M}x{K}x{N}_update_{un
           val4 = __sxtb16(__ror((uint32_t)val4, 8));
           res01 = __smlad(val3, val5, res01);
           res01 = __smlad(val0, val4, res01);
+        }} else if ( {K} == 3) {{
+          val1 = arm_nn_read_s8x4_ia((const int8_t **)&rhs_ptr);
+          val2 = __sxtb16(val1);
+          val0 = arm_nn_read_s8x4_ia((const int8_t **)&lhs_ptr);
+          val3 = __sxtb16(val0);
+          val4 = arm_nn_read_s8x4((const int8_t *)&rhs_ptr[off0]);
+          val1 = __sxtb16(__ror((uint32_t)val1, 8));
+          val0 = __sxtb16(__ror((uint32_t)val0, 8));
+
+          // 4 x MAC res00, res01
+          res00 = __smlad(val3, val2, res00);
+          val5 = __sxtb16(val4);
+          res00 = __smlabb(val0, val1, res00);
+          val4 = __sxtb16(__ror((uint32_t)val4, 8));
+          res01 = __smlad(val3, val5, res01);
+          res01 = __smlabb(val0, val4, res01);
         }}
 
         cc[i * C_stride + j] += res00;
@@ -677,7 +718,7 @@ __attribute__((always_inline)) static inline int32_t gemm_{M}x{K}x{N}_update_{un
     return retcode;
   }} else {{
     int16_t bb_pad[{bb_pad_size}];
-    if ( {M} < 2 && {N} < 2 ) {{
+    if ( {K} < 4 || ({M} < 2 && {N} < 2) ) {{
       retcode = gemm_{M}x{K}x{N}_update_loop_{uniq_id}(aa, bb, cc, A_stride, B_stride, C_stride);
       goto out;
     }}

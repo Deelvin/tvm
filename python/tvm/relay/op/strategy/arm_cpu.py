@@ -191,7 +191,7 @@ def conv2d_strategy_arm_cpu(attrs, inputs, out_type, target):
             )
         elif layout == "NHWC":
             data_width_padding = _get_padding_width(padding)
-            if target.features.has_dsp and data.shape[3] % 4 == 0:
+            if target.features.has_dsp and (data.shape[3] % 4 == 0 or data.shape[3] % 3 == 0):
                 strategy.add_implementation(
                     wrap_compute_conv2d(topi.arm_cpu.conv2d_nhwc_dsp),
                     wrap_topi_schedule(topi.arm_cpu.schedule_conv2d_nhwc_dsp),

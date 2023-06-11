@@ -141,7 +141,7 @@ def conv2d_nhwc_dsp_compute(cfg, data, kernel, strides, padding, dilation, out_d
         policy="factors",
         num_outputs=2,
         # TODO: check case with in_channels.value % 4 != 0 with AutoTVM
-        filter=None if cfg.is_fallback else lambda x: x.size[-1] % 4 == 0 and x.size[-1] <=16,
+        filter=None if cfg.is_fallback else lambda x: (x.size[-1] % 4 == 0 or x.size[-1] % 3 == 0) and x.size[-1] <=16,
     )
     coo, coi = cfg.define_split("tile_co", co, policy="factors", num_outputs=2,
                                 filter=None if cfg.is_fallback else lambda x: x.size[-1] <= 4)
