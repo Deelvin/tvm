@@ -512,6 +512,7 @@ TVM_REGISTER_GLOBAL("vm.builtin.sample_top_p_from_prob").set_body_typed(SampleTo
 
 // NOLINTNEXTLINE(runtime/references)
 void LogSoftmax(NDArray logits, const NDArray& output) {
+  std::cout << "LogSoftmax" << std::endl;
   /* log_softmax from logits is calculated.
    * Both operations are joined to more quick and stable calculations:
    * Log(Softmax(logits))[i] = Log(exp(logits[i])/Sum(exp(logits[i]), i)) =
@@ -535,7 +536,9 @@ void LogSoftmax(NDArray logits, const NDArray& output) {
   }
 
   size_t seq_length = logits->shape[logits->ndim - 2];
+  std::cout << "LogSoftmax SEQ LEN = " << seq_length << std::endl;
   size_t vocab_length = logits->shape[logits->ndim - 1];
+  std::cout << "LogSoftmax VOCAB LEN = " << vocab_length << std::endl;
   float* res_ptr = static_cast<float*>(output->data);
 
   for (size_t seq_ind = 0; seq_ind < seq_length; ++seq_ind) {
@@ -551,6 +554,12 @@ void LogSoftmax(NDArray logits, const NDArray& output) {
       }
     }
 
+    std::cout << "LogSoftmax DATA WITH LOGITS: [";
+    for (size_t i = 0; i < 100; ++i) {
+      std::cout << " " << plogits[i];
+    }
+    std::cout << " ]" << std::endl;
+
     // Compute denominator
     float sum = 0.0f;
     for (size_t i = 0; i < vocab_length; ++i) {
@@ -559,7 +568,15 @@ void LogSoftmax(NDArray logits, const NDArray& output) {
       res_log_probs[i] = value;
     }
 
+    std::cout << "LogSoftmax SHIFTED DATA: [";
+    for (size_t i = 0; i < 100; ++i) {
+      std::cout << " " << res_log_probs[i];
+    }
+    std::cout << " ]" << std::endl;
+
+    std::cout << "LogSoftmax SUM = " << sum << std::endl;
     float log_sum = logf(sum);
+    std::cout << "LogSoftmax LOG SUM = " << log_sum << std::endl;
 
     // Compute final log probes
     for (size_t i = 0; i < vocab_length; ++i) {
