@@ -49,7 +49,8 @@ TVM_REGISTER_GLOBAL("relax.op.quantize").set_body_typed(quantize);
 StructInfo InferStructInfoQuantize(const Call& call, const BlockBuilder& ctx) {
   const auto* attrs = call->attrs.as<QuantizeAttrs>();
   if (attrs->out_dtype != DataType::Int(8) && attrs->out_dtype != DataType::UInt(8) &&
-      attrs->out_dtype != DataType::Int(16) && attrs->out_dtype != DataType::UInt(16)) {
+      attrs->out_dtype != DataType::Int(16) && attrs->out_dtype != DataType::UInt(16) &&
+      attrs->out_dtype != DataType::NVFloat8E4M3() && attrs->out_dtype != DataType::NVFloat8E5M2()) {
     ctx->ReportFatal(Diagnostic::Error(call)
                      << "Unsupported output datatype attribute for operation: '"
                      << attrs->out_dtype);
@@ -73,7 +74,10 @@ StructInfo InferStructInfoQuantize(const Call& call, const BlockBuilder& ctx) {
   }
 
   // Check datatype of zero_point param:
-  if (zp_sinfo->dtype != DataType::Int(8)) {
+  if (zp_sinfo->dtype != DataType::Int(8) &&
+      zp_sinfo->dtype != DataType::Float(16) &&  // TODO(amalyshe): what datatype should we have for zp fp8? We probably need to have fp8, but have difficulties in calib pipleine with storing of zp in fp8 in numpy since there is no such np type
+      zp_sinfo->dtype != DataType::NVFloat8E4M3() &&
+      zp_sinfo->dtype != DataType::NVFloat8E5M2()) {
     ctx->ReportFatal(Diagnostic::Error(call)
                      << "zero_point param datatype should be int8, but got " << zp_sinfo->dtype);
   }
@@ -142,7 +146,9 @@ StructInfo InferStructInfoDequantize(const Call& call, const BlockBuilder& ctx) 
   // Check input datatype:
   if (input_sinfo->dtype != DataType::Int(8) && input_sinfo->dtype != DataType::UInt(8) &&
       input_sinfo->dtype != DataType::Int(16) && input_sinfo->dtype != DataType::UInt(16) &&
-      input_sinfo->dtype != DataType::Int(32)) {
+      input_sinfo->dtype != DataType::Int(32) &&
+      input_sinfo->dtype != DataType::NVFloat8E4M3() && input_sinfo->dtype != DataType::NVFloat8E5M2() &&
+      input_sinfo->dtype != DataType::Float(16) && input_sinfo->dtype != DataType::Float(32)) {
     ctx->ReportFatal(Diagnostic::Error(call)
                      << "Unsupported input datatype for operation: " << attrs->out_dtype);
   }
@@ -155,7 +161,11 @@ StructInfo InferStructInfoDequantize(const Call& call, const BlockBuilder& ctx) 
   }
 
   // Check datatype of zero_point param:
-  if (zp_sinfo->dtype != DataType::Int(8)) {
+  if (zp_sinfo->dtype != DataType::Int(8) &&
+  
+      zp_sinfo->dtype != DataType::Float(16) &&  // TODO(amalyshe): what datatype should we have for zp fp8? We probably need to have fp8, but have difficulties in calib pipleine with storing of zp in fp8 in numpy since there is no such np type
+      zp_sinfo->dtype != DataType::NVFloat8E4M3() &&
+      zp_sinfo->dtype != DataType::NVFloat8E5M2()) {
     ctx->ReportFatal(Diagnostic::Error(call)
                      << "zero_point param datatype should be int8, but got " << zp_sinfo->dtype);
   }
