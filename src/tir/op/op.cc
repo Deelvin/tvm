@@ -236,6 +236,11 @@ PrimExpr max_value(const DataType& dtype, Span span) {
     }
   } else if (dtype.is_bfloat16()) {
     return FloatImm(dtype, std::numeric_limits<float>::max(), span);
+  } else if (dtype.is_e5m2_float8()) {
+    // according to https://arxiv.org/pdf/2209.05433.pdf
+    return FloatImm(dtype, 57344.0, span);
+  } else if (dtype.is_e4m3_float8()) {
+    return FloatImm(dtype, 448.0, span);
   }
   LOG(FATAL) << "Cannot decide max_value for type" << dtype;
 }
@@ -270,6 +275,11 @@ PrimExpr min_value(const DataType& dtype, Span span) {
     }
   } else if (dtype.is_bfloat16()) {
     return FloatImm(dtype, std::numeric_limits<float>::lowest(), span);
+  } else if (dtype.is_e5m2_float8()) {
+    // according to https://arxiv.org/pdf/2209.05433.pdf
+    return FloatImm(dtype, -57344.0, span);
+  } else if (dtype.is_e4m3_float8()) {
+    return FloatImm(dtype, -448.0, span);
   }
   LOG(FATAL) << "Cannot decide min_value for type" << dtype;
 }
