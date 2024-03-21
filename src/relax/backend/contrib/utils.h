@@ -70,7 +70,8 @@ inline std::vector<int64_t> GetIntShape(const Array<PrimExpr>& shape) {
  */
 inline std::string DType2String(const tvm::DataType dtype) {
   std::ostringstream os;
-  if (dtype.is_float()) {
+  // TODO(amnalyshe): added float8 here, fp8 cublas compilation started working, but not sure if it is correct
+  if (dtype.is_float() || dtype.is_float8()) {
     os << "float";
   } else if (dtype.is_int()) {
     os << "int";
