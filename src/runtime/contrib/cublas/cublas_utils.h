@@ -108,6 +108,9 @@ inline cudaDataType_t GetCudaDataType(DLDataType type) {
     }
   } else if (type.code == kDLFloat) {
     switch (type.bits) {
+      case 8:
+        // TODO(amalyshe): here should be verification on e5m2 and e4m3 instead of just returning of CUDA_R_8F_E4M3
+        return CUDA_R_8F_E4M3;
       case 16:
         return CUDA_R_16F;
       case 32:
