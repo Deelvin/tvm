@@ -75,15 +75,18 @@ def _dequantize(bb: BlockBuilder, call: Call) -> Expr:
     Compute datatype: float32
 
     Example of lowering:
-    qnn.dequantize(data, scale, zp, "float32") -->
-        sub = subtract(cast(data, "int32"), zp)
-        out = multiply(cast(sub, "float32"), scale)
 
-    qnn.dequantize(data, scale, zp, "float16") -->
-        sub = subtract(cast(data, "int32"), zp)
-        mul = multiply(cast(sub, "float32"), cast(scale, "float32"))
-        clipped_out = clip(mul, float32(-65504.0), float32(65504.0))
-        out = cast(clipped_out, "float16")
+        dtype = ["int32"|"float32"]
+
+        qnn.dequantize(data, scale, zp, "float32") -->
+            sub = subtract(cast(data, dtype), zp)
+            out = multiply(cast(sub, "float32"), scale)
+
+        qnn.dequantize(data, scale, zp, "float16") -->
+            sub = subtract(cast(data, dtype), zp)
+            mul = multiply(cast(sub, "float32"), cast(scale, "float32"))
+            clipped_out = clip(mul, float32(-65504.0), float32(65504.0))
+            out = cast(clipped_out, "float16")
     """
     axis = call.attrs.axis
     out_dtype = call.attrs.out_dtype
@@ -96,7 +99,8 @@ def _dequantize(bb: BlockBuilder, call: Call) -> Expr:
         def dequantize_compute(*indices):
             scale_value = scale if is_const_scalar(scale) else scale[indices[axis]]
             zp_value = zp if is_const_scalar(zp) else zp[indices[axis]]
-            sub = te.subtract(data[indices].astype("int32"), zp_value)
+            dtype = "float32" if "float" in data.dtype else "int32"
+            sub = te.subtract(data[indices].astype(dtype), zp_value)
             out = te.multiply(sub, scale_value.astype("float32"))
             if out_dtype == "float32":
                 return out
