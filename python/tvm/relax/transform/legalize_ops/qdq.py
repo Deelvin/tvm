@@ -52,7 +52,8 @@ def _quantize(bb: BlockBuilder, call: Call) -> Expr:
         def quantize_compute(*indices):
             scale_value = scale if is_const_scalar(scale) else scale[indices[axis]]
             zp_value = zp if is_const_scalar(zp) else zp[indices[axis]]
-            round_val = te.round(data[indices] / scale_value) + zp_value
+            scaled = data[indices] / scale_value
+            round_val = (te.round(scaled) if out_dtype.startswith("int") else scaled) + zp_value
             return clip_cast(round_val, out_dtype)
 
         output_shape = data.shape
