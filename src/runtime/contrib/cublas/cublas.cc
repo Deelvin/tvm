@@ -163,6 +163,8 @@ void CallCublasLt(cublasLtHandle_t hdl, cudaStream_t stream,
     ab_type = CUDA_R_8I;
   } else if (TypeMatch(A->dtype, DataType::TypeCode::kE4M3Float, 8)) {
     ab_type = CUDA_R_8F_E4M3;
+  } else if (TypeMatch(A->dtype, DataType::TypeCode::kE5M2Float, 8)) {
+    ab_type = CUDA_R_8F_E5M2;
   }
 
   if (TypeMatch(C->dtype, kDLFloat, 16)) {

@@ -35,6 +35,7 @@ def _is_supported_dtype(lhs_dtype, rhs_dtype):
         or (lhs_dtype == "float32" and rhs_dtype == "float32")
         or (lhs_dtype == "int8" and rhs_dtype == "int8")
         or (lhs_dtype == "e4m3_float8" and rhs_dtype == "e4m3_float8")
+        or (lhs_dtype == "e5m2_float8" and rhs_dtype == "e5m2_float8")
     )
 
 
