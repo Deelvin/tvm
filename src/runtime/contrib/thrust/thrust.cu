@@ -395,5 +395,22 @@ TVM_REGISTER_GLOBAL("tvm.contrib.thrust.sum_scan")
   }
 });
 
+TVM_REGISTER_GLOBAL("tvm.contrib.thrust.segmented_inclusive_scan")
+ .set_body_typed([](NDArray data, NDArray keys, NDArray out) {
+  auto policy = get_thrust_exec_policy();
+  auto in_dtype = DLDataType2String(data->dtype);
+  auto out_dtype = DLDataType2String(out->dtype);
+  auto size = data->shape[0];
+
+  if (in_dtype == "int32" && out_dtype == "int32") {
+    int32_t* data_ptr = static_cast<int32_t*>(data->data);
+    int32_t* keys_ptr = static_cast<int32_t*>(keys->data);
+    int32_t* out_ptr = static_cast<int32_t*>(out->data);
+    thrust::inclusive_scan_by_key(policy, keys_ptr, keys_ptr + size, data_ptr, out_ptr);
+  }  else {
+    LOG(FATAL) << "Only int32 input and output are supported for now.";
+  }
+});
+
 }  // namespace contrib
 }  // namespace tvm

@@ -59,12 +59,13 @@ void tvm_cutlass_fp8_group_gemm(NDArray x, NDArray weight, NDArray indptr, NDArr
   int num_groups = weight->shape[0];
   int n = weight->shape[1];
   int k = x->shape[1];
+  using TileShape = Shape<_128, _256, _64>;
   const float* beta = nullptr;
   cudaStream_t stream = static_cast<cudaStream_t>((*func)().operator void*());
-  cutlass_group_gemm(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
-                     static_cast<int64_t*>(indptr->data), static_cast<uint8_t*>(workspace->data),
-                     workspace->shape[0], n, k, num_groups, static_cast<float*>(alpha->data), beta,
-                     static_cast<ElementC*>(out->data), stream);
+  cutlass_group_gemm<TileShape>(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
+				static_cast<int64_t*>(indptr->data), static_cast<uint8_t*>(workspace->data),
+				workspace->shape[0], n, k, num_groups, static_cast<float*>(alpha->data), beta,
+				static_cast<ElementC*>(out->data), stream);
 }
 
 template <typename ElementA, typename ElementB, typename ElementC>
@@ -82,12 +83,13 @@ void tvm_cutlass_fp8_group_gemm_host_scale(NDArray x, NDArray weight, NDArray in
   int num_groups = weight->shape[0];
   int n = weight->shape[1];
   int k = x->shape[1];
+  using TileShape = Shape<_128, _256, _64>;
   double beta = 0.0;
   cudaStream_t stream = static_cast<cudaStream_t>((*func)().operator void*());
-  cutlass_group_gemm(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
-                     static_cast<int64_t*>(indptr->data), static_cast<uint8_t*>(workspace->data),
-                     workspace->shape[0], n, k, num_groups, static_cast<float>(alpha),
-                     static_cast<float>(beta), static_cast<ElementC*>(out->data), stream);
+  cutlass_group_gemm<TileShape>(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
+				static_cast<int64_t*>(indptr->data), static_cast<uint8_t*>(workspace->data),
+				workspace->shape[0], n, k, num_groups, static_cast<float>(alpha),
+				static_cast<float>(beta), static_cast<ElementC*>(out->data), stream);
 }
 
 TVM_REGISTER_GLOBAL("cutlass.group_gemm_e5m2_e5m2_fp16")

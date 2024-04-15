@@ -36,6 +36,8 @@ struct KernelTraits<cutlass::half_t> {
   using ClusterShape = Shape<_2, _2, _1>;    // Shape of the threadblocks in a cluster
 };
 
+#endif  // CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED
+
 namespace fastertransformer {
 
 template <typename T, typename WeightType>
@@ -48,9 +50,11 @@ void moe_gemm_bias_act(const T* A, const WeightType* B, const T* weight_scales, 
 namespace tvm {
 namespace runtime {
 
+#if defined(CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED)
+
 template <typename ElementA, typename ElementB, typename ElementC>
-void tvm_cutlass_group_gemm_sm90(NDArray x, NDArray weight, NDArray indptr, NDArray workspace,
-                                 NDArray out) {
+void tvm_cutlass_group_gemm_sm90(NDArray x, NDArray weight, NDArray indptr,
+                                 NDArray workspace, NDArray out) {
   // Workspace is used for storing device-side group gemm arguments and cutlass internal workspace.
   // Recommened size is 4MB.
   auto func = tvm::runtime::Registry::Get("runtime.get_cuda_stream");
@@ -62,7 +66,7 @@ void tvm_cutlass_group_gemm_sm90(NDArray x, NDArray weight, NDArray indptr, NDAr
   CHECK_EQ(indptr->ndim, 1);
   CHECK_EQ(workspace->ndim, 1);
   CHECK_EQ(out->ndim, 2);
-  int num_groups = weight->shape[0];
+  int num_groups = indptr->shape[0];
   int n = weight->shape[1];
   int k = weight->shape[2];
 
@@ -76,10 +80,12 @@ void tvm_cutlass_group_gemm_sm90(NDArray x, NDArray weight, NDArray indptr, NDAr
 
   float alpha = 1.0f;
   float beta = 0.0f;
-  cutlass_group_gemm(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
-                     static_cast<int64_t*>(indptr->data), static_cast<uint8_t*>(workspace->data),
-                     workspace->shape[0], n, k, num_groups, alpha, beta,
-                     static_cast<ElementC*>(out->data), stream);
+
+  using TileShape = Shape<_128, _256, _64>;
+  cutlass_group_gemm<TileShape>(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
+		                static_cast<int64_t*>(indptr->data), static_cast<uint8_t*>(workspace->data),
+                                workspace->shape[0], n, k, num_groups, alpha, beta,
+                                static_cast<ElementC*>(out->data), stream);
 }
 
 template <typename ElementA, typename ElementB, typename ElementC>
@@ -99,11 +105,13 @@ void tvm_cutlass_group_gemm_sm90_scale(NDArray x, NDArray weight, NDArray indptr
   int num_groups = weight->shape[0];
   int n = weight->shape[1];
   int k = weight->shape[2];
+
+  using TileShape = Shape<_128, _256, _64>;
   cudaStream_t stream = static_cast<cudaStream_t>((*func)().operator void*());
-  cutlass_group_gemm(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
-                     static_cast<int64_t*>(indptr->data), static_cast<uint8_t*>(workspace->data),
-                     workspace->shape[0], n, k, num_groups, static_cast<float*>(alpha->data),
-                     static_cast<float*>(nullptr), static_cast<ElementC*>(out->data), stream);
+  cutlass_group_gemm<TileShape>(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
+				static_cast<int64_t*>(indptr->data), static_cast<uint8_t*>(workspace->data),
+				workspace->shape[0], n, k, num_groups, static_cast<float*>(alpha->data),
+				static_cast<float*>(nullptr), static_cast<ElementC*>(out->data), stream);
 }
 
 TVM_REGISTER_GLOBAL("cutlass.group_gemm_fp16_sm90")
@@ -113,7 +121,86 @@ TVM_REGISTER_GLOBAL("cutlass.group_gemm_scale_fp16_sm90")
     .set_body_typed(
         tvm_cutlass_group_gemm_sm90_scale<cutlass::half_t, cutlass::half_t, cutlass::half_t>);
 
-}  // namespace runtime
-}  // namespace tvm
+template <typename ElementA, typename ElementB, typename ElementC>
+void tvm_cutlass_group_gemm_lora_sm90(NDArray x, NDArray weight, NDArray indptr,
+				      NDArray ranks, NDArray active_slots,
+				      NDArray workspace, NDArray out) {
+  // Workspace is used for storing device-side group gemm arguments and cutlass internal workspace.
+  // Recommened size is 4MB.
+  auto func = tvm::runtime::Registry::Get("runtime.get_cuda_stream");
+  ICHECK(func != nullptr);
+  cudaStream_t stream = static_cast<cudaStream_t>((*func)().operator void*());
+
+  CHECK_EQ(x->ndim, 2);
+  CHECK_EQ(weight->ndim, 3);
+  CHECK_EQ(indptr->ndim, 1);
+  CHECK_EQ(workspace->ndim, 1);
+  CHECK_EQ(out->ndim, 2);
+  int num_groups = indptr->shape[0];
+  int n = weight->shape[1];
+  int k = weight->shape[2];
+
+  float alpha = 1.0f;
+  float beta = 0.0f;
+
+  int32_t* active_slots_ptr = static_cast<int32_t*>(active_slots->data);
+  int32_t* ranks_ptr = static_cast<int32_t*>(ranks->data);
+
+  // Small N specialization for LoRA
+  if (n <= 16) {
+    using TileShape = Shape<_128, _16, _64>;
+    cutlass_group_gemm_lora<TileShape>(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
+     		  	          static_cast<int64_t*>(indptr->data), ranks_ptr, active_slots_ptr, static_cast<uint8_t*>(workspace->data),
+                                  workspace->shape[0], n, k, num_groups, alpha, beta,
+                                  static_cast<ElementC*>(out->data), stream);
+  } else if (n <= 32) {
+    using TileShape = Shape<_128, _32, _64>;
+    cutlass_group_gemm_lora<TileShape>(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
+                                  static_cast<int64_t*>(indptr->data), ranks_ptr, active_slots_ptr, static_cast<uint8_t*>(workspace->data),
+                                  workspace->shape[0], n, k, num_groups, alpha, beta,
+                                  static_cast<ElementC*>(out->data), stream);
+  } else if (n <= 64) {
+    using TileShape = Shape<_128, _64, _64>;
+    cutlass_group_gemm_lora<TileShape>(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
+				  static_cast<int64_t*>(indptr->data), ranks_ptr, active_slots_ptr, static_cast<uint8_t*>(workspace->data),
+                                  workspace->shape[0], n, k, num_groups, alpha, beta,
+                                  static_cast<ElementC*>(out->data), stream);
+  } else {
+    using TileShape = Shape<_128, _256, _64>;
+    cutlass_group_gemm_lora<TileShape>(static_cast<ElementA*>(x->data), static_cast<ElementB*>(weight->data),
+				  static_cast<int64_t*>(indptr->data), ranks_ptr, active_slots_ptr, static_cast<uint8_t*>(workspace->data),
+                                  workspace->shape[0], n, k, num_groups, alpha, beta,
+                                  static_cast<ElementC*>(out->data), stream);
+  }
+}
+
+TVM_REGISTER_GLOBAL("cutlass.group_gemm_lora_fp16_sm90")
+    .set_body_typed(tvm_cutlass_group_gemm_lora_sm90<cutlass::half_t, cutlass::half_t, cutlass::half_t>);
 
 #endif  // CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED
+
+void tvm_cutlass_group_gemm_sm80(NDArray x, NDArray weight, NDArray indptr, NDArray out) {
+  auto func = tvm::runtime::Registry::Get("runtime.get_cuda_stream");
+  ICHECK(func != nullptr);
+  cudaStream_t stream = static_cast<cudaStream_t>((*func)().operator void*());
+
+  CHECK_EQ(x->ndim, 2);
+  CHECK_EQ(weight->ndim, 3);
+  CHECK_EQ(indptr->ndim, 1);
+  CHECK_EQ(out->ndim, 2);
+  int num_groups = weight->shape[0];
+  int n = weight->shape[1];
+  int k = weight->shape[2];
+
+  fastertransformer::moe_gemm_bias_act<half, half>(
+      reinterpret_cast<half*>(x->data), reinterpret_cast<half*>(weight->data), nullptr, nullptr,
+      reinterpret_cast<half*>(out->data),
+      reinterpret_cast<int64_t*>(indptr->data), x->shape[0], n, k, num_groups,
+      std::nullopt, stream);
+}
+
+TVM_REGISTER_GLOBAL("cutlass.group_gemm_fp16_sm80")
+    .set_body_typed(tvm_cutlass_group_gemm_sm80);
+
+}  // namespace runtime
+}  // namespace tvm

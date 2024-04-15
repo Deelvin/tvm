@@ -57,7 +57,7 @@ inline size_t aligned(size_t value, size_t alignment = 16) {
 template <typename T>
 struct KernelTraits;
 
-template <typename ElementA, typename ElementB, typename ElementC,
+template <typename ElementA, typename ElementB, typename ElementC, typename TileShape,
           typename LayoutA = cutlass::layout::RowMajor,
           typename LayoutB = cutlass::layout::ColumnMajor,
           typename LayoutC = cutlass::layout::RowMajor>
@@ -80,7 +80,6 @@ struct CutlassGroupGemmRunner {
   using ArchTag =
       cutlass::arch::Sm90;  // Tag indicating the minimum SM that supports the intended feature
   using OperatorClass = cutlass::arch::OpClassTensorOp;  // Operator class tag
-  using TileShape = typename KernelTraits<ElementA>::TileShape;
   using ClusterShape = typename KernelTraits<ElementA>::ClusterShape;
   using StageCountType =
       cutlass::gemm::collective::StageCountAuto;  // Stage count maximized based on the tile size
@@ -161,20 +160,49 @@ __global__ void prepare_group_gemm_arguments(
   ptr_A[group_id] = x + prev_rows * k;
   ptr_B[group_id] = weight + group_id * k * n;
   ptr_D[group_id] = out + prev_rows * n;
+
   problem_sizes[group_id] = {static_cast<int>(indptr[group_id] - prev_rows), static_cast<int>(n),
                              static_cast<int>(k)};
+
+  stride_A[group_id] = cute::make_stride(k, Int<1>{}, int64_t{0});
+  stride_B[group_id] = cute::make_stride(k, Int<1>{}, int64_t{0});
+  stride_D[group_id] = cute::make_stride(n, Int<1>{}, int64_t{0});
+}
+template <typename ElementA, typename ElementB, typename ElementC, typename StrideA,
+          typename StrideB, typename StrideC>
+__global__ void prepare_group_gemm_lora_arguments(
+    const ElementA** ptr_A, const ElementB** ptr_B, ElementC** ptr_D,
+    typename ProblemShape::UnderlyingProblemShape* problem_sizes, StrideA* stride_A,
+    StrideB* stride_B, StrideC* stride_D, const ElementA* x, const ElementB* weight, ElementC* out,
+    int64_t* indptr, int32_t* ranks, int32_t* active_slots, int64_t n, int64_t k, int64_t num_groups) {
+  int group_id = threadIdx.x;
+  if (group_id >= num_groups) return;
+  int prev_rows = group_id == 0 ? 0 : indptr[group_id - 1];
+  ptr_A[group_id] = x + prev_rows * k;
+  ptr_B[group_id] = weight + active_slots[group_id] * k * n;
+  ptr_D[group_id] = out + prev_rows * n;
+
+  if (n > k) {
+    // LoRA B, reduce only over the valid rank range
+    problem_sizes[group_id] = {static_cast<int>(indptr[group_id] - prev_rows), static_cast<int>(n),
+                               ranks[group_id]};
+  } else {
+    problem_sizes[group_id] = {static_cast<int>(indptr[group_id] - prev_rows), static_cast<int>(n),
+                               static_cast<int>(k)};
+  }
+
   stride_A[group_id] = cute::make_stride(k, Int<1>{}, int64_t{0});
   stride_B[group_id] = cute::make_stride(k, Int<1>{}, int64_t{0});
   stride_D[group_id] = cute::make_stride(n, Int<1>{}, int64_t{0});
 }
 
-template <typename ElementA, typename ElementB, typename ElementC>
+template <typename TileShape, typename ElementA, typename ElementB, typename ElementC>
 void cutlass_group_gemm(ElementA* x, ElementB* weight, int64_t* indptr, uint8_t* workspace,
                         int64_t workspace_size, int64_t n, int64_t k, int64_t num_groups,
                         std::variant<float, const float*> alpha,
                         std::variant<float, const float*> beta, ElementC* out,
                         cudaStream_t stream) {
-  using Runner = CutlassGroupGemmRunner<ElementA, ElementB, ElementC>;
+  using Runner = CutlassGroupGemmRunner<ElementA, ElementB, ElementC, TileShape>;
   using StrideA = typename Runner::StrideA;
   using StrideB = typename Runner::StrideB;
   using StrideC = typename Runner::StrideC;
@@ -199,6 +227,44 @@ void cutlass_group_gemm(ElementA* x, ElementB* weight, int64_t* indptr, uint8_t*
   prepare_group_gemm_arguments<<<1, num_groups, 0, stream>>>(ptr_A, ptr_B, ptr_D, problem_sizes,
                                                              stride_A, stride_B, stride_D, x,
                                                              weight, out, indptr, n, k, num_groups);
+  offset = aligned(offset, 256);
+  runner.run_group_gemm(ptr_A, ptr_B, const_cast<const ElementC**>(ptr_D), ptr_D, problem_sizes,
+                        nullptr, stride_A, stride_B, stride_D, stride_D, workspace + offset,
+                        workspace_size - offset, num_groups, alpha, beta, stream);
+}
+
+template <typename TileShape, typename ElementA, typename ElementB, typename ElementC>
+void cutlass_group_gemm_lora(ElementA* x, ElementB* weight, int64_t* indptr, int32_t* ranks,
+			     int32_t* active_slots, uint8_t* workspace,
+                             int64_t workspace_size, int64_t n, int64_t k, int64_t num_groups,
+                             std::variant<float, const float*> alpha,
+                             std::variant<float, const float*> beta, ElementC* out,
+                             cudaStream_t stream) {
+  using Runner = CutlassGroupGemmRunner<ElementA, ElementB, ElementC, TileShape>;
+  using StrideA = typename Runner::StrideA;
+  using StrideB = typename Runner::StrideB;
+  using StrideC = typename Runner::StrideC;
+
+  Runner runner;
+  std::ptrdiff_t offset = 0;
+  const ElementA** ptr_A = reinterpret_cast<const ElementA**>(workspace + offset);
+  offset += aligned(sizeof(ElementA*) * num_groups);
+  const ElementB** ptr_B = reinterpret_cast<const ElementB**>(workspace + offset);
+  offset += aligned(sizeof(ElementB*) * num_groups);
+  ElementC** ptr_D = reinterpret_cast<ElementC**>(workspace + offset);
+  offset += aligned(sizeof(ElementC*) * num_groups);
+  typename ProblemShape::UnderlyingProblemShape* problem_sizes =
+      reinterpret_cast<typename ProblemShape::UnderlyingProblemShape*>(workspace + offset);
+  offset += aligned(sizeof(typename ProblemShape::UnderlyingProblemShape) * num_groups);
+  StrideA* stride_A = reinterpret_cast<StrideA*>(workspace + offset);
+  offset += aligned(sizeof(StrideA) * num_groups);
+  StrideB* stride_B = reinterpret_cast<StrideB*>(workspace + offset);
+  offset += aligned(sizeof(StrideB) * num_groups);
+  StrideC* stride_D = reinterpret_cast<StrideC*>(workspace + offset);
+  offset += aligned(sizeof(StrideC) * num_groups);
+  prepare_group_gemm_lora_arguments<<<1, num_groups, 0, stream>>>(ptr_A, ptr_B, ptr_D, problem_sizes,
+                                                                  stride_A, stride_B, stride_D, x,
+                                                                  weight, out, indptr, ranks, active_slots, n, k, num_groups);
   offset = aligned(offset, 256);
   runner.run_group_gemm(ptr_A, ptr_B, const_cast<const ElementC**>(ptr_D), ptr_D, problem_sizes,
                         nullptr, stride_A, stride_B, stride_D, stride_D, workspace + offset,
