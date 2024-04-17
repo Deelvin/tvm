@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <type_traits>
 
+#include "../../cuda/cuda_common.h"
 #include "./quant_utils.cuh"
 #include "attention_utils.cuh"
 #include "dtype_float16.h"
@@ -615,7 +616,7 @@ void paged_attention_v1_launcher(DLTensor* out, const DLTensor* query, const DLT
 
   dim3 grid(num_heads, num_seqs, 1);
   dim3 block(NUM_THREADS);
-  const cudaStream_t stream = nullptr;
+  const cudaStream_t stream = GetCUDAStream();
   switch (head_size) {
     // NOTE(woosuk): To reduce the compilation time, we only compile for the
     // head sizes that we use in the model. However, we can easily extend this
@@ -704,7 +705,7 @@ void paged_attention_v2_launcher(
   int reduce_shared_mem_size = 2 * max_num_partitions * sizeof(float);
 
   dim3 block(NUM_THREADS);
-  const cudaStream_t stream = nullptr;
+  const cudaStream_t stream = GetCUDAStream();
   switch (head_size) {
     // NOTE(woosuk): To reduce the compilation time, we only compile for the
     // head sizes that we use in the model. However, we can easily extend this

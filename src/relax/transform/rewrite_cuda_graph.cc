@@ -742,7 +742,10 @@ class CUDAGraphRewriter : public ExprMutator {
     std::vector<std::pair<GlobalVar, Function>> target_functions;
     for (const auto& [gv, func] : builder_->GetContextIRModule()->functions) {
       if (func->IsInstance<FunctionNode>()) {
-        target_functions.emplace_back(gv, Downcast<Function>(func));
+        // TODO(@sunggg): Currently, only target the decode function
+        if (gv->name_hint.compare("decode") ==0) {
+          target_functions.emplace_back(gv, Downcast<Function>(func));
+        }
       }
     }
 
