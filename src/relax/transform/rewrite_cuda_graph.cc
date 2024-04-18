@@ -236,6 +236,8 @@ class CUDAGraphRewritePlanner : public ExprVisitor {
   std::pair<std::vector<LiftedFunctionRewritePlan*>, std::vector<LiftedFunctionRewritePlan*>>
   Plan() {
     for (const auto& pair : mod_->functions) {
+      // TODO(team): hack to target decode only.
+      if (pair.first->name_hint.compare("decode") !=0) continue;
       if (pair.second->IsInstance<FunctionNode>()) {
         // If a function has the num_input attribute, the last func->params.size() - num_inputs
         // inputs are assumed to be fixed and thus they can be captured into a cuda graph.
@@ -742,10 +744,7 @@ class CUDAGraphRewriter : public ExprMutator {
     std::vector<std::pair<GlobalVar, Function>> target_functions;
     for (const auto& [gv, func] : builder_->GetContextIRModule()->functions) {
       if (func->IsInstance<FunctionNode>()) {
-        // TODO(@sunggg): Currently, only target the decode function
-        if (gv->name_hint.compare("decode") ==0) {
-          target_functions.emplace_back(gv, Downcast<Function>(func));
-        }
+        target_functions.emplace_back(gv, Downcast<Function>(func));
       }
     }
 
