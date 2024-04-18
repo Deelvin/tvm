@@ -357,5 +357,5 @@ void cutlass_nested_group_gemm_lora_B_fp16_sm90(ElementA* lora_A_out, std::vecto
   }
 
   Runner runner;
-  runner.run_group_gemm(arg, num_groups, 1.0, beta, stream);
+  runner.run_group_gemm(arg, num_groups, 1.0f, beta, stream);
 }
