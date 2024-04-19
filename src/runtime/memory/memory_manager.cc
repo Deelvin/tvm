@@ -185,7 +185,7 @@ void MemoryManager::Clear() {
 void MemoryManager::StartProfiling() {
   MemoryManager* m = MemoryManager::Global();
   m->ForEachAllocator([](Allocator* allocator, AllocatorType alloc_type, Device dev) {
-    if (auto* pooled_alloc = static_cast<PooledAllocator*>(allocator)) {
+    if (auto* pooled_alloc = dynamic_cast<PooledAllocator*>(allocator)) {
       pooled_alloc->StartProfiling();
     }
   });
@@ -194,7 +194,7 @@ void MemoryManager::StartProfiling() {
 void MemoryManager::StopProfiling() {
   MemoryManager* m = MemoryManager::Global();
   m->ForEachAllocator([](Allocator* allocator, AllocatorType alloc_type, Device dev) {
-    if (auto* pooled_alloc = static_cast<PooledAllocator*>(allocator)) {
+    if (auto* pooled_alloc = dynamic_cast<PooledAllocator*>(allocator)) {
       pooled_alloc->StopProfiling();
     }
   });
