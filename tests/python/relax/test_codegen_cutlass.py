@@ -97,7 +97,7 @@ def build_and_run(mod, inputs_np, target, legalize=True, cuda_graph=False):
     dev = tvm.device(target, 0)
     vm = relax.VirtualMachine(ex, dev)
     f = vm["main"]
-    inputs = [tvm.nd.array(inp, dev) for inp in inputs_np]
+    inputs = [tvm.nd.array(inp, dev) if isinstance(inp, np.ndarray) else inp for inp in inputs_np]
 
     # For cuda graph, run the compiled function twice to make sure that we can launch the cached
     # graph on the second run.
@@ -2618,6 +2618,7 @@ def test_grouped_gemm_lora():
                         indices_counts_ex_scan,
                         ranks,
                         active_slots,
+                        x.shape[0],
                         workspace,
                     ],
                     out_sinfo=relax.TensorStructInfo(
@@ -2633,6 +2634,7 @@ def test_grouped_gemm_lora():
                         indices_counts_ex_scan,
                         ranks,
                         active_slots,
+                        x.shape[0],
                         workspace,
                     ],
                     out_sinfo=relax.TensorStructInfo(
@@ -2700,12 +2702,13 @@ def test_nested_grouped_gemm_lora():
             x: R.Tensor(("batch_size", 128), dtype="float16"),
             matmul_weight_base: R.Tensor((128, 512), dtype="float16"),
             lora_A: R.Tensor(("max_lora", "combined_padded_rank", 128), dtype="float16"),
-            lora_B_1: R.Tensor(("max_lora", 256, "padded_rank"), dtype="float16"),
-            lora_B_2: R.Tensor(("max_lora", 256, "padded_rank"), dtype="float16"),
+            lora_B_1: R.Tensor(("max_lora", 128, "padded_rank"), dtype="float16"),
+            lora_B_2: R.Tensor(("max_lora", 384, "padded_rank"), dtype="float16"),
             indices_counts_ex_scan: R.Tensor(("num_loras_plus_one",), dtype="int64"),
             ranks: R.Tensor(("num_loras",), dtype="int32"),
             active_slots: R.Tensor(("num_loras",), dtype="int32"),
-        ) -> R.Tensor(("batch_size", 256), dtype="float16"):
+            num_lora_tokens: R.Prim("int64"),
+        ) -> R.Tensor(("batch_size", 512), dtype="float16"):
             batch_size = T.int64()
             padded_rank = T.int64()
             combined_padded_rank = T.int64()
@@ -2721,6 +2724,7 @@ def test_nested_grouped_gemm_lora():
                         indices_counts_ex_scan,
                         ranks,
                         active_slots,
+                        num_lora_tokens,
                         workspace,
                     ],
                     out_sinfo=relax.TensorStructInfo(
@@ -2735,9 +2739,10 @@ def test_nested_grouped_gemm_lora():
                     indices_counts_ex_scan,
                     ranks,
                     active_slots,
+                    num_lora_tokens,
                     workspace,
                     base,
-                    inplace_indices=[6],
+                    inplace_indices=[7],
                     sinfo_args=relax.TensorStructInfo(
                         (batch_size, 512),
                         x.struct_info.dtype,
@@ -2752,18 +2757,18 @@ def test_nested_grouped_gemm_lora():
     max_lora = 8
 
     inp = np.random.randn(batch_size, 128).astype("float16")
-    base_weight = np.random.randn(128, 256 * 2).astype("float16")
+    base_weight = np.random.randn(128, 512).astype("float16")
 
     lora_A = np.random.randn(max_lora, 128, rank * 2).astype("float16")
-    lora_B_1 = np.random.randn(max_lora, rank, 256).astype("float16")
-    lora_B_2 = np.random.randn(max_lora, rank, 256).astype("float16")
+    lora_B_1 = np.random.randn(max_lora, rank, 128).astype("float16")
+    lora_B_2 = np.random.randn(max_lora, rank, 384).astype("float16")
 
     active_slots = np.array([5, 1, 4], dtype="int32")
 
     for slot in active_slots:
         lora_A[slot] = np.random.randn(128, rank * 2).astype("float16")
-        lora_B_1[slot] = np.random.randn(rank, 256).astype("float16")
-        lora_B_2[slot] = np.random.randn(rank, 256).astype("float16")
+        lora_B_1[slot] = np.random.randn(rank, 128).astype("float16")
+        lora_B_2[slot] = np.random.randn(rank, 384).astype("float16")
 
     out_np = np.dot(inp.astype("float32"), base_weight.astype("float32"))
 
@@ -2773,8 +2778,8 @@ def test_nested_grouped_gemm_lora():
         lora_A_out = np.dot(x, lora_A[active_slots[i]].astype("float32"))
         lora_B_1_out = np.dot(lora_A_out[:, :rank], lora_B_1[active_slots[i]].astype("float32"))
         lora_B_2_out = np.dot(lora_A_out[:, rank:], lora_B_2[active_slots[i]].astype("float32"))
-        out_np[offsets[i] : offsets[i + 1], :256] += lora_B_1_out
-        out_np[offsets[i] : offsets[i + 1], 256:] += lora_B_2_out
+        out_np[offsets[i] : offsets[i + 1], :128] += lora_B_1_out
+        out_np[offsets[i] : offsets[i + 1], 128:] += lora_B_2_out
 
     out_np = out_np.astype("float16")
 
@@ -2790,11 +2795,11 @@ def test_nested_grouped_gemm_lora():
 
     out = build_and_run(
         mod,
-        [inp, base_weight, lora_A, lora_B_1, lora_B_2, indices_counts_ex_scan, ranks, active_slots],
+        [inp, base_weight, lora_A, lora_B_1, lora_B_2, indices_counts_ex_scan, ranks, active_slots, offsets[-1]],
         "cuda",
     )
 
-    assert np.mean(np.abs(out_np - out)) < 5e-2
+    assert np.mean(np.abs(out_np - out)) < 5e-2, np.mean(np.abs(out_np - out))
 
 
 if __name__ == "__main__":

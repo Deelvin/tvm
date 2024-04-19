@@ -320,12 +320,8 @@ template <typename TileShape, typename ElementA, typename ElementB, typename Ele
 void cutlass_nested_group_gemm_lora_B_fp16_sm90(ElementA* lora_A_out, std::vector<ElementB*> lora_B_weights, int64_t* indices_counts_ex_scan,
 						int32_t* ranks, int32_t* active_slots, int64_t num_loras, int64_t padded_rank, float beta,
 						int64_t workspace_size, uint8_t* workspace, const std::vector<int64_t>& out_feature_sizes,
-						ElementC* out) {
+						ElementC* out, cudaStream_t stream) {
   using Runner = CutlassGroupGemmRunner<ElementA, ElementB, ElementC, TileShape>;
-
-  auto func = tvm::runtime::Registry::Get("runtime.get_cuda_stream");
-  ICHECK(func != nullptr);
-  cudaStream_t stream = static_cast<cudaStream_t>((*func)().operator void*());
 
   auto num_combined = lora_B_weights.size();
   auto num_groups = num_combined * num_loras;
