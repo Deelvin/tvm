@@ -346,6 +346,9 @@ void nested_grouped_gemv_lora_B(const half* lora_A_out, const std::vector<const 
 namespace tvm {
 namespace runtime {
 
+constexpr int SMALL_BATCH_LORA_A_THRESHOLD = 64;
+constexpr int SMALL_BATCH_LORA_B_THRESHOLD = 4;
+
 #if defined(CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED)
 
 template <typename ElementA, typename ElementB, typename ElementC>
@@ -416,9 +419,6 @@ TVM_REGISTER_GLOBAL("cutlass.group_gemm_fp16_sm90")
 TVM_REGISTER_GLOBAL("cutlass.group_gemm_scale_fp16_sm90")
     .set_body_typed(
         tvm_cutlass_group_gemm_sm90_scale<cutlass::half_t, cutlass::half_t, cutlass::half_t>);
-
-constexpr int SMALL_BATCH_LORA_A_THRESHOLD = 64;
-constexpr int SMALL_BATCH_LORA_B_THRESHOLD = 4;
 
 void tvm_cutlass_group_gemm_lora_sm90_with_beta(NDArray x, NDArray weight, NDArray indices_counts_ex_scan,
 						NDArray ranks, NDArray active_slots, int64_t num_lora_tokens,
