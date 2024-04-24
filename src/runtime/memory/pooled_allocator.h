@@ -47,47 +47,7 @@ class PooledAllocator : public Allocator {
   ~PooledAllocator() { ReleaseAll(); }
 
   Buffer Alloc(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) override {
-    std::lock_guard<std::recursive_mutex> lock(mu_);
-    size_t size = ((nbytes + page_size_ - 1) / page_size_) * page_size_;
-    auto&& it = memory_pool_.find(size);
-    if (it != memory_pool_.end() && !it->second.empty()) {
-      auto&& pool = it->second;
-      auto ret = pool.back();
-      pool.pop_back();
-      auto it2 = free_sizes_.find(size);
-      ICHECK(it2 != free_sizes_.end());
-      free_sizes_.erase(it2);
-      return ret;
-    }
-
-    if (recycle_eager) {
-      if (auto it = std::lower_bound(free_sizes_.begin(), free_sizes_.end(), size);
-          it != free_sizes_.end()) {
-        auto&& pool = memory_pool_[*it];
-        auto ret = pool.back();
-        ICHECK(ret.size > 0);
-        pool.pop_back();
-        free_sizes_.erase(it);
-        return ret;
-      }
-    }
-
-    Buffer buf;
-    buf.device = dev;
-    buf.size = size;
-    buf.alloc_type = kPooled;
-    try {
-      buf.data = DeviceAllocDataSpace(dev, size, alignment, type_hint);
-    } catch (InternalError& err) {
-      LOG(WARNING) << "PooledAllocator got InternalError during allocation: " << err.message();
-      LOG(WARNING) << "Trying to release all unused memory and reallocate...";
-      ReleaseAll();
-      buf.data = DeviceAllocDataSpace(dev, size, alignment, type_hint);
-    }
-
-    used_memory_.fetch_add(size, std::memory_order_relaxed);
-    VLOG(1) << "allocate " << size << " B, used memory " << used_memory_ << " B";
-    return buf;
+    return Alloc(dev, nbytes, alignment, type_hint, recycle_eager);
   }
 
   Buffer Alloc(Device dev, ShapeTuple shape, DLDataType type_hint,
@@ -147,6 +107,52 @@ class PooledAllocator : public Allocator {
   }
 
  protected:
+
+  Buffer Alloc(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint, bool use_recycled) {
+
+    std::lock_guard<std::recursive_mutex> lock(mu_);
+    size_t size = ((nbytes + page_size_ - 1) / page_size_) * page_size_;
+    auto&& it = memory_pool_.find(size);
+    if (it != memory_pool_.end() && !it->second.empty()) {
+      auto&& pool = it->second;
+      auto ret = pool.back();
+      pool.pop_back();
+      auto it2 = free_sizes_.find(size);
+      ICHECK(it2 != free_sizes_.end());
+      free_sizes_.erase(it2);
+      return ret;
+    }
+
+    if (use_recycled) {
+      if (auto it = std::lower_bound(free_sizes_.begin(), free_sizes_.end(), size);
+          it != free_sizes_.end()) {
+        auto&& pool = memory_pool_[*it];
+        auto ret = pool.back();
+        ICHECK(ret.size > 0);
+        pool.pop_back();
+        free_sizes_.erase(it);
+        return ret;
+      }
+    }
+
+    Buffer buf;
+    buf.device = dev;
+    buf.size = size;
+    buf.alloc_type = kPooled;
+    try {
+      buf.data = DeviceAllocDataSpace(dev, size, alignment, type_hint);
+    } catch (InternalError& err) {
+      LOG(WARNING) << "PooledAllocator got InternalError during allocation: " << err.message();
+      LOG(WARNING) << "Trying to release all unused memory and reallocate...";
+      ReleaseAll();
+      buf.data = DeviceAllocDataSpace(dev, size, alignment, type_hint);
+    }
+
+    used_memory_.fetch_add(size, std::memory_order_relaxed);
+    VLOG(1) << "allocate " << size << " B, used memory " << used_memory_ << " B";
+    return buf;
+  }
+
   size_t page_size_;
   std::atomic<size_t> used_memory_;
   std::unordered_map<size_t, std::vector<Buffer>> memory_pool_;

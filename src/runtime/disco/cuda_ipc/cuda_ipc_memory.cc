@@ -88,6 +88,10 @@ class CUDAIPCMemoryAllocator final : public memory::PooledAllocator {
     return allocator;
   }
 
+  Buffer Alloc(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) override {
+    return PooledAllocator::Alloc(dev, nbytes, alignment, type_hint, /*use_recycled*/true);
+  }
+
  private:
   void* DeviceAllocDataSpace(Device dev, size_t size, size_t alignment,
                              DLDataType type_hint) final {
@@ -205,8 +209,8 @@ memory::Storage IPCAllocStorage(ShapeTuple buffer_shape, DLDataType dtype_hint) 
   nccl::CCLThreadLocalContext* nccl_ctx = nccl::CCLThreadLocalContext::Get();
   Device device{DLDeviceType::kDLCUDA, nccl_ctx->device_id};
   CUDAIPCMemoryAllocator* allocator = CUDAIPCMemoryAllocator::Global();
-  storage_obj->buffer = CUDAIPCMemoryAllocator::Global()->Alloc(
-      device, std::move(buffer_shape), dtype_hint, /*mem_scope=*/"ipc_memory");
+  storage_obj->buffer = allocator->PooledAllocator::Alloc(
+      device, buffer_shape, dtype_hint, "ipc_memory");
   storage_obj->allocator = allocator;
   memory::Storage storage(storage_obj);
   return storage;
