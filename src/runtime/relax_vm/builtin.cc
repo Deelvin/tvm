@@ -545,6 +545,27 @@ TVM_REGISTER_GLOBAL("vm.builtin.tensor_to_shape").set_body_typed([](NDArray data
   return ShapeTuple(out_shape);
 });
 
+//-------------------------------------
+//  Nullptr API
+//-------------------------------------
+
+TVM_REGISTER_GLOBAL("vm.builtin.nullptr")
+    .set_body_typed([]() -> void* {
+      return nullptr;
+    });
+
+TVM_REGISTER_GLOBAL("vm.builtin.nullptr_tensor")
+    .set_body_typed([](ShapeTuple shape, NDArray dev_provider) -> NDArray {
+      DLTensor dlt = {};
+      dlt.ndim = shape.size();
+      dlt.shape = const_cast<int64_t*>(shape.data());
+      dlt.dtype = dev_provider->dtype;
+      dlt.device = dev_provider->device;
+      
+      return NDArray::FromExternalDLTensor(dlt);
+    });
+
+
 }  // namespace relax_vm
 }  // namespace runtime
 }  // namespace tvm
