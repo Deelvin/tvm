@@ -34,11 +34,6 @@ flash_attn_enabled = pytest.mark.skipif(
 
 pytestmark = [flash_attn_enabled] + tvm.testing.requires_cuda.marks()
 
-# query: Tensor(nb, num_queries, num_heads, head_dim)
-# key:   Tensor(nb, num_keys, num_heads, head_dim)
-# value: Tensor(nb, num_keys, num_heads, head_dim_value)
-# ) -> Tensor(num_batches, num_queries, num_heads, head_dim_value) :
-
 
 def process_ref_attention(req_config, num_heads, head_dim, max_num_pages, page_size):
     dev = tvm.cpu()
@@ -63,6 +58,10 @@ def process_ref_attention(req_config, num_heads, head_dim, max_num_pages, page_s
     q_data = np.empty(shape=(0, num_heads, head_dim), dtype="float16")
     kv_data = np.empty(shape=(max_num_pages, 2, page_size, num_heads, head_dim), dtype="float16")
 
+    k_ragged = np.empty(shape=(0, num_heads, head_dim), dtype="float16")
+    v_ragged = np.empty(shape=(0, num_heads, head_dim), dtype="float16") 
+    kv_ragged_indptr = [0]
+
     qo_indptr = [0]
     kv_indptr = [0]
     kv_indices = []
@@ -70,6 +69,7 @@ def process_ref_attention(req_config, num_heads, head_dim, max_num_pages, page_s
     
     cur_page_idx = 0
     cur_qo_indptr = 0
+    cur_kv_ragged_indptr = 0
 
     for num_kv, num_q in req_config:
         num_kv += num_q
@@ -89,6 +89,12 @@ def process_ref_attention(req_config, num_heads, head_dim, max_num_pages, page_s
         q_data = np.append(q_data, q, axis=0)
         res_data = np.append(res_data, res, axis=0)
 
+        # store VK cache data as ragged tensors  
+        k_ragged = np.append(k_ragged, k, axis=0)
+        v_ragged = np.append(v_ragged, v, axis=0)
+        cur_kv_ragged_indptr += num_kv
+        kv_ragged_indptr.append(cur_kv_ragged_indptr)
+        
         # store full filed pages 
         while num_kv > page_size:
             kv_data[cur_page_idx, 0] = k[0:page_size]
@@ -110,67 +116,76 @@ def process_ref_attention(req_config, num_heads, head_dim, max_num_pages, page_s
     # FlashInfer uses HND layout: [max_num_pages, 2, num_heads, page_size, head_dim]
     kv_data = np.transpose(kv_data, axes=[0, 1, 3, 2, 4])
 
-    qo_indptr, kv_indptr, kv_indices, kv_last_page_len = (np.array(a, dtype="int32") for a in (qo_indptr, kv_indptr, kv_indices, kv_last_page_len))
+    (
+        qo_indptr, 
+        kv_indptr, 
+        kv_indices, 
+        kv_last_page_len,
+        kv_ragged_indptr
+    ) = (np.array(a, dtype="int32") for a in (
+        qo_indptr, 
+        kv_indptr, 
+        kv_indices, 
+        kv_last_page_len,
+        kv_ragged_indptr
+        ))
 
-    return q_data, qo_indptr, kv_data, kv_indptr, kv_indices, kv_last_page_len, res_data
+    return (
+        (q_data, qo_indptr, kv_data, kv_indptr, kv_indices, kv_last_page_len), 
+        res_data,
+        (k_ragged, v_ragged, kv_ragged_indptr)
+    )
 
 
-
-def test_flash_infere_with_paged_kvcache():
-    @I.ir_module
-    class Module:
-        @R.function(pure=False)
-        def main(
-            query: R.Tensor(("num_tokens", 40, 128), dtype="float16"),
-            qo_indptr: R.Tensor(("num_seqs_plus1",), dtype="int32"),
-            kv_cache: R.Tensor(("max_num_pages", 2, 40, 32, 128), dtype="float16"),
-            kv_indptr: R.Tensor(("num_seqs_plus1",), dtype="int32"),
-            kv_indices: R.Tensor(("kv_num_pages",), dtype="int32"),
-            kv_last_page_len: R.Tensor(("num_seqs",), dtype="int32"),
-        ) -> R.Tensor(("num_tokens", 40, 128), dtype="float16"):
-            # with R.dataflow():
+@I.ir_module
+class InferModule:
+    @R.function(pure=False)
+    def main(
+        query: R.Tensor(("num_tokens", "num_heads", "head_dim"), dtype="float16"),
+        qo_indptr: R.Tensor(("num_seqs_plus1",), dtype="int32"),
+        kv_cache: R.Tensor(("max_num_pages", 2, "num_heads", "page_size", "head_dim"), dtype="float16"),
+        kv_indptr: R.Tensor(("num_seqs_plus1",), dtype="int32"),
+        kv_indices: R.Tensor(("kv_num_pages",), dtype="int32"),
+        kv_last_page_len: R.Tensor(("num_seqs",), dtype="int32"),
+    ) -> R.Tensor(("num_tokens", "num_heads", "head_dim"), dtype="float16"):
+        with R.dataflow():
             num_seqs = T.int64()
-            num_seqs_plus1 = T.int64()
             num_tokens = T.int64()
-            max_num_pages = T.int64()
-            kv_num_pages = T.int64()
+            head_dim = T.int64()
+            num_heads = T.int64()
 
             workspace_size = T.int64(8 * 1024 * 1024)  # 8 MB 
-            # page_size = 256
-            num_qo_heads = T.int64(40) # ???
-            num_kv_heads = T.int64(40) # ???
-            head_dim = T.int64(32)  # ???
             
-            hdl = T.int64(0)
+            hdl = T.int64(0)  # handle is in rage [0-7] 
             workspace = R.zeros((workspace_size,), "uint8")
             output = R.zeros((num_tokens, 40, 128), "float16")  # Assume out of attention is the same  
 
             # TODO: nullptr means dafault stream. Will use dafault stream meanwhile.
-            copy_stream = R.call_packed("vm.builtin.nullptr")
+            copy_stream = R.call_pure_packed("vm.builtin.nullptr", sinfo_args=[relax.PrimStructInfo("handle")])
             
-            # tensor with dlt->data == mullptr means do not use this feature 
-            lse = R.call_packed("vm.builtin.nullptr_tensor", R.shape([num_tokens]), query)
-            q_offset = R.call_packed("vm.builtin.nullptr_tensor", R.shape([num_tokens]), qo_indptr)
-            k_rope_pos_offset = R.call_packed("vm.builtin.nullptr_tensor", R.shape([num_seqs]), qo_indptr)
+            # tensor with "dlt->data == mullptr" means do not use this feature 
+            lse = R.call_pure_packed("vm.builtin.nullptr_tensor", R.shape([num_tokens]), query, sinfo_args=[R.Tensor()])
+            q_offset = R.call_pure_packed("vm.builtin.nullptr_tensor", R.shape([num_tokens]), qo_indptr, sinfo_args=[R.Tensor()])
+            k_rope_pos_offset = R.call_pure_packed("vm.builtin.nullptr_tensor", R.shape([num_seqs]), qo_indptr, sinfo_args=[R.Tensor()])
             
-            # lse = R.zeros((num_tokens,), "float16") # TODO: make tensor with nullptr in data field 
-            # k_rope_pos_offset = R.zeros((num_seqs,), "int32") # TODO: Is it unused?
-            # q_offset = R.zeros((num_tokens,), "int32") # TODO: Is it unused?
-            
-            _ = R.call_packed(
-
+            # NOTE: flashinfer.attention_*** functions are not pure, but we can treat it like pure with some allowance:
+            #       * To prevent shuffling of order we mark hdl as mutable object.
+            #       * Workspace should be hold by _begin_forward and released by _end_forward
+            _ = R.call_inplace_packed(
                 "flashinfer.attention_kernel_prefill_with_paged_kv_cache_begin_forward",
                 hdl, # int64_t handler_idx, 
                 workspace, # DLTensor* workspace_buffer, 
                 qo_indptr, # DLTensor* qo_indptr, 
                 num_seqs, # int64_t batch_size,
-                num_qo_heads, # int64_t num_qo_heads, 
-                num_kv_heads, # int64_t num_kv_heads, 
+                num_heads, # int64_t num_qo_heads, 
+                num_heads, # int64_t num_kv_heads, 
                 head_dim, # int64_t head_dim, 
                 copy_stream, # TVMStreamHandle copy_stream)
+                sinfo_args=[],
+                inplace_indices=[0]
             )
 
-            _ = R.call_packed(
+            _ = R.call_inplace_packed(
                 "flashinfer.attention_kernel_prefill_with_paged_kv_cache",                    
                 hdl,
                 query,
@@ -188,24 +203,59 @@ def test_flash_infere_with_paged_kvcache():
                 T.float64(1.0), # double rope_scale = 1.0,             Is not used in case of pos_encoding_mode != ROPE_LLAMA       
                 T.float64(1e4), # double rope_theta = 1e4,             Is not used in case of pos_encoding_mode != ROPE_LLAMA       
                 T.float64(1.0), # double attn_score_scaling_factor = 1.0f
+                sinfo_args=(relax.PrimStructInfo("int64"), R.Tensor(), R.Tensor()),
+                inplace_indices=[0, 9, 10],  # hdl, output, lse
             )
 
-            _ = R.call_packed(
+            _ = R.call_inplace_packed(
                 "flashinfer.attention_kernel_prefill_with_paged_kv_cache_end_forward", 
                 hdl,
+                sinfo_args=[],
+                inplace_indices=[0],
+            )
+            R.output(output)
+
+        return output
+
+
+@I.ir_module
+class AppendToChacheModule:
+    @R.function(pure=False)
+    def main(
+        append_k: R.Tensor(("num_tokens", "num_heads", "head_dim"), dtype="float16"),
+        append_v: R.Tensor(("num_tokens", "num_heads", "head_dim"), dtype="float16"),
+        append_indptr: R.Tensor(("num_seqs_plus1",), dtype="int32"),
+        kv_cache: R.Tensor(("max_num_pages", 2, "num_heads", "page_size", "head_dim"), dtype="float16"),
+        kv_indptr: R.Tensor(("num_seqs_plus1",), dtype="int32"),
+        kv_indices: R.Tensor(("kv_num_pages",), dtype="int32"),
+        kv_last_page_len: R.Tensor(("num_seqs",), dtype="int32"),
+    ):
+        with R.dataflow():            
+            _ = R.call_inplace_packed(
+                "flashinfer.append_paged_kv_cache",
+                append_k,
+                append_v,
+                append_indptr,
+                kv_cache,
+                kv_indptr,
+                kv_indices,
+                kv_last_page_len,
+                sinfo_args=[],
+                inplace_indices=[3]
             )
 
-            # R.output(output)
+        return kv_cache
 
-            return output
 
+def test_flash_infere_with_paged_kvcache():
     num_heads = 40
     head_dim = 128
 
     max_num_pages = 100
     page_size = 32
     
-    reqs_config = [  # (num_kv, num_q)
+    reqs_config = [  
+        # (num_kv, num_q)
         (0, 10),  # prefill reques
         (42, 1),  # decode request
         (67, 10),  # speculative decode check request   
@@ -213,12 +263,12 @@ def test_flash_infere_with_paged_kvcache():
     ]
 
     np.random.seed(0)
-    reference = process_ref_attention(reqs_config, num_heads, head_dim, max_num_pages, page_size)
+    args, ref_res, kv_ragged = process_ref_attention(reqs_config, num_heads, head_dim, max_num_pages, page_size)
 
     target = "cuda"
 
     with tvm.target.Target(target):
-        mod = relax.transform.LegalizeOps()(Module)
+        mod = relax.transform.LegalizeOps()(InferModule)
         mod = tvm.tir.transform.DefaultGPUSchedule()(mod)
 
     with tvm.transform.PassContext():
@@ -227,11 +277,53 @@ def test_flash_infere_with_paged_kvcache():
     dev = tvm.device(target, 0)
     vm = relax.VirtualMachine(ex, dev)
 
-    inputs = [tvm.nd.array(inp, dev) for inp in reference[0:-1]]
-    ref_res = reference[-1]
+    inputs = [tvm.nd.array(inp, dev) for inp in args]
     res = vm["main"](*inputs).numpy()
     
     assert np.allclose(res, ref_res, atol=0.01, rtol=0.01)
+
+
+def test_flash_infere_append_to_paged_kvcache():
+    num_heads = 40
+    head_dim = 128
+
+    max_num_pages = 100
+    page_size = 32
+    
+    reqs_config = [  
+        # (num_kv, num_q)
+        (0, 10),  # prefill reques
+        (42, 1),  # decode request
+        (67, 10),  # speculative decode check request   
+        (40, 13), 
+    ]
+
+    np.random.seed(0)
+    infer_args, ref_res, kv_ragged = process_ref_attention(reqs_config, num_heads, head_dim, max_num_pages, page_size)
+
+    target = "cuda"
+
+    with tvm.target.Target(target):
+        mod = relax.transform.LegalizeOps()(AppendToChacheModule)
+        mod = tvm.tir.transform.DefaultGPUSchedule()(mod)
+
+    with tvm.transform.PassContext():
+        ex = relax.build(mod, target)
+
+    dev = tvm.device(target, 0)
+    vm = relax.VirtualMachine(ex, dev)
+    
+    append_k, append_v, append_indptr = kv_ragged
+    _, _, kv_data_ref, kv_indptr, kv_indices, kv_last_page_len = infer_args
+    kv_data = np.empty(shape=(max_num_pages, 2, num_heads, page_size, head_dim), dtype="float16")
+    
+    inputs = (append_k, append_v, append_indptr, kv_data, kv_indptr, kv_indices, kv_last_page_len)
+    inputs = [tvm.nd.array(inp, dev) for inp in inputs]
+
+    kv_data = vm["main"](*inputs).numpy()
+    
+    # should be identical
+    assert np.max(np.abs(kv_data_ref - kv_data)) == 0
 
 
 if __name__ == "__main__":
