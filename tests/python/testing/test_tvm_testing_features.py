@@ -50,7 +50,9 @@ class TestTargetAutoParametrization:
 
     def test_all_devices_used(self):
         sort_key = lambda dev: (dev.device_type, dev.device_id)
-        assert sorted(self.devices_used, key=sort_key) == sorted(self.enabled_devices, key=sort_key)
+        assert sorted(self.devices_used, key=sort_key) == sorted(
+            self.enabled_devices, key=sort_key
+        )
 
     targets_with_explicit_list = []
 
@@ -197,7 +199,9 @@ class TestBrokenFixture:
     def broken_uncached_fixture(self):
         raise RuntimeError("Intentionally broken fixture")
 
-    @pytest.mark.xfail(True, reason="Broken fixtures should result in a failing setup", strict=True)
+    @pytest.mark.xfail(
+        True, reason="Broken fixtures should result in a failing setup", strict=True
+    )
     def test_uses_broken_uncached_fixture(self, broken_uncached_fixture):
         type(self).num_uses_broken_fixture += 1
 
@@ -208,7 +212,9 @@ class TestBrokenFixture:
     def broken_cached_fixture(self):
         raise RuntimeError("Intentionally broken fixture")
 
-    @pytest.mark.xfail(True, reason="Broken fixtures should result in a failing setup", strict=True)
+    @pytest.mark.xfail(
+        True, reason="Broken fixtures should result in a failing setup", strict=True
+    )
     def test_uses_broken_cached_fixture(self, broken_cached_fixture):
         type(self).num_uses_broken_cached_fixture += 1
 
@@ -288,6 +294,17 @@ class TestCacheableTypes:
 
     def test_uses_deepcopy(self, fixture_with_deepcopy):
         pass
+
+
+class TestPytestCache:
+    param = tvm.testing.parameter(1, 2, 3)
+
+    @pytest.fixture(scope="class")
+    def cached_fixture(self, param):
+        return param * param
+
+    def test_uses_cached_fixture(self, param, cached_fixture):
+        assert cached_fixture == param * param
 
 
 if __name__ == "__main__":
