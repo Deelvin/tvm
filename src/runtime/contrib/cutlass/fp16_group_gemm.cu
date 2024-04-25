@@ -963,5 +963,17 @@ TVM_REGISTER_GLOBAL("cutlass.nested_group_gemm_lora_B_inplace_fp16_sm80")
     .set_body_typed(nested_group_gemm_lora_B_inplace_fp16_sm80);
 }  // namespace grouped_gemm_sm80
 
+// A workaround until Relax gets a proper view-operation support.
+NDArray take_lora_slice(NDArray batched_weights, int layer_idx) {
+  CHECK_EQ(batched_weights->ndim, 4);
+  auto stride = batched_weights->shape[1] * batched_weights->shape[2] * batched_weights->shape[3];
+  ShapeTuple slice_shape{1, batched_weights->shape[1], batched_weights->shape[2], batched_weights->shape[3]};
+  auto dtype_bytes = batched_weights->dtype.bits / 8;
+  return batched_weights.CreateView(slice_shape, batched_weights->dtype, layer_idx * stride * dtype_bytes);
+}
+
+TVM_REGISTER_GLOBAL("runtime.take_lora_slice")
+  .set_body_typed(take_lora_slice);
+
 }  // namespace runtime
 }  // namespace tvm

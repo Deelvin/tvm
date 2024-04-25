@@ -179,7 +179,7 @@ struct NDArray::Internal {
   }
 };
 
-NDArray NDArray::CreateView(ShapeTuple shape, DLDataType dtype) {
+NDArray NDArray::CreateView(ShapeTuple shape, DLDataType dtype, int64_t offset) {
   ICHECK(data_ != nullptr);
 
   const DLTensor& orig = get_mutable()->dl_tensor;
@@ -214,7 +214,7 @@ NDArray NDArray::CreateView(ShapeTuple shape, DLDataType dtype) {
   // increase ref count
   get_mutable()->IncRef();
   ret.get_mutable()->manager_ctx = get_mutable();
-  ret.get_mutable()->dl_tensor.data = get_mutable()->dl_tensor.data;
+  ret.get_mutable()->dl_tensor.data = static_cast<uint8_t*>(get_mutable()->dl_tensor.data) + offset;
   return ret;
 }
 

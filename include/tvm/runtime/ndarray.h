@@ -132,7 +132,7 @@ class NDArray : public ObjectRef {
    * \param dtype The data type of the new array.
    * \note The memory size of new array must be smaller than the current one.
    */
-  TVM_DLL NDArray CreateView(ShapeTuple shape, DLDataType dtype);
+  TVM_DLL NDArray CreateView(ShapeTuple shape, DLDataType dtype, int64_t offset=0);
   /*!
    * \brief Create a reference view of NDArray that
    *  represents as DLManagedTensor.

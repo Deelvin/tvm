@@ -2802,7 +2802,20 @@ def test_nested_grouped_gemm_lora():
     assert np.mean(np.abs(out_np - out)) < 5e-2, np.mean(np.abs(out_np - out))
 
 
+def test_take_lora_slice():
+    num_layers = 32
+    num_loras = 16
+    weights_np = np.random.randn(num_layers, num_loras, 128, 512).astype("float16")
+
+    func = tvm.get_global_func("runtime.take_lora_slice")
+
+    for i in range(num_layers):
+        out = func(tvm.nd.array(weights_np), i).numpy()[0]
+        np.testing.assert_equal(weights_np[i], out)
+
+
 if __name__ == "__main__":
     # tvm.testing.main()
-    test_nested_grouped_gemm_lora()
-    test_grouped_gemm_lora()
+    # test_nested_grouped_gemm_lora()
+    # test_grouped_gemm_lora()
+    test_take_lora_slice()
