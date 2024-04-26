@@ -61,7 +61,7 @@ __inline__ __device__ T warp_reduce_max(T val) {
   return val;
 }
 
-// Single block reduce, assumes size % 1024 == 0
+// Single block reduce, assumes size >= 1024 == 0
 template <typename T>
 __global__ void max_reduce_kernel_single_block(T* input, T* output, int size) {
   __shared__ T shared[32];
@@ -70,6 +70,8 @@ __global__ void max_reduce_kernel_single_block(T* input, T* output, int size) {
   T max_val = std::numeric_limits<T>::lowest();
 
   // Step 1: Each thread reduces across the elements it owns
+  //         Note the conditional handles the i % 1024 != 0 cases
+  //         as long as size >= 1024.
   for (int i = tid; i < size; i += blockDim.x) {
     // use __hmax for float16
     max_val = device_max(max_val, device_abs(input[i]));
@@ -117,8 +119,8 @@ TVM_REGISTER_GLOBAL("tvm.contrib.cuda.reduce_max_abs").set_body([](TVMArgs args,
     size *= input->shape[i];
   }
 
-  CHECK_EQ(size % 1024, 0) << "tvm.contrib.cuda.reduce_max_abs currently only supports reducing "
-                              "tensors that are an even factor of 1024 elements";
+  CHECK(size >= 1024) << "tvm.contrib.cuda.reduce_max_abs currently only supports reducing "
+                               "tensors that have equal or greater than 1024 elements, size: " << size;
 
   auto dtype = DLDataType2String(input->dtype);
 
