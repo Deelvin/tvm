@@ -56,7 +56,7 @@ def process_ref_attention(req_config, num_heads, head_dim, max_num_pages, page_s
 
     res_data = np.empty(shape=(0, num_heads, head_dim), dtype="float16")
     q_data = np.empty(shape=(0, num_heads, head_dim), dtype="float16")
-    kv_data = np.empty(shape=(max_num_pages, 2, page_size, num_heads, head_dim), dtype="float16")
+    kv_data = np.zeros(shape=(max_num_pages, 2, page_size, num_heads, head_dim), dtype="float16")
 
     k_ragged = np.empty(shape=(0, num_heads, head_dim), dtype="float16")
     v_ragged = np.empty(shape=(0, num_heads, head_dim), dtype="float16") 
@@ -246,8 +246,46 @@ class AppendToChacheModule:
 
         return kv_cache
 
+@I.ir_module
+class InferRXModule:
+    @R.function
+    def main(
+        query: R.Tensor(("num_tokens", "num_heads", "head_dim"), dtype="float16"),
+        kv_cache: R.Tensor(("max_num_pages", 2, "num_heads", "page_size", "head_dim"), dtype="float16"),
+    ) -> R.Tensor(("num_tokens", "num_heads", "head_dim"), dtype="float16"):
+        with R.dataflow():
+            num_tokens = T.int64()
+            head_dim = T.int64()
+            num_heads = T.int64()
+            out = R.call_dps_packed(
+                "flashinfer.rx.forward", 
+                (query, kv_cache), 
+                out_sinfo=R.Tensor((num_tokens, num_heads, head_dim), dtype="float16")
+            )
+            R.output(out)
 
-def test_flash_infere_with_paged_kvcache():
+        return out
+
+@I.ir_module
+class AppendToChacheRXModule:
+    @R.function
+    def main(
+        append_k: R.Tensor(("num_tokens", "num_heads", "head_dim"), dtype="float16"),
+        append_v: R.Tensor(("num_tokens", "num_heads", "head_dim"), dtype="float16"),
+        kv_cache: R.Tensor(("max_num_pages", 2, "num_heads", "page_size", "head_dim"), dtype="float16"),
+    ) -> R.Tensor(("max_num_pages", 2, "num_heads", "page_size", "head_dim"), dtype="float16"):
+        with R.dataflow():
+            _ = R.call_inplace_packed(
+                "flashinfer.rx.append_kv_cache", 
+                append_k, append_v, kv_cache,
+                sinfo_args=[],
+                inplace_indices=[2]
+            )
+
+        return kv_cache
+
+
+def test_flash_infer_with_paged_kvcache():
     num_heads = 40
     head_dim = 128
 
@@ -283,7 +321,7 @@ def test_flash_infere_with_paged_kvcache():
     assert np.allclose(res, ref_res, atol=0.01, rtol=0.01)
 
 
-def test_flash_infere_append_to_paged_kvcache():
+def test_flash_infer_append_to_kvcache():
     num_heads = 40
     head_dim = 128
 
@@ -324,6 +362,97 @@ def test_flash_infere_append_to_paged_kvcache():
     
     # should be identical
     assert np.max(np.abs(kv_data_ref - kv_data)) == 0
+
+
+def test_rx_flash_infer_with_paged_kvcache():
+    num_heads = 40
+    head_dim = 128
+
+    max_num_pages = 100
+    page_size = 32
+    
+    reqs_config = [  
+        # (num_kv, num_q)
+        (0, 10),  # prefill reques
+        (42, 1),  # decode request
+        (67, 10),  # speculative decode check request   
+        (40, 13), 
+    ]
+
+    np.random.seed(0)
+    args, ref_res, _ = process_ref_attention(reqs_config, num_heads, head_dim, max_num_pages, page_size)
+
+    target = "cuda"
+    with tvm.target.Target(target):
+        mod = relax.transform.LegalizeOps()(InferRXModule)
+        mod = tvm.tir.transform.DefaultGPUSchedule()(mod)
+
+    with tvm.transform.PassContext():
+        ex = relax.build(mod, target)
+
+    dev = tvm.device(target, 0)
+    vm = relax.VirtualMachine(ex, dev)
+
+    args = [tvm.nd.array(inp, dev) for inp in args]
+    q_data, qo_indptr, kv_data, kv_indptr, kv_indices, kv_last_page_len = args
+    workspace = tvm.nd.empty([8*1024*1024], dtype="uint8", device=dev)
+
+    # Infer
+    before_forward = tvm.get_global_func("flashinfer.rx.before_prefill_forward")
+    end_forward = tvm.get_global_func("flashinfer.rx.end_forward")
+
+    before_forward(workspace, qo_indptr, kv_indptr, kv_indices, kv_last_page_len, num_heads, num_heads, head_dim, page_size, max_num_pages)
+    res = vm["main"](q_data, kv_data).numpy()
+    end_forward()
+    
+    assert np.allclose(res, ref_res, atol=0.01, rtol=0.01)
+
+def test_rx_flash_infer_append_to_kvcache():
+    num_heads = 40
+    head_dim = 128
+
+    max_num_pages = 100
+    page_size = 32
+    
+    reqs_config = [  
+        # (num_kv, num_q)
+        (0, 10),  # prefill reques
+        (42, 1),  # decode request
+        (67, 10),  # speculative decode check request   
+        (40, 13), 
+    ]
+
+    np.random.seed(0)
+    args, _, kv_cache_ragged = process_ref_attention(reqs_config, num_heads, head_dim, max_num_pages, page_size)
+
+    target = "cuda"
+    with tvm.target.Target(target):
+        mod = relax.transform.LegalizeOps()(AppendToChacheRXModule)
+        mod = tvm.tir.transform.DefaultGPUSchedule()(mod)
+
+    with tvm.transform.PassContext():
+        ex = relax.build(mod, target)
+
+    dev = tvm.device(target, 0)
+    vm = relax.VirtualMachine(ex, dev)
+
+    _, _, ref_res, kv_indptr, kv_indices, kv_last_page_len = args
+    append_k, append_v, append_indptr = kv_cache_ragged
+    kv_data = np.zeros((max_num_pages, 2, num_heads, page_size, head_dim), dtype="float16")
+    workspace = tvm.nd.empty([8*1024*1024], dtype="uint8", device=dev)
+
+    # Infer
+    before_forward = tvm.get_global_func("flashinfer.rx.before_prefill_forward")
+    end_forward = tvm.get_global_func("flashinfer.rx.end_forward")
+    
+    def to_device(*args):
+        return (tvm.nd.array(arg, dev) for arg in args)
+
+    before_forward(workspace, *to_device(append_indptr, kv_indptr, kv_indices, kv_last_page_len), num_heads, num_heads, head_dim, page_size, max_num_pages)
+    res = vm["main"](*to_device(append_k, append_v, kv_data)).numpy()
+    end_forward()
+
+    assert np.allclose(res, ref_res, atol=0.01, rtol=0.01)
 
 
 if __name__ == "__main__":
